@@ -34,11 +34,24 @@ export interface RedactionResult {
  * follow that two sentences refer to the same person, while each occurrence
  * gets its own vault row under its own iv.
  */
+const PLACEHOLDER_TOKEN =
+  /\[(?:NRIC|BANK_ACCOUNT|PHONE|EMAIL|PERSON_NAME|ADDRESS|CARD)_\d+\]/;
+
 export function redact(source: string, vaultKey: Buffer): RedactionResult {
   // Validated before the text is touched. A key fault discovered halfway
   // through would leave a partially redacted string and a decision about
   // whether to return it — and there is no acceptable answer to that.
   assertVaultKey(vaultKey);
+
+  // Redacting twice would emit a second [NRIC_1] beside the first, so every
+  // token in the redaction log would have two candidate spans. That log is
+  // audit evidence. The message deliberately does not quote the input.
+  if (PLACEHOLDER_TOKEN.test(source)) {
+    throw new Error(
+      'redact() received text that already contains a redaction placeholder. '
+      + 'Redact once, at the trust boundary.',
+    );
+  }
 
   const placeholderByValue = new Map<string, string>();
   const countByType = new Map<PiiType, number>();

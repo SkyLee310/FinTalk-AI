@@ -82,4 +82,23 @@ describe('redact', () => {
   it('refuses to run with an invalid vault key rather than returning unredacted text', () => {
     expect(() => redact(SOURCE, Buffer.alloc(16))).toThrow(/32 bytes/);
   });
+
+  /**
+   * Redacting twice would emit a second [NRIC_1] beside the first, leaving the
+   * redaction log with two candidate spans per token. That log is audit
+   * evidence, so ambiguity in it is a defect, not a cosmetic issue.
+   */
+  it('refuses text that already contains a redaction placeholder', () => {
+    expect(() => redact('IC [NRIC_1] was already masked', KEY))
+      .toThrow(/already contains a redaction placeholder/i);
+  });
+
+  it('does not echo the source text in that error', () => {
+    try {
+      redact('IC [NRIC_1] and 880101-14-5678', KEY);
+      throw new Error('expected redact to throw');
+    } catch (error) {
+      expect((error as Error).message).not.toContain('880101');
+    }
+  });
 });

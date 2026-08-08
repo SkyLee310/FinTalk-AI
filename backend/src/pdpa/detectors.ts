@@ -6,13 +6,23 @@
  * ADDRESS are deliberately absent — they need a model pass, which arrives
  * with the capture pipeline. A regex that guessed at names would produce
  * false confidence in a redaction log an auditor is meant to trust.
+ *
+ * Every numeric pattern tolerates single spaces and hyphens between digits.
+ * The input to this module is transcription output, which writes spoken
+ * identifiers in groups — "4111 1111 1111 1111", "880101 14 5678". Matching
+ * only contiguous runs would pass all of that through to storage.
+ *
+ * Where a shape is ambiguous the broader, more sensitive classification wins:
+ * a 12-digit number whose leading six cannot be a date is reported as a bank
+ * account rather than discarded. Over-redaction costs readability; the other
+ * direction costs a PDPA breach.
  */
 
 export type PiiKind = 'NRIC' | 'BANK_ACCOUNT' | 'PHONE' | 'EMAIL' | 'CARD';
 
 export interface Detection {
   readonly kind: PiiKind;
-  /** The matched substring, exactly as it appeared. */
+  /** The matched substring, exactly as it appeared, separators included. */
   readonly value: string;
   readonly start: number;
   readonly end: number;
@@ -22,11 +32,17 @@ export interface Detection {
 }
 
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
-const NRIC_DASHED = /\b(\d{2})(\d{2})(\d{2})-\d{2}-\d{4}\b/g;
-const NRIC_PLAIN = /\b(\d{2})(\d{2})(\d{2})\d{6}\b/g;
-const CARD_CANDIDATE = /\b\d{13,19}\b/g;
+
+/** YYMMDD PB NNNN — 12 digits, optional single separator between groups. */
+const NRIC = /\b(\d{2})(\d{2})(\d{2})[ -]?\d{2}[ -]?\d{4}\b/g;
+
+/** 13–19 digits; Luhn decides whether it is really a card. */
+const CARD_CANDIDATE = /\b\d(?:[ -]?\d){12,18}\b/g;
+
 const PHONE_MY = /(?:\+?60|0)1\d[-\s]?\d{3,4}[-\s]?\d{4}\b/g;
-const ACCOUNT = /\b\d{10,16}\b/g;
+
+/** 10–16 digits. Broadest numeric shape, so it runs last. */
+const ACCOUNT = /\b\d(?:[ -]?\d){9,15}\b/g;
 
 const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
 
@@ -41,7 +57,12 @@ function isPlausibleDob(mm: number, dd: number): boolean {
   return dd <= DAYS_IN_MONTH[mm - 1]!;
 }
 
-function passesLuhn(digits: string): boolean {
+function digitsOnly(value: string): string {
+  return value.replace(/[^0-9]/g, '');
+}
+
+function passesLuhn(value: string): boolean {
+  const digits = digitsOnly(value);
   let sum = 0;
   let double = false;
   for (let i = digits.length - 1; i >= 0; i -= 1) {
@@ -70,8 +91,12 @@ function* execAll(text: string, pattern: RegExp): Generator<RegExpExecArray> {
  *
  * Patterns are applied most-specific first and each claims its span, so a
  * broad pattern cannot re-report text a precise one already identified: an
- * email's local part is never also reported as a phone number, and a
- * Luhn-valid run is a card rather than an account.
+ * email's local part is never also a phone number, and a Luhn-valid run is a
+ * card rather than an account.
+ *
+ * Card is tested before NRIC deliberately. A grouped 16-digit card contains a
+ * 12-digit prefix ending at a space, which the NRIC pattern would otherwise
+ * claim — leaving the last group of the card in the clear.
  */
 export function detectPii(text: string): Detection[] {
   const accepted: Detection[] = [];
@@ -96,22 +121,13 @@ export function detectPii(text: string): Detection[] {
   // number or an account, so email claims its span first.
   for (const m of execAll(text, EMAIL)) add('EMAIL', m, 'regex:email', 0.97);
 
-  // The dashed NRIC is the least ambiguous shape in Malaysian text.
-  for (const m of execAll(text, NRIC_DASHED)) {
-    if (isPlausibleDob(Number(m[2]), Number(m[3]))) {
-      add('NRIC', m, 'regex:nric', 0.99);
-    }
-  }
-
-  // Card before account: both match a 16-digit run, and Luhn decides which.
   for (const m of execAll(text, CARD_CANDIDATE)) {
     if (passesLuhn(m[0])) add('CARD', m, 'regex:card+luhn', 0.9);
   }
 
-  // Undashed NRIC: exactly 12 digits whose first six are a plausible date.
-  for (const m of execAll(text, NRIC_PLAIN)) {
+  for (const m of execAll(text, NRIC)) {
     if (isPlausibleDob(Number(m[2]), Number(m[3]))) {
-      add('NRIC', m, 'regex:nric', 0.85);
+      add('NRIC', m, 'regex:nric', 0.97);
     }
   }
 

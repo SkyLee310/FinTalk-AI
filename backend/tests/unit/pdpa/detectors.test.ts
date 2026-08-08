@@ -28,8 +28,16 @@ describe('detectPii — Malaysian NRIC', () => {
     expect(hits.map((h) => h.kind)).toEqual(['BANK_ACCOUNT']);
   });
 
-  it('rejects a dashed NRIC whose month is out of range', () => {
-    expect(detectPii('IC 881301-14-5678')).toHaveLength(0);
+  /**
+   * A 12-digit number whose leading six cannot be a date is not an NRIC, but
+   * it is still a 12-digit number in a credit discussion. It falls through to
+   * BANK_ACCOUNT rather than being discarded: misclassifying costs
+   * readability, dropping it costs a disclosure.
+   */
+  it('does not call a dashed number with an impossible month an NRIC', () => {
+    const kinds = detectPii('IC 881301-14-5678').map((h) => h.kind);
+    expect(kinds).not.toContain('NRIC');
+    expect(kinds).toEqual(['BANK_ACCOUNT']);
   });
 });
 
@@ -114,5 +122,43 @@ describe('detectPii — overlap and ordering', () => {
 
   it('returns an empty array for text with no personal data', () => {
     expect(detectPii('Pricing basis is unresolved pending Shariah review.')).toEqual([]);
+  });
+});
+
+/**
+ * Transcription does not emit tidy contiguous digit runs. A model asked to
+ * write down a spoken identifier produces grouped digits — "4111 1111 1111
+ * 1111", "880101 14 5678" — and a detector that only matches contiguous runs
+ * silently passes all of it through to storage.
+ */
+describe('detectPii — separator-tolerant formats', () => {
+  it('detects an NRIC written with spaces', () => {
+    const hits = detectPii('IC 880101 14 5678 confirmed');
+    expect(hits.map((h) => h.kind)).toEqual(['NRIC']);
+    expect(hits[0]?.value).toBe('880101 14 5678');
+  });
+
+  it('detects an NRIC with mixed separators', () => {
+    expect(detectPii('IC 880101-14 5678 noted').map((h) => h.kind)).toEqual(['NRIC']);
+  });
+
+  it('detects a card number written in groups of four', () => {
+    const hits = detectPii('card 4111 1111 1111 1111 on file');
+    expect(hits.map((h) => h.kind)).toEqual(['CARD']);
+    expect(hits[0]?.value).toBe('4111 1111 1111 1111');
+  });
+
+  it('detects a bank account written with spaces', () => {
+    const hits = detectPii('account 1234 5678 90 at Maybank');
+    expect(hits.map((h) => h.kind)).toEqual(['BANK_ACCOUNT']);
+    expect(hits[0]?.value).toBe('1234 5678 90');
+  });
+
+  it('still ignores an amount carrying a thousands separator', () => {
+    expect(detectPii('facility of RM 50,000 approved')).toEqual([]);
+  });
+
+  it('still ignores a span of years', () => {
+    expect(detectPii('term from 2026 to 2031 inclusive')).toEqual([]);
   });
 });

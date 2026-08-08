@@ -17,10 +17,19 @@ function baseUrl(): string {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  /**
+   * FormData must not carry an explicit content-type. The browser generates a
+   * multipart boundary and puts it in that header; setting it ourselves sends a
+   * boundary-less content-type and the server cannot parse the body at all.
+   */
+  const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData;
+
   const response = await fetch(`${baseUrl()}${path}`, {
     ...init,
     credentials: 'include',
-    headers: { 'content-type': 'application/json', ...init?.headers },
+    headers: isFormData
+      ? { ...init?.headers }
+      : { 'content-type': 'application/json', ...init?.headers },
   });
 
   if (!response.ok) {

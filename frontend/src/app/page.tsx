@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Badge } from '@/components/badge';
 import { Card, CardHeader, DataRow } from '@/components/card';
 import { ApiError, apiFetch } from '@/lib/api-client';
@@ -63,6 +64,21 @@ export default async function HomePage() {
           languages, including the whiteboard — then holds the result to Malaysian
           data-protection and Shariah requirements before anyone can act on it.
         </p>
+
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Link
+            href="/login"
+            className="inline-flex items-center rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-canvas transition hover:opacity-90"
+          >
+            Sign in
+          </Link>
+          <Link
+            href="/meetings"
+            className="inline-flex items-center rounded-lg border border-line-strong bg-surface px-4 py-2.5 text-sm font-medium transition hover:bg-raised"
+          >
+            Go to meetings
+          </Link>
+        </div>
       </section>
 
       <section className="mt-10 grid gap-5 lg:grid-cols-5">
@@ -113,24 +129,24 @@ export default async function HomePage() {
         </Card>
 
         <Card className="lg:col-span-2">
-          <CardHeader title="What ships in this slice" />
+          <CardHeader title="What is built" />
           <ul className="space-y-3 px-5 py-4 text-sm text-muted">
             <li className="flex gap-2.5">
               <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-ok" />
-              <span>Two independent deploy targets, Vercel and Railway.</span>
-            </li>
-            <li className="flex gap-2.5">
-              <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-ok" />
-              <span>Environment validated at boot — the process refuses to start on a bad value.</span>
+              <span>Capture, redaction, Shariah screening and maker–checker approval.</span>
             </li>
             <li className="flex gap-2.5">
               <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-ok" />
               <span>Compliance invariants enforced in the database, not in application code.</span>
             </li>
             <li className="flex gap-2.5">
+              <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-ok" />
+              <span>Hash-chained audit log, verified on every read of the trail.</span>
+            </li>
+            <li className="flex gap-2.5">
               <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-faint" />
               <span className="text-faint">
-                Capture, redaction and approval screens land in later slices.
+                Whiteboard capture and on-device audio pre-screening are not built yet.
               </span>
             </li>
           </ul>

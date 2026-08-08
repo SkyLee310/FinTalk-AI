@@ -2,7 +2,8 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm ci && npm run db:generate && npm run build"
+    "//": "No npm ci here. Nixpacks installs dependencies in an earlier layer and mounts a build cache at node_modules/.cache; a second npm ci tries to remove node_modules and fails with EBUSY on that mount.",
+    "buildCommand": "npm run db:generate && npm run build"
   },
   "deploy": {
     "startCommand": "npm run db:deploy && npm run db:constraints && npm start",

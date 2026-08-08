@@ -441,3 +441,71 @@ Each module is reviewed against this checklist as it lands, not in one pass at t
 8. `docs/COMPLIANCE.md` complete, every row status-labelled, risk register current.
 9. CI green on every required check, `gitleaks` included.
 10. No `.env` file tracked in git; both `.env.example` files complete and commented.
+
+---
+
+## 11. Audio preprocessing: FFmpeg + VAD (open decision, affects Plan 3)
+
+Proposed 2026-08-08: preprocess audio locally with FFmpeg and voice activity
+detection, redact personal data, and only then send to Gemini — so that
+"sensitive voice data won't leak".
+
+### 11.1 Why the stated goal is not met by VAD alone
+
+Voice activity detection reports **where** speech occurs. It does not report
+**what** was said. Removing a spoken NRIC from audio requires knowing that an
+NRIC was spoken, which requires speech-to-text. So the ordering
+`FFmpeg → VAD → redact → Gemini` cannot work as written: at the redaction step
+there is no text to redact, and the transcript is precisely what Gemini is
+being asked to produce.
+
+The voice itself is also biometric personal data. Speech cannot be stripped of
+the speaker's voiceprint while remaining speech. RISK-001 (§7.1) is unchanged
+by preprocessing.
+
+### 11.2 What FFmpeg + VAD does buy, and is worth building regardless
+
+- **Data minimisation**, a PDPA principle in its own right: downmix to 16 kHz
+  mono and drop non-speech spans. Meeting recordings are commonly 30–40%
+  silence and room noise, none of which needs to be transmitted.
+- **Reliable segment boundaries** for the dual-track log, derived locally
+  rather than trusted from the model.
+- **Format determinism**: one codec and sample rate reaching the provider,
+  so a caller's recording format cannot cause a mid-pipeline failure.
+- **Lower cost and latency**, since billing follows audio duration.
+
+### 11.3 The two designs that do meet the goal
+
+**Option A — local STT; audio never leaves the host.**
+`FFmpeg + VAD → local Whisper (Malaysian fine-tune) → redact text → send only
+redacted text to Gemini for summarisation and Shariah analysis.` This is the
+only design under which the claim "voice data does not leave" is true. Costs:
+a GPU host, which Railway's standard containers do not provide; lower Bahasa
+Rojak accuracy than Gemini; Hokkien effectively unsupported. Reachable today
+through the existing `local` provider seam (§6.2) with no rework.
+
+**Option B — local PII pre-screen, then Gemini (recommended).**
+`FFmpeg + VAD → small local STT pass used only to locate spoken digit strings
+and identifiers → mute those audio spans → send minimised, muted audio to
+Gemini → redact the returned text as a second layer.`
+
+The asymmetry that makes this practical: **locating digits is a far easier
+task than transcribing Bahasa Rojak correctly.** No usable transcript is
+required, only spans to silence, which a small CPU model can do. The NRIC and
+account number then reach Google as neither audio nor text, while Gemini still
+performs the multilingual work it is actually better at.
+
+Two constraints on Option B:
+
+- The pre-screen is a filter, not a guarantee. Text redaction remains the
+  second layer, and the pipeline stays fail-closed: a pre-screen error must
+  abort the upload, never silently skip muting.
+- Muting destroys evidence of what was said. Every muted span must be recorded
+  in the audit log with its time range and the reason, so the dual-track log
+  stays truthful about what was removed.
+
+### 11.4 Status
+
+Not yet decided. Plan 1 is unaffected — it contains no audio path. The
+`TranscriptionProvider` seam (§6.2) already accommodates all three options,
+so this decision can be made at the start of Plan 3 without rework.

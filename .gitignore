@@ -1,0 +1,51 @@
+# --- Secrets: never commit. Only .env.example is tracked. ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.keystore
+
+# --- Dependencies ---
+node_modules/
+.pnpm-store/
+
+# --- Build output ---
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# --- Test / coverage ---
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
+# --- Logs ---
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Platform ---
+.vercel
+.railway
+
+# --- Local uploads / scratch (audio and images are memory-only by design;
+#     this guards against accidental local dumps during development) ---
+uploads/
+tmp/
+*.wav
+*.mp3
+*.m4a

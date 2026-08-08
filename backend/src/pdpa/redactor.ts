@@ -70,26 +70,56 @@ export function joinRedacted(
 const PLACEHOLDER_TOKEN =
   /\[(?:NRIC|BANK_ACCOUNT|PHONE|EMAIL|PERSON_NAME|ADDRESS|CARD)_\d+\]/;
 
+/**
+ * First-pass redaction of untrusted raw text.
+ *
+ * Rejects input that already carries a placeholder: redacting twice emits a
+ * second [NRIC_1] beside the first, so every token in the redaction log would
+ * have two candidate spans, and that log is audit evidence. For the legitimate
+ * second pass over model output, use redactDerived.
+ */
 export function redact(
   source: string,
   vaultKey: Buffer,
   context: RedactionContext = createRedactionContext(),
 ): RedactionResult {
-  // Validated before the text is touched. A key fault discovered halfway
-  // through would leave a partially redacted string and a decision about
-  // whether to return it — and there is no acceptable answer to that.
   assertVaultKey(vaultKey);
 
-  // Redacting twice would emit a second [NRIC_1] beside the first, so every
-  // token in the redaction log would have two candidate spans. That log is
-  // audit evidence. The message deliberately does not quote the input.
+  // The message deliberately does not quote the input.
   if (PLACEHOLDER_TOKEN.test(source)) {
     throw new Error(
       'redact() received text that already contains a redaction placeholder. '
-      + 'Redact once, at the trust boundary.',
+      + 'Redact once, at the trust boundary, or use redactDerived for model '
+      + 'output built from already-redacted text.',
     );
   }
 
+  return redactCore(source, vaultKey, context);
+}
+
+/**
+ * Verification pass over text derived from already-redacted text, such as an
+ * LLM summary.
+ *
+ * Existing placeholders are the input's correct state here, not evidence of a
+ * double redaction, so the collision guard does not apply. Any identifier this
+ * pass finds was introduced by the model, and callers are expected to treat
+ * that as a failure rather than a repair — see processMeeting.
+ */
+export function redactDerived(
+  source: string,
+  vaultKey: Buffer,
+  context: RedactionContext = createRedactionContext(),
+): RedactionResult {
+  assertVaultKey(vaultKey);
+  return redactCore(source, vaultKey, context);
+}
+
+function redactCore(
+  source: string,
+  vaultKey: Buffer,
+  context: RedactionContext,
+): RedactionResult {
   const { placeholderByValue, countByType } = context;
   const records: RedactionRecord[] = [];
 

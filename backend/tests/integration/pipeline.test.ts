@@ -165,6 +165,48 @@ describe('processMeeting — failure paths', () => {
     expect(stored.failureReason).toBe('transcription:Error');
   });
 
+  /**
+   * The summariser is handed placeholders, so a real identifier in its output
+   * means it invented one or pulled it from somewhere else. That is a fault to
+   * surface, not to quietly patch: a repaired summary would look identical to
+   * one that never had a problem.
+   */
+  it('fails closed when the summariser produces personal data', async () => {
+    const meeting = await freshMeeting();
+    const fake = new FakeTranscriptionProvider();
+    const leaking: TranscriptionProvider = {
+      name: 'fake',
+      transcribe: (audio) => fake.transcribe(audio),
+      summarize: () =>
+        Promise.resolve('Director IC 880101-14-5678 approved the facility.'),
+    };
+
+    await expect(processMeeting({ ...deps, provider: leaking }, meeting.id, AUDIO))
+      .rejects.toBeInstanceOf(PipelineError);
+
+    const stored = await prisma.meeting.findUniqueOrThrow({ where: { id: meeting.id } });
+    expect(stored.status).toBe('FAILED');
+    expect(stored.failureReason).toBe('summary:Error');
+    expect(await prisma.transcript.count()).toBe(0);
+  });
+
+  it('keeps the leaked identifier out of the stored failure reason', async () => {
+    const meeting = await freshMeeting();
+    const fake = new FakeTranscriptionProvider();
+    const leaking: TranscriptionProvider = {
+      name: 'fake',
+      transcribe: (audio) => fake.transcribe(audio),
+      summarize: () => Promise.resolve('IC 880101-14-5678 noted.'),
+    };
+
+    await expect(
+      processMeeting({ ...deps, provider: leaking }, meeting.id, AUDIO),
+    ).rejects.toThrow();
+
+    const stored = await prisma.meeting.findUniqueOrThrow({ where: { id: meeting.id } });
+    expect(stored.failureReason).not.toMatch(/\d{6}-\d{2}-\d{4}/);
+  });
+
   it('refuses an invalid vault key without writing anything', async () => {
     const meeting = await freshMeeting();
 

@@ -9,6 +9,7 @@ import {
   createRedactionContext,
   joinRedacted,
   redact,
+  redactDerived,
   type RedactionContext,
   type RedactionRecord,
 } from '../pdpa/redactor.js';
@@ -164,10 +165,22 @@ export async function processMeeting(
     const draft = provider.summarize
       ? await provider.summarize(document.rawRedacted)
       : 'No summary was generated for this meeting.';
-    // Re-redacted through the same context. A summariser given only
-    // placeholders has no identifier to leak, but a model is not a thing to
-    // take on trust at a persistence boundary.
-    summary = redact(draft, vaultKey, document.context).text;
+
+    // Verified, not trusted. The summariser was handed placeholders, so a real
+    // identifier here means it invented one or leaked it from somewhere else.
+    const verified = redactDerived(draft, vaultKey, document.context);
+    if (verified.records.length > 0) {
+      // Fail closed rather than store a quietly patched summary. Repairing it
+      // would hide a model that produced personal data from redacted input,
+      // which is a fault worth surfacing, and the redaction log has no offset
+      // space for spans that belong to the summary rather than the transcript.
+      const kinds = [...new Set(verified.records.map((r) => r.piiType))].sort();
+      throw new Error(
+        `the summariser produced personal data (${kinds.join(', ')}) from `
+        + 'redacted input; the summary was discarded',
+      );
+    }
+    summary = verified.text;
   } catch (cause) {
     throw await failed('summary', cause);
   }

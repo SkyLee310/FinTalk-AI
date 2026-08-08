@@ -9,6 +9,11 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     exclude: ['tests/**/*.live.test.ts'],
+    // The integration suites share one database and each resets it in
+    // beforeEach, so test files must run one at a time. In parallel, one
+    // file's TRUNCATE deletes rows another file is still inserting against,
+    // surfacing as foreign-key violations rather than as the race it is.
+    fileParallelism: false,
     coverage: { reporter: ['text', 'lcov'], include: ['src/**'] },
   },
 });

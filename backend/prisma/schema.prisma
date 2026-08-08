@@ -1,0 +1,285 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  VIEWER
+  MAKER
+  CHECKER
+  SHARIAH
+  SUPERVISOR
+  ADMIN
+}
+
+enum MeetingStatus {
+  CAPTURED
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum PiiType {
+  NRIC
+  BANK_ACCOUNT
+  PHONE
+  EMAIL
+  PERSON_NAME
+  ADDRESS
+  CARD
+}
+
+enum ShariahIssueType {
+  RIBA
+  GHARAR
+  MAYSIR
+  HARAM_SECTOR
+  CONTRACT_MISMATCH
+  LATE_PAYMENT_PENALTY
+}
+
+enum ShariahStatus {
+  FLAGGED
+  UNDER_REVIEW
+  CLEARED
+  CONFIRMED_VIOLATION
+}
+
+enum FacilityKind {
+  CONVENTIONAL
+  ISLAMIC
+}
+
+enum IslamicContract {
+  MURABAHAH
+  TAWARRUQ
+  IJARAH
+  MUSHARAKAH
+  MUDHARABAH
+  ISTISNA
+  SALAM
+}
+
+enum ApprovalStatus {
+  DRAFT
+  PENDING_CHECKER
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  displayName  String
+  role         Role
+  createdAt    DateTime @default(now())
+
+  meetings         Meeting[]
+  shariahReviews   ShariahFlag[] @relation("ShariahReviewer")
+  approvalsMade    Approval[]    @relation("Maker")
+  approvalsChecked Approval[]    @relation("Checker")
+  humanEdits       HumanEdit[]
+}
+
+model Meeting {
+  id               String        @id @default(cuid())
+  title            String
+  occurredAt       DateTime
+  status           MeetingStatus @default(CAPTURED)
+  failureReason    String?
+  consentConfirmed Boolean       @default(false)
+  createdById      String
+  createdAt        DateTime      @default(now())
+
+  createdBy    User          @relation(fields: [createdById], references: [id])
+  transcript   Transcript?
+  whiteboards  Whiteboard[]
+  shariahFlags ShariahFlag[]
+  termSheets   TermSheet[]
+
+  @@index([createdById])
+}
+
+/// rawRedacted and summaryEn are only ever written with redacted content.
+/// The RedactedText branded type (Plan 2) enforces this at the call site.
+model Transcript {
+  id            String   @id @default(cuid())
+  meetingId     String   @unique
+  rawRedacted   String
+  summaryEn     String
+  languages     String[]
+  modelId       String
+  promptVersion String
+  createdAt     DateTime @default(now())
+
+  meeting    Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  segments   TranscriptSegment[]
+  redactions Redaction[]
+}
+
+model TranscriptSegment {
+  id           String @id @default(cuid())
+  transcriptId String
+  startMs      Int
+  endMs        Int
+  speakerLabel String
+  textRedacted String
+
+  transcript Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+
+  @@index([transcriptId, startMs])
+}
+
+model Redaction {
+  id           String  @id @default(cuid())
+  transcriptId String
+  piiType      PiiType
+  placeholder  String
+  startOffset  Int
+  endOffset    Int
+  detectedBy   String
+  confidence   Float
+  vaultId      String? @unique
+
+  transcript Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  vault      PiiVault?  @relation(fields: [vaultId], references: [id])
+
+  @@index([transcriptId])
+}
+
+/// AES-256-GCM only. There is deliberately no plaintext column.
+model PiiVault {
+  id         String   @id @default(cuid())
+  ciphertext Bytes
+  iv         Bytes
+  authTag    Bytes
+  createdAt  DateTime @default(now())
+
+  redaction Redaction?
+}
+
+/// The source image is never persisted — only derived artifacts.
+model Whiteboard {
+  id             String   @id @default(cuid())
+  meetingId      String
+  mermaid        String
+  structuredJson Json
+  modelId        String
+  promptVersion  String
+  createdAt      DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+}
+
+/// status may only leave FLAGGED via a user holding Role.SHARIAH (Plan 4).
+model ShariahFlag {
+  id         String           @id @default(cuid())
+  meetingId  String
+  issueType  ShariahIssueType
+  excerpt    String
+  detectedBy String
+  confidence Float
+  reference  String
+  status     ShariahStatus    @default(FLAGGED)
+  createdAt  DateTime         @default(now())
+
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  meeting    Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  reviewedBy User?   @relation("ShariahReviewer", fields: [reviewedById], references: [id])
+
+  @@index([meetingId, status])
+}
+
+/// interestRateBps and profitRateBps are mutually exclusive.
+/// Enforced by term_sheet_rate_kind_exclusive in prisma/sql/constraints.sql.
+model TermSheet {
+  id              String           @id @default(cuid())
+  meetingId       String
+  applicantName   String
+  currency        String           @default("MYR")
+  principalMinor  BigInt
+  tenureMonths    Int
+  facilityKind    FacilityKind
+  interestRateBps Int?
+  profitRateBps   Int?
+  islamicContract IslamicContract?
+  status          ApprovalStatus   @default(DRAFT)
+  createdAt       DateTime         @default(now())
+
+  meeting  Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  approval Approval?
+
+  @@index([meetingId])
+}
+
+/// checkerId != makerId is enforced by approval_checker_not_maker.
+model Approval {
+  id          String         @id @default(cuid())
+  termSheetId String         @unique
+  makerId     String
+  submittedAt DateTime       @default(now())
+  checkerId   String?
+  decidedAt   DateTime?
+  decision    ApprovalStatus @default(PENDING_CHECKER)
+  note        String?
+
+  termSheet TermSheet @relation(fields: [termSheetId], references: [id], onDelete: Cascade)
+  maker     User      @relation("Maker", fields: [makerId], references: [id])
+  checker   User?     @relation("Checker", fields: [checkerId], references: [id])
+}
+
+model AiOutputSnapshot {
+  id             String   @id @default(cuid())
+  entityType     String
+  entityId       String
+  modelId        String
+  promptVersion  String
+  promptRedacted String
+  responseRaw    Json
+  createdAt      DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+model HumanEdit {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  editorId   String
+  fieldPath  String
+  aiValue    String
+  humanValue String
+  editedAt   DateTime @default(now())
+
+  editor User @relation(fields: [editorId], references: [id])
+
+  @@index([entityType, entityId])
+}
+
+/// Append-only. UPDATE and DELETE raise via triggers in constraints.sql.
+model AuditEntry {
+  id         BigInt   @id @default(autoincrement())
+  at         DateTime @default(now())
+  actorId    String?
+  actorRole  Role?
+  action     String
+  entityType String
+  entityId   String
+  payload    Json
+  prevHash   String
+  hash       String   @unique
+
+  @@index([entityType, entityId])
+  @@index([at])
+}

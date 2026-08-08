@@ -91,8 +91,21 @@ async function capturedMeeting(): Promise<string> {
     payload: Buffer.concat(chunks),
   });
 
-  expect(response.statusCode).toBe(201);
-  return response.json<{ meetingId: string }>().meetingId;
+  // 202: the pipeline runs in the background, so wait for it to settle before
+  // asserting on the findings it produces.
+  expect(response.statusCode).toBe(202);
+  const { meetingId } = response.json<{ meetingId: string }>();
+
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const meeting = await prisma.meeting.findUniqueOrThrow({
+      where: { id: meetingId },
+      select: { status: true },
+    });
+    if (meeting.status === 'READY') return meetingId;
+    if (meeting.status === 'FAILED') throw new Error('capture failed during setup');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error('capture never settled');
 }
 
 function draft(meetingId: string, overrides: Record<string, unknown> = {}) {

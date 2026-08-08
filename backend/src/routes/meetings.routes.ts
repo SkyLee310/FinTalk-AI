@@ -114,30 +114,41 @@ export function registerMeetingRoutes(
         },
       });
 
-      try {
-        const result = await processMeeting(deps, meeting.id, {
-          bytes: audioBytes,
-          mimeType: audioMimeType,
-        });
+      /**
+       * Processing is started but deliberately not awaited.
+       *
+       * Transcribing a real recording takes minutes, and Railway's edge proxy
+       * closes any request at 300 seconds. An upload that blocked on the
+       * pipeline returned 502 to the caller even while the pipeline was still
+       * working. The client is given the meeting id immediately and polls
+       * GET /meetings/:id, whose status field already models
+       * CAPTURED → PROCESSING → READY | FAILED.
+       *
+       * The trade-off: a container restart mid-processing strands a meeting in
+       * PROCESSING. A durable queue is the real answer; this is honest about
+       * being a single process.
+       */
+      const audio = { bytes: audioBytes, mimeType: audioMimeType };
 
-        return reply.code(201).send({
-          meetingId: meeting.id,
-          transcriptId: result.transcriptId,
-          status: 'READY',
-          segmentCount: result.segmentCount,
-          redactionCount: result.redactionCount,
-        });
-      } catch (error) {
-        // processMeeting has already recorded FAILED with a PII-free reason.
-        const stage = error instanceof PipelineError ? error.stage : 'processing';
-        return sendProblem(
-          reply,
-          502,
-          'Processing failed',
-          `The recording could not be processed (failed during ${stage}). `
-          + 'The meeting is recorded as failed and no transcript was stored.',
+      void processMeeting(deps, meeting.id, audio).catch((error: unknown) => {
+        /**
+         * The stored failureReason is PII-free by design, which makes a failure
+         * hard to diagnose from the database alone. The full cause is logged
+         * instead: server logs are operator-only, and an operator can already
+         * read the transcript this text came from.
+         */
+        const stage = error instanceof PipelineError ? error.stage : 'unknown';
+        request.log.error(
+          { err: error, meetingId: meeting.id, stage },
+          'meeting processing failed',
         );
-      }
+      });
+
+      return reply.code(202).send({
+        meetingId: meeting.id,
+        status: 'CAPTURED',
+        pollUrl: `/meetings/${meeting.id}`,
+      });
     },
   );
 

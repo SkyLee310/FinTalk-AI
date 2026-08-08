@@ -51,15 +51,46 @@ export default function MeetingsPage() {
     form.set('audio', file);
 
     try {
-      const result = await api.uploadMeeting(form);
-      setDone(
-        `Processed ${String(result.segmentCount)} segments and recorded `
-        + `${String(result.redactionCount)} redactions.`,
-      );
+      const { meetingId } = await api.uploadMeeting(form);
       setTitle('');
       setFile(null);
       setConsent(false);
       meetings.reload();
+
+      /**
+       * The upload is accepted before it is processed, so the outcome is polled.
+       * Transcribing a real recording takes minutes — longer than any request is
+       * allowed to stay open.
+       */
+      setDone('Uploaded. Transcribing and screening now — this can take a few minutes.');
+
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+        const detail = await api.meeting(meetingId);
+
+        if (detail.status === 'READY') {
+          const redactions = detail.transcript?.redactions.length ?? 0;
+          const segments = detail.transcript?.segments.length ?? 0;
+          setDone(
+            `Ready. ${String(segments)} segments, ${String(redactions)} redactions, `
+            + `${String(detail.shariahFlags.length)} Shariah finding(s).`,
+          );
+          meetings.reload();
+          return;
+        }
+
+        if (detail.status === 'FAILED') {
+          setDone(null);
+          setError(
+            `Processing failed at ${detail.failureReason ?? 'an unknown stage'}. `
+            + 'No transcript was stored.',
+          );
+          meetings.reload();
+          return;
+        }
+      }
+
+      setDone('Still processing. Open the meeting from the list to check on it.');
     } catch (cause) {
       setError(describeError(cause));
     } finally {

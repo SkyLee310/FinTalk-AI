@@ -172,14 +172,17 @@ export const api = {
 
   meeting: (id: string) => apiFetch<MeetingDetail>(`/meetings/${id}`),
 
+  /**
+   * Returns as soon as the recording is accepted, not when it is processed.
+   * Transcription takes minutes and the platform closes a request at 300
+   * seconds, so the caller polls `meeting(meetingId)` until status leaves
+   * CAPTURED/PROCESSING.
+   */
   uploadMeeting: (form: FormData) =>
-    apiFetch<{
-      meetingId: string;
-      transcriptId: string;
-      status: string;
-      segmentCount: number;
-      redactionCount: number;
-    }>('/meetings', { method: 'POST', body: form }),
+    apiFetch<{ meetingId: string; status: MeetingStatus; pollUrl: string }>('/meetings', {
+      method: 'POST',
+      body: form,
+    }),
 
   reviewFlag: (flagId: string, status: ShariahStatus, note: string) =>
     apiFetch<ShariahFlagRow>(`/shariah-flags/${flagId}/review`, json({ status, note })),

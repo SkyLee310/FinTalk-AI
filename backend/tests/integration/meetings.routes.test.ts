@@ -94,6 +94,31 @@ function upload(cookie: string, fields: Record<string, string>, withAudio = true
   });
 }
 
+/**
+ * The upload returns 202 and processes in the background, so a test that wants a
+ * finished transcript has to wait for one. Polls the status the route itself
+ * publishes rather than sleeping for a guessed duration.
+ */
+async function waitForSettled(meetingId: string): Promise<string> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const meeting = await prisma.meeting.findUniqueOrThrow({
+      where: { id: meetingId },
+      select: { status: true },
+    });
+    if (meeting.status === 'READY' || meeting.status === 'FAILED') return meeting.status;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`meeting ${meetingId} never settled`);
+}
+
+async function uploadAndWait(cookie: string): Promise<string> {
+  const response = await upload(cookie, METADATA);
+  expect(response.statusCode).toBe(202);
+  const { meetingId } = response.json<{ meetingId: string }>();
+  expect(await waitForSettled(meetingId)).toBe('READY');
+  return meetingId;
+}
+
 describe('POST /meetings — access control', () => {
   it('refuses an unauthenticated upload', async () => {
     const { payload, headers } = multipart(METADATA, AUDIO);
@@ -114,7 +139,7 @@ describe('POST /meetings — access control', () => {
 
   it('accepts a maker', async () => {
     const response = await upload(await sessionFor('MAKER'), METADATA);
-    expect(response.statusCode).toBe(201);
+    expect(response.statusCode).toBe(202);
   });
 });
 
@@ -169,26 +194,34 @@ describe('POST /meetings — validation', () => {
 });
 
 describe('POST /meetings — the capture round trip', () => {
-  it('returns a ready transcript with redactions recorded', async () => {
+  /**
+   * The upload no longer waits for the pipeline. Railway's edge proxy closes a
+   * request at 300 seconds and a real recording takes longer than that to
+   * transcribe, so the route answers 202 with an id to poll.
+   */
+  it('accepts the upload immediately rather than waiting for the pipeline', async () => {
     const response = await upload(await sessionFor('MAKER'), METADATA);
 
-    expect(response.statusCode).toBe(201);
-    const body = response.json<{
-      meetingId: string;
-      status: string;
-      segmentCount: number;
-      redactionCount: number;
-    }>();
+    expect(response.statusCode).toBe(202);
+    const body = response.json<{ meetingId: string; status: string; pollUrl: string }>();
+    expect(body.status).toBe('CAPTURED');
+    expect(body.pollUrl).toBe(`/meetings/${body.meetingId}`);
+  });
 
-    expect(body.status).toBe('READY');
-    expect(body.segmentCount).toBe(6);
-    expect(body.redactionCount).toBeGreaterThan(3);
+  it('reaches READY with every segment and its redactions stored', async () => {
+    const meetingId = await uploadAndWait(await sessionFor('MAKER'));
+
+    const transcript = await prisma.transcript.findFirstOrThrow({
+      where: { meetingId },
+      include: { segments: true, redactions: true },
+    });
+    expect(transcript.segments).toHaveLength(6);
+    expect(transcript.redactions.length).toBeGreaterThan(3);
   });
 
   it('serves the redacted transcript back with no identifier in it', async () => {
     const cookie = await sessionFor('MAKER');
-    const created = await upload(cookie, METADATA);
-    const { meetingId } = created.json<{ meetingId: string }>();
+    const meetingId = await uploadAndWait(cookie);
 
     const detail = await app.inject({
       method: 'GET',
@@ -208,8 +241,7 @@ describe('POST /meetings — the capture round trip', () => {
    */
   it('never includes vault ciphertext in the detail response', async () => {
     const cookie = await sessionFor('MAKER');
-    const created = await upload(cookie, METADATA);
-    const { meetingId } = created.json<{ meetingId: string }>();
+    const meetingId = await uploadAndWait(cookie);
 
     const detail = await app.inject({
       method: 'GET',
@@ -223,7 +255,7 @@ describe('POST /meetings — the capture round trip', () => {
   });
 
   it('lists the meeting for a viewer', async () => {
-    await upload(await sessionFor('MAKER'), METADATA);
+    await uploadAndWait(await sessionFor('MAKER'));
 
     const response = await app.inject({
       method: 'GET',

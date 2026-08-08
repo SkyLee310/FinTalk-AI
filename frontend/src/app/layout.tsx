@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { SiteFooter } from '@/components/site-footer';
-import { SiteHeader } from '@/components/site-header';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -27,8 +26,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           Skip to content
         </a>
 
+        {/*
+          No header here: the signed-in area supplies its own in
+          app/(app)/layout.tsx, and the sign-in page deliberately has none. The
+          footer's data-handling and non-certification notices apply everywhere.
+        */}
         <div className="flex min-h-screen flex-col">
-          <SiteHeader />
           <div className="flex-1">{children}</div>
           <SiteFooter />
         </div>

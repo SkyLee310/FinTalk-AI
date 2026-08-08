@@ -534,3 +534,23 @@ provider seam (§6.2) with no rework, and remains the answer if a bank requires
 that audio not cross a border at all.
 
 Plan 1 is unaffected — it contains no audio path.
+
+### 11.5 Implementation status of Option B
+
+**Deferred, 2026-08-09, by the product owner's decision.** The capture pipeline
+currently sends audio straight to Gemini. Neither the FFmpeg/VAD preprocessing
+nor the local digit pre-screen is built.
+
+What this changes, precisely:
+
+- **Unaffected:** the storage guarantee. Text-layer redaction through the
+  `RedactedText` barrier is fully enforced and tested, so no unredacted
+  identifier is persisted, and no identifier reaches the summarising model.
+- **Outstanding:** the transfer guarantee. A spoken NRIC still reaches Google as
+  audio, and is transcribed before being redacted. RISK-001 stands at its
+  original severity and must not be described as mitigated.
+
+Reason for deferral: the digit pre-screen needs local STT model weights, which
+were not obtainable in the build environment. §11.4's four binding constraints
+remain in force for whenever it is built; nothing in the current pipeline
+contradicts them, because the pipeline does not yet include that stage.

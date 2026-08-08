@@ -17,6 +17,7 @@ import {
   storeTranscript,
   type TranscriptSegmentInput,
 } from '../pdpa/transcript-store.js';
+import { analyseTranscript } from '../shariah/engine.js';
 
 /**
  * Capture pipeline: transcribe, redact, summarise, persist.
@@ -26,7 +27,12 @@ import {
  * rather than a convention is what enforces it.
  */
 
-export type FailureStage = 'transcription' | 'redaction' | 'summary' | 'persistence';
+export type FailureStage =
+  | 'transcription'
+  | 'redaction'
+  | 'summary'
+  | 'persistence'
+  | 'shariah';
 
 /**
  * Carries the stage and the underlying error's class, never its message.
@@ -65,6 +71,7 @@ export interface ProcessResult {
   readonly transcriptId: string;
   readonly redactionCount: number;
   readonly segmentCount: number;
+  readonly shariahFlagCount: number;
 }
 
 export const SEGMENT_SEPARATOR = '\n';
@@ -201,6 +208,35 @@ export async function processMeeting(
     throw await failed('persistence', cause);
   }
 
+  /**
+   * Shariah analysis runs last, over the stored redacted text.
+   *
+   * Findings are raised as FLAGGED and nothing more. The engine cannot resolve
+   * one, and the approval gate refuses to submit a term sheet while any finding
+   * on the meeting is not CLEARED — so a flag raised here genuinely blocks the
+   * facility until a qualified reviewer acts on it.
+   */
+  let flagCount = 0;
+  try {
+    const findings = analyseTranscript(document.rawRedacted);
+    if (findings.length > 0) {
+      const created = await prisma.shariahFlag.createMany({
+        data: findings.map((finding) => ({
+          meetingId,
+          issueType: finding.issueType,
+          excerpt: finding.excerpt,
+          detectedBy: finding.detectedBy,
+          confidence: finding.confidence,
+          reference: finding.reference,
+          status: 'FLAGGED' as const,
+        })),
+      });
+      flagCount = created.count;
+    }
+  } catch (cause) {
+    throw await failed('shariah', cause);
+  }
+
   await prisma.meeting.update({
     where: { id: meetingId },
     data: { status: 'READY', failureReason: null },
@@ -210,5 +246,6 @@ export async function processMeeting(
     transcriptId,
     redactionCount: document.records.length,
     segmentCount: document.segments.length,
+    shariahFlagCount: flagCount,
   };
 }

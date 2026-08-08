@@ -8,6 +8,7 @@ import type { TranscriptionProvider } from './ai/provider.js';
 import { getEnv } from './config/env.js';
 import { vaultKeyFromBase64 } from './pdpa/vault.js';
 import { registerAuthRoutes } from './routes/auth.routes.js';
+import { registerComplianceRoutes } from './routes/compliance.routes.js';
 import { registerMeetingRoutes } from './routes/meetings.routes.js';
 
 /**
@@ -48,6 +49,7 @@ export function buildServer(deps?: Partial<ServerDeps>) {
 
   registerAuthRoutes(app, prisma);
   registerMeetingRoutes(app, { prisma, provider, vaultKey });
+  registerComplianceRoutes(app, prisma);
 
   return app;
 }

@@ -44,6 +44,47 @@ export function seal(plaintext: string, key: Buffer): SealedValue {
   return { ciphertext, iv, authTag: cipher.getAuthTag() };
 }
 
+/**
+ * The three Bytes columns of a PiiVault row.
+ *
+ * The `<ArrayBuffer>` argument is load-bearing: a bare `Uint8Array` infers as
+ * `Uint8Array<ArrayBufferLike>`, which Prisma's Bytes columns reject because
+ * ArrayBufferLike admits SharedArrayBuffer.
+ */
+export interface SealedRow {
+  ciphertext: Uint8Array<ArrayBuffer>;
+  iv: Uint8Array<ArrayBuffer>;
+  authTag: Uint8Array<ArrayBuffer>;
+}
+
+/**
+ * Node's Buffer is a Uint8Array over ArrayBufferLike. Copying into a freshly
+ * allocated array is the only way to narrow that, and these values are a few
+ * dozen bytes each.
+ */
+function toPlainBytes(buf: Buffer): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(buf.byteLength);
+  out.set(buf);
+  return out;
+}
+
+export function sealedToRow(sealed: SealedValue): SealedRow {
+  return {
+    ciphertext: toPlainBytes(sealed.ciphertext),
+    iv: toPlainBytes(sealed.iv),
+    authTag: toPlainBytes(sealed.authTag),
+  };
+}
+
+/** Rehydrates a stored row so it can be opened. */
+export function sealedFromRow(row: SealedRow): SealedValue {
+  return {
+    ciphertext: Buffer.from(row.ciphertext),
+    iv: Buffer.from(row.iv),
+    authTag: Buffer.from(row.authTag),
+  };
+}
+
 export function open(sealed: SealedValue, key: Buffer): string {
   assertVaultKey(key);
   const decipher = createDecipheriv(ALGORITHM, key, sealed.iv);

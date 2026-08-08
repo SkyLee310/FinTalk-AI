@@ -328,6 +328,21 @@ audio (memory only)
 
 Redaction runs before the first write. If it throws, nothing is persisted and the meeting goes `FAILED`.
 
+#### Why the `gemini` provider is the v1 default
+
+Local STT was evaluated and rejected for v1. Bahasa Rojak is three-way code-switching (English / Malay / Hokkien), the hardest case in speech recognition:
+
+| Candidate | Verdict |
+|---|---|
+| Whisper `large-v3` (whisper.cpp / faster-whisper) | Locks onto one language per segment; Malay is low-resource in its training mix; **Hokkien (Min Nan) is effectively unsupported**. |
+| Whisper in-browser (transformers.js / WASM) | As above, plus 40 MB–1.5 GB download and slower-than-realtime CPU inference. |
+| Malaysian fine-tuned Whisper (e.g. Mesolitica's Malaysian Whisper family) | **The credible local path.** Trained on Malaysian audio including code-switched Malay-English. Requires a GPU, 1–3 GB weights, slow cold start — not available on Railway's standard containers. Model availability unverified (no web access at design time). |
+| Vosk / wav2vec2 Malay fine-tunes | Fast and small, accuracy below demo bar. |
+
+Large multimodal models outperform small specialist models precisely on code-switching, and Gemini accepts audio natively with no separate STT stage.
+
+**`local.provider.ts` therefore targets Malaysian fine-tuned Whisper on a GPU host**, not vanilla Whisper. It is the on-prem answer to RISK-001 (§7.1) and the reason the provider seam exists. Implementing it is a separate spec; v1 ships it as an interface-conforming stub that throws a clear "not configured" error rather than silently degrading.
+
 ### 6.3 Analyse
 
 From redacted text only: English summary, action items, intent, MY→EN translation, whiteboard → Mermaid, and the Shariah rule engine plus LLM detector. Every AI call records an `AiOutputSnapshot`.

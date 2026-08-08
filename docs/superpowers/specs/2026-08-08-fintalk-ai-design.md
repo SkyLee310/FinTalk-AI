@@ -504,8 +504,33 @@ Two constraints on Option B:
   in the audit log with its time range and the reason, so the dual-track log
   stays truthful about what was removed.
 
-### 11.4 Status
+### 11.4 Decision
 
-Not yet decided. Plan 1 is unaffected — it contains no audio path. The
-`TranscriptionProvider` seam (§6.2) already accommodates all three options,
-so this decision can be made at the start of Plan 3 without rework.
+**Option B is adopted** (decided 2026-08-08). The capture pipeline becomes:
+
+```
+FFmpeg normalise (16 kHz mono) → VAD segment + drop non-speech
+  → local digit-only pre-screen → mute identifier spans
+  → Gemini transcription → text redaction (second layer) → persist
+```
+
+Binding consequences for Plan 3:
+
+1. **The pre-screen is a filter, never a guarantee.** Text redaction through
+   the `RedactedText` barrier (§5.2) remains mandatory. A pre-screen failure
+   aborts the upload; it must never fall through to an unmuted send.
+2. **Every muted span is audited.** An `AuditEntry` records the time range and
+   the reason, so the dual-track log stays truthful about what was removed
+   rather than silently presenting a gap as speech that never happened.
+3. **Muting is destructive and not reversible.** The muted audio is still
+   never persisted (§2); only the span record survives.
+4. **RISK-001 is reduced, not closed.** Speech content and the speaker's
+   voiceprint still reach Google for the non-muted spans. The honest claim
+   remains the one in §2 — raw audio is never stored, personal data is
+   redacted before persistence — not that audio never leaves the device.
+
+Option A (local STT, audio never leaves) stays reachable through the `local`
+provider seam (§6.2) with no rework, and remains the answer if a bank requires
+that audio not cross a border at all.
+
+Plan 1 is unaffected — it contains no audio path.

@@ -136,9 +136,12 @@ model TranscriptSegment {
   @@index([transcriptId, startMs])
 }
 
+/// Exactly one of transcriptId or whiteboardId is set — see
+/// prisma/sql/constraints.sql, constraint redaction_single_parent.
 model Redaction {
   id           String  @id @default(cuid())
-  transcriptId String
+  transcriptId String?
+  whiteboardId String?
   piiType      PiiType
   placeholder  String
   startOffset  Int
@@ -147,10 +150,12 @@ model Redaction {
   confidence   Float
   vaultId      String? @unique
 
-  transcript Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
-  vault      PiiVault?  @relation(fields: [vaultId], references: [id])
+  transcript Transcript? @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  whiteboard Whiteboard? @relation(fields: [whiteboardId], references: [id], onDelete: Cascade)
+  vault      PiiVault?   @relation(fields: [vaultId], references: [id])
 
   @@index([transcriptId])
+  @@index([whiteboardId])
 }
 
 /// AES-256-GCM only. There is deliberately no plaintext column.
@@ -166,15 +171,19 @@ model PiiVault {
 
 /// The source image is never persisted — only derived artifacts.
 model Whiteboard {
-  id             String   @id @default(cuid())
-  meetingId      String
+  id        String @id @default(cuid())
+  meetingId String
+  /// The canonical redacted text. Redaction offsets index into this field, the
+  /// same contract Transcript.rawRedacted carries.
+  rawRedacted    String
   mermaid        String
   structuredJson Json
   modelId        String
   promptVersion  String
   createdAt      DateTime @default(now())
 
-  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  meeting    Meeting     @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  redactions Redaction[]
 
   @@index([meetingId])
 }

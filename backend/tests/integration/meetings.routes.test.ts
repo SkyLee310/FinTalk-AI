@@ -267,6 +267,39 @@ describe('POST /meetings — the capture round trip', () => {
     expect(response.json<{ meetings: unknown[] }>().meetings).toHaveLength(1);
   });
 
+  /**
+   * Regression: the upload wrote no audit entry, so the uploader's identity and
+   * their consent confirmation — the first item in the spec's audit strip — went
+   * unrecorded, and a deployment that had only captured meetings served an empty
+   * audit trail while reporting it valid.
+   */
+  it('audits the upload together with the consent confirmation', async () => {
+    const cookie = await sessionFor('MAKER');
+    const meetingId = await uploadAndWait(cookie);
+
+    const entry = await prisma.auditEntry.findFirstOrThrow({
+      where: { action: 'meeting.uploaded', entityId: meetingId },
+    });
+
+    expect(entry.actorRole).toBe('MAKER');
+    expect(entry.payload).toMatchObject({
+      consentConfirmed: true,
+      audioBytes: AUDIO.body.byteLength,
+      audioMimeType: 'audio/wav',
+    });
+    // The title is free text an operator typed; it can name a person and
+    // nothing redacts it, so it stays in Meeting.title rather than the log.
+    expect(JSON.stringify(entry.payload)).not.toContain(METADATA.title);
+  });
+
+  it('writes no audit entry when consent is refused', async () => {
+    const cookie = await sessionFor('MAKER');
+    const response = await upload(cookie, { ...METADATA, consentConfirmed: 'false' });
+
+    expect(response.statusCode).toBe(422);
+    expect(await prisma.auditEntry.count()).toBe(0);
+  });
+
   it('answers 404 for an unknown meeting', async () => {
     const response = await app.inject({
       method: 'GET',

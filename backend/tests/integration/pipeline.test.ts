@@ -6,6 +6,7 @@ import {
   type TranscriptionProvider,
   type TranscriptionResult,
 } from '../../src/ai/provider.js';
+import { verifyChain } from '../../src/audit/chain.js';
 import { PipelineError, processMeeting } from '../../src/pipeline/process-meeting.js';
 import { prisma, resetDb, seedMeeting, seedUser } from '../helpers/db.js';
 
@@ -26,10 +27,16 @@ async function freshMeeting() {
   return seedMeeting(user.id);
 }
 
+/** The uploader every audited action in the pipeline is attributed to. */
+const actorFor = (meeting: { createdById: string }) => ({
+  id: meeting.createdById,
+  role: 'MAKER' as const,
+});
+
 describe('processMeeting — success path', () => {
   it('stores every segment and marks the meeting ready', async () => {
     const meeting = await freshMeeting();
-    const result = await processMeeting(deps, meeting.id, AUDIO);
+    const result = await processMeeting(deps, meeting.id, AUDIO, actorFor(meeting));
 
     expect(result.segmentCount).toBe(6);
     expect(result.redactionCount).toBeGreaterThan(3);
@@ -41,7 +48,7 @@ describe('processMeeting — success path', () => {
 
   it('leaves no identifier from the fixture anywhere in stored text', async () => {
     const meeting = await freshMeeting();
-    await processMeeting(deps, meeting.id, AUDIO);
+    await processMeeting(deps, meeting.id, AUDIO, actorFor(meeting));
 
     const transcript = await prisma.transcript.findFirstOrThrow({
       include: { segments: true },
@@ -66,7 +73,7 @@ describe('processMeeting — success path', () => {
    */
   it('gives one person one placeholder across the whole transcript', async () => {
     const meeting = await freshMeeting();
-    await processMeeting(deps, meeting.id, AUDIO);
+    await processMeeting(deps, meeting.id, AUDIO, actorFor(meeting));
 
     const nricRows = await prisma.redaction.findMany({ where: { piiType: 'NRIC' } });
     expect(nricRows).toHaveLength(2);
@@ -83,7 +90,7 @@ describe('processMeeting — success path', () => {
    */
   it('records offsets that resolve to the placeholder in the joined text', async () => {
     const meeting = await freshMeeting();
-    await processMeeting(deps, meeting.id, AUDIO);
+    await processMeeting(deps, meeting.id, AUDIO, actorFor(meeting));
 
     const transcript = await prisma.transcript.findFirstOrThrow({
       include: { redactions: true },
@@ -100,7 +107,7 @@ describe('processMeeting — success path', () => {
 
   it('re-redacts the summary rather than trusting the summariser', async () => {
     const meeting = await freshMeeting();
-    await processMeeting(deps, meeting.id, AUDIO);
+    await processMeeting(deps, meeting.id, AUDIO, actorFor(meeting));
 
     const transcript = await prisma.transcript.findFirstOrThrow();
     expect(transcript.summaryEn).toContain('[NRIC_1]');
@@ -109,7 +116,7 @@ describe('processMeeting — success path', () => {
 
   it('stores one vault row per redaction', async () => {
     const meeting = await freshMeeting();
-    const result = await processMeeting(deps, meeting.id, AUDIO);
+    const result = await processMeeting(deps, meeting.id, AUDIO, actorFor(meeting));
     expect(await prisma.piiVault.count()).toBe(result.redactionCount);
   });
 });
@@ -128,7 +135,7 @@ describe('processMeeting — failure paths', () => {
     const meeting = await freshMeeting();
     const provider = failingProvider(new TranscriptionError('fake', 'upstream refused'));
 
-    await expect(processMeeting({ ...deps, provider }, meeting.id, AUDIO))
+    await expect(processMeeting({ ...deps, provider }, meeting.id, AUDIO, actorFor(meeting)))
       .rejects.toBeInstanceOf(PipelineError);
 
     const stored = await prisma.meeting.findUniqueOrThrow({ where: { id: meeting.id } });
@@ -140,7 +147,7 @@ describe('processMeeting — failure paths', () => {
     const meeting = await freshMeeting();
     const provider = failingProvider(new TranscriptionError('fake', 'upstream refused'));
 
-    await expect(processMeeting({ ...deps, provider }, meeting.id, AUDIO)).rejects.toThrow();
+    await expect(processMeeting({ ...deps, provider }, meeting.id, AUDIO, actorFor(meeting))).rejects.toThrow();
 
     const stored = await prisma.meeting.findUniqueOrThrow({ where: { id: meeting.id } });
     expect(stored.failureReason).toBe('transcription:TranscriptionError');
@@ -156,7 +163,7 @@ describe('processMeeting — failure paths', () => {
     const leaky = new Error('failed on input "IC 880101-14-5678, card 4111 1111 1111 1111"');
 
     await expect(
-      processMeeting({ ...deps, provider: failingProvider(leaky) }, meeting.id, AUDIO),
+      processMeeting({ ...deps, provider: failingProvider(leaky) }, meeting.id, AUDIO, actorFor(meeting)),
     ).rejects.toThrow();
 
     const stored = await prisma.meeting.findUniqueOrThrow({ where: { id: meeting.id } });
@@ -181,7 +188,7 @@ describe('processMeeting — failure paths', () => {
         Promise.resolve('Director IC 880101-14-5678 approved the facility.'),
     };
 
-    await expect(processMeeting({ ...deps, provider: leaking }, meeting.id, AUDIO))
+    await expect(processMeeting({ ...deps, provider: leaking }, meeting.id, AUDIO, actorFor(meeting)))
       .rejects.toBeInstanceOf(PipelineError);
 
     const stored = await prisma.meeting.findUniqueOrThrow({ where: { id: meeting.id } });
@@ -200,7 +207,7 @@ describe('processMeeting — failure paths', () => {
     };
 
     await expect(
-      processMeeting({ ...deps, provider: leaking }, meeting.id, AUDIO),
+      processMeeting({ ...deps, provider: leaking }, meeting.id, AUDIO, actorFor(meeting)),
     ).rejects.toThrow();
 
     const stored = await prisma.meeting.findUniqueOrThrow({ where: { id: meeting.id } });
@@ -211,12 +218,80 @@ describe('processMeeting — failure paths', () => {
     const meeting = await freshMeeting();
 
     await expect(
-      processMeeting({ ...deps, vaultKey: Buffer.alloc(16) }, meeting.id, AUDIO),
+      processMeeting({ ...deps, vaultKey: Buffer.alloc(16) }, meeting.id, AUDIO, actorFor(meeting)),
     ).rejects.toBeInstanceOf(PipelineError);
 
     expect(await prisma.transcript.count()).toBe(0);
     const stored = await prisma.meeting.findUniqueOrThrow({ where: { id: meeting.id } });
     expect(stored.status).toBe('FAILED');
     expect(stored.failureReason).toBe('redaction:Error');
+  });
+});
+
+/**
+ * Regression: the capture path wrote no audit entries at all.
+ *
+ * Every audited action the spec lists for capture — meeting.uploaded,
+ * transcript.created, shariah.flagged — was missing, so a deployment whose only
+ * activity was capturing meetings served an empty chain and reported it valid.
+ * verifyChain is vacuously true on an empty log, which is why nothing caught it.
+ */
+describe('processMeeting — audit trail', () => {
+  it('audits transcript.created and shariah.flagged', async () => {
+    const meeting = await freshMeeting();
+    await processMeeting(deps, meeting.id, AUDIO, actorFor(meeting));
+
+    const actions = (await prisma.auditEntry.findMany({ orderBy: { id: 'asc' } }))
+      .map((entry) => entry.action);
+
+    expect(actions).toContain('transcript.created');
+    expect(actions).toContain('shariah.flagged');
+  });
+
+  it('leaves a chain that verifies, over a log that is not empty', async () => {
+    const meeting = await freshMeeting();
+    await processMeeting(deps, meeting.id, AUDIO, actorFor(meeting));
+
+    const verdict = await verifyChain(prisma);
+    expect(verdict.ok).toBe(true);
+    // Guards against the vacuous pass that hid the original defect.
+    expect(verdict.length).toBeGreaterThan(1);
+  });
+
+  it('records which rule raised each finding, without the excerpt', async () => {
+    const meeting = await freshMeeting();
+    const result = await processMeeting(deps, meeting.id, AUDIO, actorFor(meeting));
+
+    const entry = await prisma.auditEntry.findFirstOrThrow({
+      where: { action: 'shariah.flagged' },
+    });
+    expect(entry.payload).toMatchObject({ count: result.shariahFlagCount });
+    expect(result.shariahFlagCount).toBeGreaterThan(0);
+
+    const findings = (entry.payload as { findings: { detectedBy: string }[] }).findings;
+    expect(findings.every((finding) => finding.detectedBy.startsWith('rule:'))).toBe(true);
+    expect(JSON.stringify(entry.payload)).not.toContain('interest rate');
+  });
+
+  it('audits the failure, without the provider message', async () => {
+    const meeting = await freshMeeting();
+    const leaky = new Error('failed on input "IC 880101-14-5678"');
+    const provider: TranscriptionProvider = {
+      name: 'fake',
+      transcribe: (): Promise<TranscriptionResult> => Promise.reject(leaky),
+    };
+
+    await expect(
+      processMeeting({ ...deps, provider }, meeting.id, AUDIO, actorFor(meeting)),
+    ).rejects.toThrow();
+
+    const entry = await prisma.auditEntry.findFirstOrThrow({
+      where: { action: 'meeting.failed' },
+    });
+    expect(entry.payload).toMatchObject({
+      stage: 'transcription',
+      reason: 'transcription:Error',
+    });
+    expect(JSON.stringify(entry.payload)).not.toMatch(/\d{6}-\d{2}-\d{4}/);
   });
 });

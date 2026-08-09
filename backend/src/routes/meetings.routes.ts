@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { appendAuditWithin } from '../audit/chain.js';
 import { requireAuth, requireCapability } from '../auth/middleware.js';
 import { sendProblem } from '../http/problem.js';
 import {
@@ -104,14 +105,45 @@ export function registerMeetingRoutes(
         );
       }
 
-      const meeting = await prisma.meeting.create({
-        data: {
-          title: metadata.data.title,
-          occurredAt: new Date(metadata.data.occurredAt),
-          status: 'CAPTURED',
-          consentConfirmed: true,
-          createdById: actor.id,
-        },
+      /**
+       * The meeting row and its audit entry commit together.
+       *
+       * Spec §5.6 lists meeting.uploaded among the audited actions, and §4
+       * makes the consent confirmation itself an audited event. The record
+       * that consent was claimed must not be able to go missing while the
+       * recording is accepted anyway.
+       *
+       * The title is deliberately left out of the payload: it is free text an
+       * operator typed, it can name a person, and nothing redacts it. It stays
+       * in Meeting.title, which entityId points at.
+       */
+      const meeting = await prisma.$transaction(async (tx) => {
+        const created = await tx.meeting.create({
+          data: {
+            title: metadata.data.title,
+            occurredAt: new Date(metadata.data.occurredAt),
+            status: 'CAPTURED',
+            consentConfirmed: true,
+            createdById: actor.id,
+          },
+        });
+
+        await appendAuditWithin(tx, {
+          at: new Date(),
+          actorId: actor.id,
+          actorRole: actor.role,
+          action: 'meeting.uploaded',
+          entityType: 'Meeting',
+          entityId: created.id,
+          payload: {
+            consentConfirmed: true,
+            occurredAt: created.occurredAt.toISOString(),
+            audioBytes: audioBytes.byteLength,
+            audioMimeType,
+          },
+        });
+
+        return created;
       });
 
       /**
@@ -130,7 +162,7 @@ export function registerMeetingRoutes(
        */
       const audio = { bytes: audioBytes, mimeType: audioMimeType };
 
-      void processMeeting(deps, meeting.id, audio).catch((error: unknown) => {
+      void processMeeting(deps, meeting.id, audio, actor).catch((error: unknown) => {
         /**
          * The stored failureReason is PII-free by design, which makes a failure
          * hard to diagnose from the database alone. The full cause is logged

@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { appendAuditWithin, type AuditActor } from '../audit/chain.js';
 import type {
   AudioInput,
   TranscriptionProvider,
@@ -136,6 +137,7 @@ export async function processMeeting(
   deps: PipelineDeps,
   meetingId: string,
   audio: AudioInput,
+  actor: AuditActor,
 ): Promise<ProcessResult> {
   const { prisma, provider, vaultKey } = deps;
 
@@ -146,10 +148,30 @@ export async function processMeeting(
 
   const failed = async (stage: FailureStage, cause: unknown): Promise<PipelineError> => {
     const error = new PipelineError(stage, cause);
-    await prisma.meeting.update({
-      where: { id: meetingId },
-      data: { status: 'FAILED', failureReason: error.persistableReason },
+
+    /**
+     * The FAILED status and its audit entry commit together. A meeting that
+     * shows FAILED with no record of the failure would leave an operator
+     * guessing; persistableReason is PII-free by construction, carrying the
+     * stage and the error's class rather than the provider's message.
+     */
+    await prisma.$transaction(async (tx) => {
+      await tx.meeting.update({
+        where: { id: meetingId },
+        data: { status: 'FAILED', failureReason: error.persistableReason },
+      });
+
+      await appendAuditWithin(tx, {
+        at: new Date(),
+        actorId: actor.id,
+        actorRole: actor.role,
+        action: 'meeting.failed',
+        entityType: 'Meeting',
+        entityId: meetingId,
+        payload: { stage, reason: error.persistableReason },
+      });
     });
+
     return error;
   };
 
@@ -203,6 +225,7 @@ export async function processMeeting(
       promptVersion: transcription.promptVersion,
       segments: document.segments,
       redactions: document.records,
+      actor,
     });
   } catch (cause) {
     throw await failed('persistence', cause);
@@ -220,18 +243,44 @@ export async function processMeeting(
   try {
     const findings = analyseTranscript(document.rawRedacted);
     if (findings.length > 0) {
-      const created = await prisma.shariahFlag.createMany({
-        data: findings.map((finding) => ({
-          meetingId,
-          issueType: finding.issueType,
-          excerpt: finding.excerpt,
-          detectedBy: finding.detectedBy,
-          confidence: finding.confidence,
-          reference: finding.reference,
-          status: 'FLAGGED' as const,
-        })),
+      flagCount = await prisma.$transaction(async (tx) => {
+        const created = await tx.shariahFlag.createMany({
+          data: findings.map((finding) => ({
+            meetingId,
+            issueType: finding.issueType,
+            excerpt: finding.excerpt,
+            detectedBy: finding.detectedBy,
+            confidence: finding.confidence,
+            reference: finding.reference,
+            status: 'FLAGGED' as const,
+          })),
+        });
+
+        /**
+         * Records that findings were raised and which rule raised each one.
+         * The excerpts are left to the flag rows: they are already-redacted
+         * transcript text, and duplicating them here would give the same
+         * quotation two homes with only one of them reviewable.
+         */
+        await appendAuditWithin(tx, {
+          at: new Date(),
+          actorId: actor.id,
+          actorRole: actor.role,
+          action: 'shariah.flagged',
+          entityType: 'Meeting',
+          entityId: meetingId,
+          payload: {
+            count: created.count,
+            findings: findings.map((finding) => ({
+              issueType: finding.issueType,
+              detectedBy: finding.detectedBy,
+              confidence: finding.confidence,
+            })),
+          },
+        });
+
+        return created.count;
       });
-      flagCount = created.count;
     }
   } catch (cause) {
     throw await failed('shariah', cause);

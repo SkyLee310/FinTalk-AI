@@ -10,16 +10,34 @@ export class ApiError extends Error {
   }
 }
 
-/**
- * Same-origin by design. `/api` is rewritten to the backend by next.config.ts,
- * which is what keeps the session cookie first-party — see the note there.
- * Calling the backend's own origin from the browser would make the cookie
- * third-party, and Safari would throw it away.
- */
 const API_PREFIX = '/api';
 
+/**
+ * Relative in the browser, absolute on the server. Both halves are load-bearing.
+ *
+ * The browser must use the relative prefix: `/api` is rewritten to the backend
+ * by next.config.ts, and that is what keeps the session cookie first-party. Call
+ * the backend's own origin instead and Safari discards the cookie as
+ * third-party, so login silently fails.
+ *
+ * The server has no origin to resolve a relative URL against, and Node's fetch
+ * rejects one outright — "Failed to parse URL from /api/health", which is how
+ * this was found: the landing page checks the backend during SSR. Server-side
+ * calls therefore go straight to the backend, which is also correct because they
+ * carry no session cookie for the proxy to keep first-party.
+ */
 function baseUrl(): string {
-  return API_PREFIX;
+  if (typeof window !== 'undefined') return API_PREFIX;
+
+  const origin = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
+  if (!origin) {
+    throw new Error(
+      'NEXT_PUBLIC_API_BASE_URL is not set, and a server-side call cannot use a '
+      + 'relative URL.',
+    );
+  }
+
+  return origin;
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {

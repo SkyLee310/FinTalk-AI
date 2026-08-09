@@ -16,6 +16,9 @@ const sessions = new Map<Role, string>();
 const userIds = new Map<Role, string>();
 
 beforeEach(async () => {
+  // Capture work outlives its request; see meetings.routes.test.ts. A pipeline
+  // still holding table locks deadlocks against resetDb's TRUNCATE.
+  await app.backgroundJobs.drain();
   await resetDb();
   sessions.clear();
   userIds.clear();

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { appendAuditWithin } from '../audit/chain.js';
 import { requireAuth, requireCapability } from '../auth/middleware.js';
 import { sendProblem } from '../http/problem.js';
+import type { BackgroundJobs } from '../pipeline/background-jobs.js';
 import {
   PipelineError,
   type PipelineDeps,
@@ -25,6 +26,7 @@ const MetadataSchema = z.object({
 
 export interface MeetingRouteDeps extends PipelineDeps {
   readonly prisma: PrismaClient;
+  readonly jobs: BackgroundJobs;
 }
 
 export function registerMeetingRoutes(
@@ -162,7 +164,7 @@ export function registerMeetingRoutes(
        */
       const audio = { bytes: audioBytes, mimeType: audioMimeType };
 
-      void processMeeting(deps, meeting.id, audio, actor).catch((error: unknown) => {
+      deps.jobs.run(processMeeting(deps, meeting.id, audio, actor), (error: unknown) => {
         /**
          * The stored failureReason is PII-free by design, which makes a failure
          * hard to diagnose from the database alone. The full cause is logged

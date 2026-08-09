@@ -9,7 +9,17 @@ import { prisma, resetDb } from '../helpers/db.js';
 const PASSWORD = 'Demo!2345';
 const app = buildServer({ prisma, provider: new FakeTranscriptionProvider() });
 
-beforeEach(resetDb);
+/**
+ * Capture answers 202 and keeps processing, so a pipeline started by the
+ * previous test may still hold locks on the tables resetDb truncates. TRUNCATE
+ * wants an AccessExclusiveLock and the pipeline wants an AccessShareLock on a
+ * table TRUNCATE already holds — Postgres reported a deadlock and CI went red.
+ * Waiting for in-flight work is the fix, not a longer timeout.
+ */
+beforeEach(async () => {
+  await app.backgroundJobs.drain();
+  await resetDb();
+});
 afterAll(async () => {
   await app.close();
   await prisma.$disconnect();

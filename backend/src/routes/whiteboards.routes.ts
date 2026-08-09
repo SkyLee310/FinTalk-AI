@@ -109,7 +109,25 @@ export function registerWhiteboardRoutes(
        */
       const context = createRedactionContext();
       const mermaid = redact(extraction.mermaid, vaultKey, context);
-      const structured = redact(JSON.stringify(extraction.structured), vaultKey, context);
+
+      /**
+       * Every value is quoted before redaction, and this is load-bearing.
+       *
+       * The model may return a number, and a numeric identifier — an account
+       * written as 1234567890 rather than "1234567890" — would have its digits
+       * replaced inside a JSON number literal, producing {"account":[ACCOUNT_1]}.
+       * That is not valid JSON and the parse below would throw, turning a
+       * redactable board into a 500. Quoting first keeps every placeholder
+       * inside a string literal.
+       *
+       * Stringifying rather than skipping non-strings is deliberate: skipping
+       * them would leave a numeric identifier unredacted, which is the worse
+       * failure of the two.
+       */
+      const quoted: Record<string, string> = Object.fromEntries(
+        Object.entries(extraction.structured).map(([key, value]) => [key, String(value)]),
+      );
+      const structured = redact(JSON.stringify(quoted), vaultKey, context);
 
       /**
        * The JSON half's offsets are rebased onto the joined document, because

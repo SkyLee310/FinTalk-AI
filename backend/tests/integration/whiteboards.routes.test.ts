@@ -167,6 +167,32 @@ describe('POST /meetings/:id/whiteboards — the capture round trip', () => {
     expect(asText).not.toContain('[NRIC_1]');
   });
 
+  /**
+   * Regression. The structured fields are redacted by serialising them,
+   * replacing identifiers in the text, and reparsing. A numeric value carrying
+   * an identifier used to have its digits replaced inside a JSON number
+   * literal — {"settlementAccount":[ACCOUNT_1]} — which is not valid JSON, so
+   * the reparse threw and the upload answered 500. The fixture now includes such
+   * a number.
+   */
+  it('redacts a numeric identifier without producing invalid JSON', async () => {
+    const cookie = await sessionFor('MAKER');
+    const meetingId = await meetingForMaker();
+
+    const response = await upload(cookie, meetingId);
+    expect(response.statusCode).toBe(201);
+
+    const board = await prisma.whiteboard.findFirstOrThrow({
+      include: { redactions: true },
+    });
+
+    const structured = JSON.stringify(board.structuredJson);
+    expect(structured).not.toContain('1234567890');
+    // The value survives as a redacted string rather than vanishing.
+    expect(structured).toContain('settlementAccount');
+    expect(board.redactions.some((r) => r.piiType === 'BANK_ACCOUNT')).toBe(true);
+  });
+
   it('points every offset at the placeholder inside rawRedacted', async () => {
     const cookie = await sessionFor('MAKER');
     const meetingId = await meetingForMaker();

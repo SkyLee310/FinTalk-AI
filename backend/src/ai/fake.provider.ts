@@ -97,6 +97,11 @@ export class FakeTranscriptionProvider implements TranscriptionProvider {
         principalMyr: 500_000,
         tenureMonths: 60,
         applicantNric: '880101-14-5678',
+        // A number, not a string, and long enough for the account detector to
+        // match. Redacting a numeric literal in serialised JSON produces
+        // invalid JSON unless the value is quoted first, so this fixture is
+        // what keeps that path honest.
+        settlementAccount: 1_234_567_890,
       },
       modelId: 'fake-vision',
       promptVersion: 'fake-whiteboard-v1',

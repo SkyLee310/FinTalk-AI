@@ -17,6 +17,25 @@ export interface AudioInput {
   readonly mimeType: string;
 }
 
+export interface ImageInput {
+  readonly bytes: Uint8Array;
+  readonly mimeType: string;
+}
+
+/**
+ * A whiteboard as the vision model read it.
+ *
+ * `mermaid` and `structured` are raw model output — unredacted by construction,
+ * exactly like SegmentDraft.text. Neither may reach the database before passing
+ * through redact().
+ */
+export interface WhiteboardExtraction {
+  readonly mermaid: string;
+  readonly structured: Record<string, unknown>;
+  readonly modelId: string;
+  readonly promptVersion: string;
+}
+
 export interface SegmentDraft {
   readonly startMs: number;
   readonly endMs: number;
@@ -47,6 +66,12 @@ export interface TranscriptionProvider {
    * thing to take on trust at a boundary like this one.
    */
   summarize?(redactedText: string): Promise<string>;
+
+  /**
+   * Optional whiteboard extraction. A provider with no vision model omits it,
+   * and the route answers 501 rather than pretending it captured something.
+   */
+  extractWhiteboard?(image: ImageInput): Promise<WhiteboardExtraction>;
 }
 
 /** Raised when a provider cannot produce a transcript. Carries no audio or text. */

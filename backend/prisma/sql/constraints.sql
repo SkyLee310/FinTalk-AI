@@ -48,6 +48,14 @@ ALTER TABLE "ShariahFlag" ADD CONSTRAINT shariah_flag_resolution_attributed CHEC
   OR ("reviewedById" IS NOT NULL AND "reviewedAt" IS NOT NULL)
 );
 
+-- A redaction accounts for personal data found in exactly one document. Both
+-- parents set would double-count it; neither would leave the claim orphaned,
+-- with nothing to reconcile it against. `<>` on two booleans is exclusive or.
+ALTER TABLE "Redaction" DROP CONSTRAINT IF EXISTS redaction_single_parent;
+ALTER TABLE "Redaction" ADD CONSTRAINT redaction_single_parent CHECK (
+  ("transcriptId" IS NOT NULL) <> ("whiteboardId" IS NOT NULL)
+);
+
 -- Spec §5.6 — audit log is append-only. Triggers raise so tests can assert.
 CREATE OR REPLACE FUNCTION audit_entry_append_only() RETURNS trigger AS $$
 BEGIN

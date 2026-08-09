@@ -305,7 +305,7 @@ hash = sha256( prevHash ‖ canonicalJson({ at, actorId, actorRole, action, enti
 
 Covers all six items in the slide-11 audit strip: uploader identity, redaction log, AI output snapshot (`AiOutputSnapshot`: `modelId`, `promptVersion`, `promptRedacted`, `responseRaw`), human edits (`HumanEdit`: `fieldPath`, `aiValue`, `humanValue`), approver identity, immutable store.
 
-Audited actions include `meeting.uploaded`, `transcript.created`, `pii.unmasked`, `shariah.flagged`, `shariah.resolved`, `termsheet.edited`, `approval.submitted`, `approval.authorized`, `payload.generated`.
+Audited actions include `meeting.uploaded`, `meeting.failed`, `transcript.created`, `whiteboard.captured`, `pii.unmasked`, `shariah.flagged`, `shariah.resolved`, `termsheet.edited`, `approval.submitted`, `approval.authorized`, `payload.generated`.
 
 ---
 

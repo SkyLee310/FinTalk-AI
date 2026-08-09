@@ -146,7 +146,8 @@ export default async function HomePage() {
             <li className="flex gap-2.5">
               <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-faint" />
               <span className="text-faint">
-                Whiteboard capture and on-device audio pre-screening are not built yet.
+                Whiteboard capture has no upload control yet, and on-device audio
+                pre-screening is not built.
               </span>
             </li>
           </ul>

@@ -3,6 +3,7 @@ import {
   TranscriptionError,
   type TranscriptionProvider,
   type TranscriptionResult,
+  type WhiteboardExtraction,
 } from './provider.js';
 
 /**
@@ -76,6 +77,34 @@ export class FakeTranscriptionProvider implements TranscriptionProvider {
       languages: ['en', 'ms'],
       modelId: FAKE_MODEL_ID,
       promptVersion: FAKE_PROMPT_VERSION,
+    });
+  }
+
+  /**
+   * Deterministic fixture. The NRIC is synthetic and deliberately present, and
+   * appears in both fields: a redaction test whose input holds no identifier
+   * passes vacuously, and one identifier written twice must still get one
+   * placeholder.
+   */
+  extractWhiteboard(): Promise<WhiteboardExtraction> {
+    return Promise.resolve({
+      mermaid:
+        'graph TD;\n'
+        + '  A[Applicant 880101-14-5678] --> B[Murabahah 500k];\n'
+        + '  B --> C[Tenure 60 months];',
+      structured: {
+        facility: 'Murabahah',
+        principalMyr: 500_000,
+        tenureMonths: 60,
+        applicantNric: '880101-14-5678',
+        // A number, not a string, and long enough for the account detector to
+        // match. Redacting a numeric literal in serialised JSON produces
+        // invalid JSON unless the value is quoted first, so this fixture is
+        // what keeps that path honest.
+        settlementAccount: 1_234_567_890,
+      },
+      modelId: 'fake-vision',
+      promptVersion: 'fake-whiteboard-v1',
     });
   }
 

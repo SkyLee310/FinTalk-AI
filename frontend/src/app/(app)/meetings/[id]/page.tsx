@@ -273,6 +273,7 @@ export default function MeetingDetailPage() {
 
   const session = useAsync<Session>(() => api.me(), 'session');
   const meeting = useAsync(() => api.meeting(id), `meeting:${id}`);
+  const whiteboards = useAsync(() => api.whiteboards(id), `whiteboards:${id}`);
   const [openFlag, setOpenFlag] = useState<string | null>(null);
 
   const maySubmit = can(session.data, 'termsheet:submit');
@@ -376,6 +377,63 @@ export default function MeetingDetailPage() {
           </div>
         </>
       )}
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
+          Whiteboards
+        </h2>
+
+        {whiteboards.loading && <Spinner label="Loading whiteboards" />}
+        {whiteboards.error !== null && <ErrorNote>{whiteboards.error}</ErrorNote>}
+
+        {whiteboards.data?.whiteboards.length === 0 && (
+          <EmptyState
+            title="No whiteboard captured"
+            body="Post a photograph of the board to /meetings/:id/whiteboards to have its diagram extracted and redacted. There is no upload control here yet."
+          />
+        )}
+
+        {whiteboards.data?.whiteboards.map((board) => (
+          <Card key={board.id}>
+            <CardHeader
+              title="Extracted diagram"
+              description={`Model ${board.modelId} · prompt ${board.promptVersion}`}
+            />
+            <div className="space-y-4 px-5 py-4">
+              {/*
+                The Mermaid source is shown rather than rendered as a diagram.
+                Rendering needs a client-side diagram library, and the source is
+                already the auditable artefact — it is exactly what was stored.
+              */}
+              <pre className="overflow-x-auto rounded-lg border border-line bg-raised p-4 text-xs leading-relaxed">
+                <code>
+                  <RedactedText text={board.mermaid} />
+                </code>
+              </pre>
+
+              <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
+                {Object.entries(board.structuredJson as Record<string, unknown>).map(
+                  ([key, value]) => (
+                    <div key={key} className="contents">
+                      <dt className="text-faint">{key}</dt>
+                      <dd className="font-medium">
+                        <RedactedText text={String(value)} />
+                      </dd>
+                    </div>
+                  ),
+                )}
+              </dl>
+
+              {board.redactions.length > 0 && (
+                <p className="text-xs text-faint">
+                  {board.redactions.length} identifier
+                  {board.redactions.length === 1 ? '' : 's'} masked before storage.
+                </p>
+              )}
+            </div>
+          </Card>
+        ))}
+      </section>
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">

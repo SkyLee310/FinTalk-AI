@@ -2,9 +2,11 @@ import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import {
   type AudioInput,
+  type ImageInput,
   TranscriptionError,
   type TranscriptionProvider,
   type TranscriptionResult,
+  type WhiteboardExtraction,
 } from './provider.js';
 
 /**
@@ -62,6 +64,7 @@ export interface GeminiConfig {
   readonly apiKey: string;
   readonly transcribeModel: string;
   readonly textModel: string;
+  readonly visionModel: string;
 }
 
 /** Models sometimes wrap JSON in a markdown fence even when asked not to. */
@@ -74,6 +77,19 @@ function parseJsonLoosely(raw: string): unknown {
     return undefined;
   }
 }
+
+const WHITEBOARD_PROMPT =
+  'This is a photograph of a whiteboard from a credit meeting. Return JSON with '
+  + 'two keys. "mermaid": a Mermaid flowchart of the diagram, using graph TD '
+  + 'syntax, transcribing every label verbatim including any numbers. '
+  + '"structured": an object of the facts written on the board, one key per '
+  + 'labelled value. Transcribe what is written. Do not infer, complete or '
+  + 'correct anything, and do not add keys that are not on the board.';
+
+const WhiteboardSchema = z.object({
+  mermaid: z.string().min(1),
+  structured: z.record(z.string(), z.unknown()),
+});
 
 export class GeminiTranscriptionProvider implements TranscriptionProvider {
   readonly name = 'gemini' as const;
@@ -148,6 +164,64 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       languages: parsed.data.languages,
       modelId: this.config.transcribeModel,
       promptVersion: PROMPT_VERSION,
+    };
+  }
+
+  async extractWhiteboard(image: ImageInput): Promise<WhiteboardExtraction> {
+    if (image.bytes.byteLength === 0) {
+      throw new TranscriptionError('gemini', 'received an empty image');
+    }
+
+    let raw: string;
+    try {
+      const response = await this.client.models.generateContent({
+        model: this.config.visionModel,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: WHITEBOARD_PROMPT },
+              {
+                inlineData: {
+                  mimeType: image.mimeType,
+                  data: Buffer.from(image.bytes).toString('base64'),
+                },
+              },
+            ],
+          },
+        ],
+        // temperature 0 for the same reason transcription uses it: two runs over
+        // one photograph should not hand an auditor two different diagrams.
+        config: { responseMimeType: 'application/json', temperature: 0 },
+      });
+      raw = response.text ?? '';
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'unknown failure';
+      throw new TranscriptionError('gemini', `whiteboard extraction failed: ${message}`);
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new TranscriptionError('gemini', 'whiteboard response was not JSON');
+    }
+
+    const result = WhiteboardSchema.safeParse(parsed);
+    if (!result.success) {
+      // The zod message is deliberately not included: a schema error quotes the
+      // offending value, and that value is whiteboard content.
+      throw new TranscriptionError(
+        'gemini',
+        'whiteboard response did not match the schema',
+      );
+    }
+
+    return {
+      mermaid: result.data.mermaid,
+      structured: result.data.structured,
+      modelId: this.config.visionModel,
+      promptVersion: 'gemini-whiteboard-v1',
     };
   }
 

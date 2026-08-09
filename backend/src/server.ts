@@ -11,6 +11,7 @@ import { BackgroundJobs } from './pipeline/background-jobs.js';
 import { registerAuthRoutes } from './routes/auth.routes.js';
 import { registerComplianceRoutes } from './routes/compliance.routes.js';
 import { registerMeetingRoutes } from './routes/meetings.routes.js';
+import { registerWhiteboardRoutes } from './routes/whiteboards.routes.js';
 
 /**
  * Gemini accepts audio inline up to roughly 20 MB per request. Recordings
@@ -63,6 +64,7 @@ export function buildServer(deps?: Partial<ServerDeps>) {
 
   registerAuthRoutes(app, prisma);
   registerMeetingRoutes(app, { prisma, provider, vaultKey, jobs });
+  registerWhiteboardRoutes(app, { prisma, provider, vaultKey });
   registerComplianceRoutes(app, prisma);
 
   /**

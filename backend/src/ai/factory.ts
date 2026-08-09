@@ -21,7 +21,12 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
       return new LocalTranscriptionProvider();
 
     case 'gemini': {
-      const { GEMINI_API_KEY, GEMINI_MODEL_TRANSCRIBE, GEMINI_MODEL_TEXT } = env;
+      const {
+        GEMINI_API_KEY,
+        GEMINI_MODEL_TRANSCRIBE,
+        GEMINI_MODEL_TEXT,
+        GEMINI_MODEL_VISION,
+      } = env;
       if (
         GEMINI_API_KEY === undefined
         || GEMINI_API_KEY === ''
@@ -29,16 +34,19 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
         || GEMINI_MODEL_TRANSCRIBE === ''
         || GEMINI_MODEL_TEXT === undefined
         || GEMINI_MODEL_TEXT === ''
+        || GEMINI_MODEL_VISION === undefined
+        || GEMINI_MODEL_VISION === ''
       ) {
         throw new Error(
           'TRANSCRIPTION_PROVIDER=gemini requires GEMINI_API_KEY, '
-          + 'GEMINI_MODEL_TRANSCRIBE and GEMINI_MODEL_TEXT.',
+          + 'GEMINI_MODEL_TRANSCRIBE, GEMINI_MODEL_TEXT and GEMINI_MODEL_VISION.',
         );
       }
       return new GeminiTranscriptionProvider({
         apiKey: GEMINI_API_KEY,
         transcribeModel: GEMINI_MODEL_TRANSCRIBE,
         textModel: GEMINI_MODEL_TEXT,
+        visionModel: GEMINI_MODEL_VISION,
       });
     }
   }

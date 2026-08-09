@@ -66,6 +66,18 @@ export interface RedactionRow {
   confidence: number;
 }
 
+export interface WhiteboardRow {
+  id: string;
+  /** The canonical redacted text. Redaction offsets index into this. */
+  rawRedacted: string;
+  mermaid: string;
+  structuredJson: unknown;
+  modelId: string;
+  promptVersion: string;
+  createdAt: string;
+  redactions: RedactionRow[];
+}
+
 export interface ShariahFlagRow {
   id: string;
   issueType: string;
@@ -183,6 +195,9 @@ export const api = {
       method: 'POST',
       body: form,
     }),
+
+  whiteboards: (meetingId: string) =>
+    apiFetch<{ whiteboards: WhiteboardRow[] }>(`/meetings/${meetingId}/whiteboards`),
 
   reviewFlag: (flagId: string, status: ShariahStatus, note: string) =>
     apiFetch<ShariahFlagRow>(`/shariah-flags/${flagId}/review`, json({ status, note })),

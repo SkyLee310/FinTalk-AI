@@ -35,7 +35,7 @@ Read these before showing the app to a bank.
 - **Audio reaches Google.** Transcription uses the Gemini API, so speech — including a spoken NRIC — leaves the host before it is redacted. Raw audio is never *stored*, and personal data is redacted before *persistence*, but the transfer itself is real. Tracked as RISK-001 in the design spec. Local, on-premise transcription is designed for and stubbed, not built.
 - **Not a compliance certification.** Every regulatory reference in the code is marked *requires legal confirmation*. Shariah findings are advisory input for a qualified reviewer.
 - **No payment is ever submitted.** The export module contains no function that transmits anything, and a test asserts that absence.
-- **Whiteboard capture is not built.** The data model supports it; the feature does not exist yet.
+- **Whiteboard capture is API-only.** A photographed board is extracted, redacted, stored and displayed, but `POST /meetings/:id/whiteboards` has no upload control in the UI, and the diagram is shown as Mermaid source rather than rendered.
 - **Names and addresses are not detected.** Regex handles the deterministic identifiers listed above. Person names and addresses need a model pass, which is not built — a regex guessing at names would put false confidence into a log an auditor is meant to trust.
 
 ---

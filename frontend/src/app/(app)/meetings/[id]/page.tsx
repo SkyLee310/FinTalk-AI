@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 import { Badge, type Tone } from '@/components/badge';
 import { Card, CardHeader, DataRow } from '@/components/card';
+import { MermaidDiagram } from '@/components/mermaid-diagram';
 import {
   Button,
   EmptyState,
@@ -453,16 +454,24 @@ export default function MeetingDetailPage() {
               description={`Model ${board.modelId} · prompt ${board.promptVersion}`}
             />
             <div className="space-y-4 px-5 py-4">
+              <MermaidDiagram source={board.mermaid} />
+
               {/*
-                The Mermaid source is shown rather than rendered as a diagram.
-                Rendering needs a client-side diagram library, and the source is
-                already the auditable artefact — it is exactly what was stored.
+                The source stays reachable, collapsed. The drawing is what a
+                reviewer wants to look at; the source is what was actually
+                stored, and an auditor reconciling a redaction offset needs the
+                text rather than a picture of it.
               */}
-              <pre className="overflow-x-auto rounded-lg border border-line bg-raised p-4 text-xs leading-relaxed">
-                <code>
-                  <RedactedText text={board.mermaid} />
-                </code>
-              </pre>
+              <details>
+                <summary className="cursor-pointer text-xs text-faint underline underline-offset-2">
+                  View stored source
+                </summary>
+                <pre className="mt-2 overflow-x-auto rounded-lg border border-line bg-raised p-4 text-xs leading-relaxed">
+                  <code>
+                    <RedactedText text={board.mermaid} />
+                  </code>
+                </pre>
+              </details>
 
               <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
                 {Object.entries(board.structuredJson as Record<string, unknown>).map(

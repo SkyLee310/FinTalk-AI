@@ -126,7 +126,13 @@ function ReviewForm({ flag, onDone }: { flag: ShariahFlagRow; onDone: () => void
   );
 }
 
-function TermSheetForm({ meetingId }: { meetingId: string }) {
+function TermSheetForm({
+  meetingId,
+  blockedBy,
+}: {
+  meetingId: string;
+  blockedBy: ShariahFlagRow[];
+}) {
   const [applicantName, setApplicantName] = useState('');
   const [amount, setAmount] = useState('');
   const [tenureMonths, setTenureMonths] = useState('60');
@@ -138,12 +144,33 @@ function TermSheetForm({ meetingId }: { meetingId: string }) {
   const [result, setResult] = useState<string | null>(null);
 
   const islamic = facilityKind === 'ISLAMIC';
+  const blocked = blockedBy.length > 0;
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault();
-    setBusy(true);
     setError(null);
     setResult(null);
+
+    /**
+     * Refused here rather than at the server.
+     *
+     * This drafts and then submits, so a submission the compliance gate was
+     * always going to refuse still left a DRAFT term sheet behind. A tester hit
+     * it eleven times: eleven orphaned drafts, eleven termsheet.drafted audit
+     * entries, no submission, and no obvious reason why the checker never saw
+     * anything. Nothing is written unless the submission can actually proceed.
+     */
+    if (blocked) {
+      const kinds = [...new Set(blockedBy.map((flag) => flag.issueType))].join(', ');
+      setError(
+        `Not submitted, and nothing was saved. ${String(blockedBy.length)} Shariah `
+        + `finding(s) are still open (${kinds}). A Shariah reviewer must clear them `
+        + 'before this meeting can go to a checker.',
+      );
+      return;
+    }
+
+    setBusy(true);
     try {
       const sheet = await api.draftTermSheet(meetingId, {
         applicantName,
@@ -157,10 +184,27 @@ function TermSheetForm({ meetingId }: { meetingId: string }) {
         islamicContract: islamic ? contract : null,
       });
 
-      const submitted = await api.submitTermSheet(sheet.id);
+      let submitted;
+      try {
+        submitted = await api.submitTermSheet(sheet.id);
+      } catch (cause) {
+        /**
+         * The draft committed and the submission did not. Saying so is the
+         * point: a maker cannot otherwise tell a refused submission from a lost
+         * one, and the difference decides whether they retry or go find a
+         * reviewer.
+         */
+        setError(
+          `${describeError(cause)} The term sheet was drafted but NOT submitted, so no `
+          + 'checker will see it.',
+        );
+        return;
+      }
+
       setResult(
         `Term sheet drafted at ${sheet.currency} ${sheet.principalFormatted} and `
-        + `submitted for checking (${submitted.decision}).`,
+        + `submitted for checking (${submitted.decision}). It is now on the `
+        + 'Approvals page for a checker.',
       );
     } catch (cause) {
       setError(describeError(cause));
@@ -260,8 +304,17 @@ function TermSheetForm({ meetingId }: { meetingId: string }) {
         interest rate. The database refuses the combination outright.
       </p>
 
-      <Button type="submit" disabled={busy}>
-        {busy ? 'Submitting…' : 'Draft and submit for checking'}
+      {/*
+        Disabled while findings are open, so the gate is visible before the click
+        rather than discovered after it. The guard in submit() is still the one
+        that decides — a disabled button is a courtesy, not an invariant.
+      */}
+      <Button type="submit" disabled={busy || blocked}>
+        {busy
+          ? 'Submitting…'
+          : blocked
+            ? `Blocked by ${String(blockedBy.length)} open Shariah finding${blockedBy.length === 1 ? '' : 's'}`
+            : 'Draft and submit for checking'}
       </Button>
     </form>
   );
@@ -389,7 +442,7 @@ export default function MeetingDetailPage() {
         {whiteboards.data?.whiteboards.length === 0 && (
           <EmptyState
             title="No whiteboard captured"
-            body="Post a photograph of the board to /meetings/:id/whiteboards to have its diagram extracted and redacted. There is no upload control here yet."
+            body="Attach a whiteboard photo when you capture a meeting and its diagram is extracted and redacted alongside the transcript."
           />
         )}
 
@@ -513,7 +566,7 @@ export default function MeetingDetailPage() {
                 : 'All findings cleared. This can be submitted for checking.'
             }
           />
-          <TermSheetForm meetingId={id} />
+          <TermSheetForm meetingId={id} blockedBy={unresolved} />
         </Card>
       )}
     </div>

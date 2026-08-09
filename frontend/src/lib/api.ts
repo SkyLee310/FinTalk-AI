@@ -196,6 +196,19 @@ export const api = {
       body: form,
     }),
 
+  /**
+   * Extracts a photographed whiteboard into the meeting record.
+   *
+   * Unlike the audio upload this waits for the result: vision extraction on one
+   * still image takes seconds, not the minutes transcription takes, so there is
+   * nothing to poll for.
+   */
+  uploadWhiteboard: (meetingId: string, form: FormData) =>
+    apiFetch<{ whiteboardId: string; redactionCount: number }>(
+      `/meetings/${meetingId}/whiteboards`,
+      { method: 'POST', body: form },
+    ),
+
   whiteboards: (meetingId: string) =>
     apiFetch<{ whiteboards: WhiteboardRow[] }>(`/meetings/${meetingId}/whiteboards`),
 

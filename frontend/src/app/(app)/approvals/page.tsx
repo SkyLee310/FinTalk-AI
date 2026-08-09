@@ -24,7 +24,16 @@ const DECISION_TONE: Record<ApprovalStatus, Tone> = {
   WITHDRAWN: 'neutral',
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+/**
+ * Same-origin, and that is the whole point.
+ *
+ * These are real <a href> downloads, so clicking one is a top-level navigation.
+ * Pointed at the backend's own origin it was a cross-site navigation carrying no
+ * cookie in Safari, so the browser rendered the API's raw 401 JSON at the user
+ * instead of a file. /api is rewritten to the backend by next.config.ts, which
+ * makes the session cookie first-party and the download just work.
+ */
+const API_BASE = '/api';
 
 function DecideForm({ approval, onDone }: { approval: ApprovalRow; onDone: () => void }) {
   const [note, setNote] = useState('');

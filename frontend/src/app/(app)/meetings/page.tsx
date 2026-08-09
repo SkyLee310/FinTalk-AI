@@ -29,6 +29,7 @@ export default function MeetingsPage() {
 
   const [title, setTitle] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [board, setBoard] = useState<File | null>(null);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,11 +59,39 @@ export default function MeetingsPage() {
       meetings.reload();
 
       /**
+       * The board is extracted while the transcript is still being produced.
+       *
+       * A separate request, because extraction is synchronous and takes seconds
+       * where transcription takes minutes. Its failure is reported rather than
+       * thrown: the recording has already been accepted and is already being
+       * processed, and discarding that because a photograph failed would lose
+       * the more valuable half of the capture.
+       */
+      let boardNote = '';
+      if (board !== null) {
+        const boardForm = new FormData();
+        boardForm.set('image', board);
+
+        try {
+          const extracted = await api.uploadWhiteboard(meetingId, boardForm);
+          boardNote =
+            ` Whiteboard extracted, ${String(extracted.redactionCount)} identifier(s) masked.`;
+          setBoard(null);
+        } catch (cause) {
+          boardNote =
+            ` The recording was accepted, but the whiteboard failed: ${describeError(cause)}`;
+        }
+      }
+
+      /**
        * The upload is accepted before it is processed, so the outcome is polled.
        * Transcribing a real recording takes minutes — longer than any request is
        * allowed to stay open.
        */
-      setDone('Uploaded. Transcribing and screening now — this can take a few minutes.');
+      setDone(
+        'Uploaded. Transcribing and screening now — this can take a few minutes.'
+        + boardNote,
+      );
 
       for (let attempt = 0; attempt < 120; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 5_000));
@@ -73,7 +102,10 @@ export default function MeetingsPage() {
           const segments = detail.transcript?.segments.length ?? 0;
           setDone(
             `Ready. ${String(segments)} segments, ${String(redactions)} redactions, `
-            + `${String(detail.shariahFlags.length)} Shariah finding(s).`,
+            + `${String(detail.shariahFlags.length)} Shariah finding(s).`
+            // Carried through so the whiteboard outcome is not overwritten by
+            // the transcript's.
+            + boardNote,
           );
           meetings.reload();
           return;
@@ -144,6 +176,25 @@ export default function MeetingsPage() {
                 accept="audio/*"
                 required
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              />
+            </Field>
+
+            {/*
+              Optional, and captured in the same step as the audio because that
+              is how the meeting actually happened: the board was on the wall
+              while people were talking. Uploading it later would mean the
+              transcript and the diagram arrive as two unrelated records.
+            */}
+            <Field
+              label="Whiteboard photo (optional)"
+              htmlFor="whiteboard"
+              hint="Extracted to a diagram and redacted, exactly like the transcript."
+            >
+              <Input
+                id="whiteboard"
+                type="file"
+                accept="image/*"
+                onChange={(event) => setBoard(event.target.files?.[0] ?? null)}
               />
             </Field>
 

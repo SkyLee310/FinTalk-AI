@@ -49,9 +49,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-20 border-b border-line bg-canvas/85 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
           <Link href="/meetings" className="flex items-center gap-2.5 rounded">
-            <span className="text-brand">
-              <Logo className="size-7" />
-            </span>
+            <Logo className="size-7" />
             <span className="text-sm font-semibold tracking-tight">FinTalk AI</span>
           </Link>
 

@@ -10,10 +10,16 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Same-origin by design. `/api` is rewritten to the backend by next.config.ts,
+ * which is what keeps the session cookie first-party — see the note there.
+ * Calling the backend's own origin from the browser would make the cookie
+ * third-party, and Safari would throw it away.
+ */
+const API_PREFIX = '/api';
+
 function baseUrl(): string {
-  const url = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!url) throw new Error('NEXT_PUBLIC_API_BASE_URL is not set');
-  return url.replace(/\/$/, '');
+  return API_PREFIX;
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {

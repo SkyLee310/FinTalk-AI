@@ -78,13 +78,25 @@ function parseJsonLoosely(raw: string): unknown {
   }
 }
 
+/**
+ * Every node label must be double-quoted, and that requirement is not
+ * cosmetic. Redaction runs after extraction and rewrites identifiers into
+ * bracketed placeholders — `[NRIC_1]`, `[PHONE_1]` — and Mermaid delimits
+ * node text with those same square brackets. An unquoted label carrying a
+ * placeholder is a parse error, so without this rule the boards that fail to
+ * draw are precisely the ones holding personal data: the compliance-relevant
+ * case. The renderer still falls back to the source, but a fallback is a net,
+ * not a plan.
+ */
 const WHITEBOARD_PROMPT =
   'This is a photograph of a whiteboard from a credit meeting. Return JSON with '
   + 'two keys. "mermaid": a Mermaid flowchart of the diagram, using graph TD '
-  + 'syntax, transcribing every label verbatim including any numbers. '
-  + '"structured": an object of the facts written on the board, one key per '
-  + 'labelled value. Transcribe what is written. Do not infer, complete or '
-  + 'correct anything, and do not add keys that are not on the board.';
+  + 'syntax, transcribing every label verbatim including any numbers. Wrap '
+  + 'every node label in double quotes, and write any double quote inside a '
+  + 'label as #quot;. "structured": an object of the facts written on the '
+  + 'board, one key per labelled value. Transcribe what is written. Do not '
+  + 'infer, complete or correct anything, and do not add keys that are not on '
+  + 'the board.';
 
 const WhiteboardSchema = z.object({
   mermaid: z.string().min(1),

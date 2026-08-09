@@ -196,21 +196,24 @@ export default function ApprovalsPage() {
 
                   {mayDownload && approval.decision === 'APPROVED' && (
                     <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
+                      {/*
+                        CSV only. The ISO 20022 pain.001 XML was removed: it is a
+                        payment instruction, and an approved term sheet is a credit
+                        decision. For a Murabahah facility the money moves
+                        bank-to-vendor for an asset purchase, so a transfer crediting
+                        the applicant described a cash advance with a markup — the
+                        structure this product exists to flag.
+                      */}
                       <a
                         href={`${API_BASE}/term-sheets/${sheet.id}/payment-payload`}
                         className="inline-flex items-center rounded-lg border border-line-strong bg-surface px-3.5 py-2 text-sm font-medium hover:bg-raised"
                       >
-                        Download pain.001 XML
-                      </a>
-                      <a
-                        href={`${API_BASE}/term-sheets/${sheet.id}/payment-payload?format=csv`}
-                        className="inline-flex items-center rounded-lg border border-line-strong bg-surface px-3.5 py-2 text-sm font-medium hover:bg-raised"
-                      >
-                        Download CSV
+                        Download CSV handoff
                       </a>
                       <p className="w-full pt-1 text-xs text-faint">
-                        Account fields are left for you to complete in your own banking
-                        channel. This system never submits a payment instruction.
+                        The approved figures, for you to complete with account details in
+                        your own banking channel. Not a payment instruction: this system
+                        never submits one, and makes no claim about when money moves.
                       </p>
                     </div>
                   )}

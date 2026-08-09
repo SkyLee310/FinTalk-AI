@@ -431,7 +431,7 @@ describe('payment payload', () => {
     expect(response.statusCode).toBe(409);
   });
 
-  it('produces pain.001 XML for an approved facility', async () => {
+  it('produces a CSV handoff for an approved facility', async () => {
     const termSheetId = await approve();
     const response = await app.inject({
       method: 'GET',
@@ -440,9 +440,31 @@ describe('payment payload', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.headers['content-type']).toContain('application/xml');
-    expect(response.body).toContain('pain.001.001.09');
-    expect(response.body).toContain('<InstdAmt Ccy="MYR">50000.00</InstdAmt>');
+    expect(response.headers['content-type']).toContain('text/csv');
+    expect(response.body).toContain('end_to_end_id');
+    expect(response.body).toContain('"MYR"');
+    expect(response.body).toContain('"50000.00"');
+  });
+
+  /**
+   * The endpoint used to answer XML by default and CSV on ?format=csv. The XML
+   * was an ISO 20022 pain.001 payment instruction, which is the wrong artifact
+   * for a credit decision and actively misleading for a Murabahah facility — see
+   * the note in src/export/pain001.ts. Nothing should serve XML now, whatever the
+   * caller asks for.
+   */
+  it('answers CSV even when a caller still asks for the old XML format', async () => {
+    const termSheetId = await approve();
+    const response = await app.inject({
+      method: 'GET',
+      url: `/term-sheets/${termSheetId}/payment-payload?format=xml`,
+      headers: { cookie: as('MAKER') },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('text/csv');
+    expect(response.body).not.toContain('pain.001');
+    expect(response.body).not.toContain('<?xml');
   });
 
   it('carries no account number, only a marker for the maker', async () => {

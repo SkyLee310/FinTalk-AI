@@ -10,7 +10,7 @@ import {
   draftTermSheet,
   submitForApproval,
 } from '../compliance/termsheet.js';
-import { buildPain001, buildPaymentCsv, minorToDecimal } from '../export/pain001.js';
+import { buildPaymentCsv, minorToDecimal } from '../export/pain001.js';
 import { sendProblem } from '../http/problem.js';
 
 /**
@@ -287,45 +287,34 @@ export function registerComplianceRoutes(
         );
       }
 
-      const now = new Date();
+      /**
+       * CSV only. The ISO 20022 pain.001 variant was removed deliberately — see
+       * the note at the top of export/pain001.ts. The meeting title went with
+       * it: operator-typed free text that can name a person, redacted nowhere,
+       * in a file that leaves the system.
+       */
       const payload = {
-        messageId: `FT-${sheet.id}`,
-        createdAt: now,
-        // Two days out is a placeholder the maker adjusts in their own channel;
-        // this system schedules nothing.
-        requestedExecutionDate: new Date(now.getTime() + 2 * 86_400_000),
-        initiatingParty: 'FinTalk AI',
         debtorName: 'Originating institution',
         creditorName: sheet.applicantName,
         currency: sheet.currency,
         amountMinor: sheet.principalMinor,
         endToEndId: sheet.id,
-        remittanceInfo: sheet.meeting.title,
       };
 
-      const format = request.query.format === 'csv' ? 'csv' : 'xml';
-
       await appendAudit(prisma, {
-        at: now,
+        at: new Date(),
         actorId: actor.id,
         actorRole: actor.role,
         action: 'termsheet.payload.downloaded',
         entityType: 'TermSheet',
         entityId: sheet.id,
-        payload: { format },
+        payload: { format: 'csv' },
       });
 
-      if (format === 'csv') {
-        return reply
-          .type('text/csv; charset=utf-8')
-          .header('content-disposition', `attachment; filename="${sheet.id}.csv"`)
-          .send(buildPaymentCsv(payload));
-      }
-
       return reply
-        .type('application/xml; charset=utf-8')
-        .header('content-disposition', `attachment; filename="${sheet.id}.xml"`)
-        .send(buildPain001(payload));
+        .type('text/csv; charset=utf-8')
+        .header('content-disposition', `attachment; filename="${sheet.id}.csv"`)
+        .send(buildPaymentCsv(payload));
     },
   );
 

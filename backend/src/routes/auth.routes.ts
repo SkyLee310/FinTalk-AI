@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { appendAuditWithin } from '../audit/chain.js';
 import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
@@ -24,6 +25,16 @@ const LoginBody = z.object({
   password: z.string().min(1),
 });
 
+const RegisterBody = z.object({
+  displayName: z.string().min(1).max(200),
+  email: z.string().email(),
+  // 8 is this endpoint's own floor — there is no shared password policy
+  // elsewhere in backend/src/ to reuse; login only enforces z.string().min(1).
+  password: z.string().min(8).max(200),
+  username: z.string().min(3).max(60),
+  staffId: z.string().min(1).max(60),
+});
+
 /**
  * A password verification runs even when the email is unknown, against a
  * throwaway hash minted on first use. Skipping it would make a miss return
@@ -39,6 +50,75 @@ function decoy(): Promise<string> {
 const UNAUTHENTICATED = 'A valid session is required.';
 
 export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): void {
+  // The one public, unauthenticated mutation in this file: no preHandler.
+  app.post('/auth/register', async (request, reply) => {
+    const body = RegisterBody.safeParse(request.body);
+    if (!body.success) {
+      return sendProblem(
+        reply,
+        400,
+        'Invalid registration',
+        body.error.issues[0]?.message ?? 'Invalid input.',
+      );
+    }
+
+    const [existingEmail, existingUsername] = await Promise.all([
+      prisma.user.findFirst({ where: { email: body.data.email } }),
+      prisma.user.findFirst({ where: { username: body.data.username } }),
+    ]);
+    if (existingEmail !== null) {
+      return sendProblem(
+        reply,
+        409,
+        'Email already registered',
+        'An account with this email already exists.',
+      );
+    }
+    if (existingUsername !== null) {
+      return sendProblem(
+        reply,
+        409,
+        'Username already taken',
+        'This username is already in use.',
+      );
+    }
+
+    const passwordHash = await hashPassword(body.data.password);
+
+    await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          displayName: body.data.displayName,
+          email: body.data.email,
+          passwordHash,
+          username: body.data.username,
+          staffId: body.data.staffId,
+          role: null,
+          accountStatus: 'PENDING',
+        },
+      });
+
+      // No display name and no password: the same exclusion POST /users
+      // already applies to user.created, extended to this public path for
+      // the same reason.
+      await appendAuditWithin(tx, {
+        at: new Date(),
+        actorId: null,
+        actorRole: null,
+        action: 'user.registered',
+        entityType: 'User',
+        entityId: user.id,
+        payload: {
+          email: body.data.email,
+          username: body.data.username,
+          staffId: body.data.staffId,
+        },
+      });
+    });
+
+    return reply.status(201).send({ accountStatus: 'PENDING' });
+  });
+
   app.post('/auth/login', async (request, reply) => {
     const parsed = LoginBody.safeParse(request.body);
     if (!parsed.success) {
@@ -91,6 +171,28 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
       );
     }
 
+    // Same placement as the deactivated check, for the same reason: it runs
+    // after password verification so it cannot become a timing oracle for
+    // account existence. Unlike a wrong password, this state is safe to
+    // name — the person needs to know they are waiting on an admin, not
+    // retrying their password.
+    if (user.accountStatus === 'PENDING') {
+      return sendProblem(
+        reply,
+        403,
+        'Awaiting approval',
+        'Your account is awaiting administrator approval.',
+      );
+    }
+
+    // Structurally unreachable: PENDING is refused above, and every other
+    // path assigns a role before flipping accountStatus to ACTIVE (see
+    // PATCH /users/:id/approve). This exists purely to satisfy TypeScript's
+    // Role | null narrowing.
+    if (user.role === null) {
+      return sendProblem(reply, 401, 'Unauthenticated', UNAUTHENTICATED);
+    }
+
     const env = getEnv();
     const subject = { sub: user.id, role: user.role };
     const [access, refresh] = await Promise.all([
@@ -130,6 +232,13 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
       return sendProblem(reply, 401, 'Unauthenticated', UNAUTHENTICATED);
     }
 
+    // Structurally unreachable: a PENDING account is never issued a token to
+    // present here. Present purely to satisfy TypeScript's Role | null
+    // narrowing.
+    if (user.role === null) {
+      return sendProblem(reply, 401, 'Unauthenticated', UNAUTHENTICATED);
+    }
+
     return reply.send({
       id: user.id,
       email: user.email,
@@ -154,6 +263,13 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
       // the role its holder used to have.
       const user = await prisma.user.findUnique({ where: { id: payload.sub } });
       if (user === null) {
+        return sendProblem(reply, 401, 'Unauthenticated', UNAUTHENTICATED);
+      }
+
+      // Structurally unreachable: a PENDING account never holds a refresh
+      // token to present here. Present purely to satisfy TypeScript's
+      // Role | null narrowing.
+      if (user.role === null) {
         return sendProblem(reply, 401, 'Unauthenticated', UNAUTHENTICATED);
       }
 

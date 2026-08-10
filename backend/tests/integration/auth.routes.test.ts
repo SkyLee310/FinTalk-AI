@@ -107,6 +107,122 @@ describe('POST /auth/login', () => {
   });
 });
 
+describe('POST /auth/register', () => {
+  it('creates a pending account with no role and no session', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        displayName: 'New Applicant',
+        email: 'applicant@fintalk.test',
+        password: 'Demo!2345',
+        username: 'applicant1',
+        staffId: 'STF-9001',
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({ accountStatus: 'PENDING' });
+    expect(cookiesOf(response)).toHaveLength(0);
+
+    const stored = await prisma.user.findUniqueOrThrow({ where: { email: 'applicant@fintalk.test' } });
+    expect(stored.role).toBeNull();
+    expect(stored.accountStatus).toBe('PENDING');
+  });
+
+  it('refuses to sign in until approved', async () => {
+    await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        displayName: 'Waiting Applicant',
+        email: 'waiting@fintalk.test',
+        password: 'Demo!2345',
+        username: 'waitingapp',
+        staffId: 'STF-9002',
+      },
+    });
+
+    const response = await login('waiting@fintalk.test', 'Demo!2345');
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ detail: expect.stringContaining('administrator approval') });
+  });
+
+  it('refuses a duplicate email', async () => {
+    const payload = {
+      displayName: 'Dup Email',
+      email: 'dupemail@fintalk.test',
+      password: 'Demo!2345',
+      username: 'dupemail1',
+      staffId: 'STF-9003',
+    };
+    await app.inject({ method: 'POST', url: '/auth/register', payload });
+    const second = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { ...payload, username: 'dupemail2' },
+    });
+    expect(second.statusCode).toBe(409);
+  });
+
+  it('refuses a duplicate username', async () => {
+    const first = {
+      displayName: 'Dup Username One',
+      email: 'dupuser1@fintalk.test',
+      password: 'Demo!2345',
+      username: 'shared-handle',
+      staffId: 'STF-9004',
+    };
+    await app.inject({ method: 'POST', url: '/auth/register', payload: first });
+    const second = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { ...first, email: 'dupuser2@fintalk.test' },
+    });
+    expect(second.statusCode).toBe(409);
+  });
+
+  it('rejects a password shorter than the policy floor', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        displayName: 'Short Password',
+        email: 'shortpw@fintalk.test',
+        password: 'short1',
+        username: 'shortpw1',
+        staffId: 'STF-9005',
+      },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('audits registration without the display name or password', async () => {
+    await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        displayName: 'Audited Applicant',
+        email: 'audited@fintalk.test',
+        password: 'Demo!2345',
+        username: 'auditedapp',
+        staffId: 'STF-9006',
+      },
+    });
+
+    const entry = await prisma.auditEntry.findFirst({ where: { action: 'user.registered' } });
+    expect(entry).not.toBeNull();
+    expect(entry?.actorId).toBeNull();
+    expect(entry?.payload).toMatchObject({
+      email: 'audited@fintalk.test',
+      username: 'auditedapp',
+      staffId: 'STF-9006',
+    });
+    expect(entry?.payload).not.toHaveProperty('displayName');
+    expect(JSON.stringify(entry?.payload)).not.toContain('Demo!2345');
+  });
+});
+
 describe('GET /auth/me', () => {
   it('rejects a request with no session', async () => {
     const response = await app.inject({ method: 'GET', url: '/auth/me' });

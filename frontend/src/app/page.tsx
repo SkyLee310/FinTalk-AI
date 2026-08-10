@@ -11,24 +11,71 @@ type Health = { status: string; provider: string };
  */
 export const dynamic = 'force-dynamic';
 
+/** The four stages, in the order they happen, named as the app names them. */
 const PILLARS = [
   {
-    title: 'Capture without loss',
+    stage: 'Capture',
+    title: 'Record it without losing half of it',
     body:
-      'Mixed-language discussion and the whiteboard behind it become one linked '
-      + 'record, instead of a transcript that drops every third sentence.',
+      'Record in the browser or upload a file, and photograph the whiteboard. '
+      + 'Mixed English, Malay and Chinese become one linked record instead of a '
+      + 'transcript that drops every third sentence. Anything the model was unsure '
+      + 'of is marked for a person to confirm.',
   },
   {
-    title: 'Compliance by construction',
+    stage: 'Review',
+    title: 'Read what was said, not what was remembered',
     body:
-      'Personal data is redacted before persistence, and an Islamic facility '
-      + 'cannot carry an interest rate — the database rejects it outright.',
+      'Personal data is masked before storage, and every mask is logged with an '
+      + 'offset an auditor can reconcile. Six Shariah rules raise findings for a '
+      + 'qualified reviewer, who answers yes or no — the system never rules.',
   },
   {
-    title: 'Decision to execution',
+    stage: 'Decide',
+    title: 'Two people, or it does not happen',
     body:
-      'An approved decision becomes a structured term sheet under maker–checker '
-      + 'segregation, with every AI output kept beside the human edit.',
+      'A maker drafts and submits a term sheet; a different person approves it, and '
+      + 'cannot approve their own work. A facility cannot even be submitted while a '
+      + 'Shariah finding is unresolved.',
+  },
+  {
+    stage: 'Administration',
+    title: 'Govern access, and read the whole record',
+    body:
+      'An administrator decides who may do what, and can read every action taken. '
+      + 'They cannot clear a finding, approve a facility or move money — the account '
+      + 'that grants roles must not be able to use them.',
+  },
+] as const;
+
+/** Each claim beside the mechanism that enforces it. */
+const GUARANTEES = [
+  {
+    claim: 'Personal data cannot be stored unmasked',
+    how:
+      'A branded type is minted in exactly one file, and the persistence layer '
+      + 'accepts nothing else — so an unmasked write does not compile. A test scans '
+      + 'the source and fails the build if any other module casts to it.',
+  },
+  {
+    claim: 'An Islamic facility cannot carry an interest rate',
+    how:
+      'A Postgres CHECK constraint makes the combination unstorable, so the product '
+      + 'cannot emit the violation it claims to detect.',
+  },
+  {
+    claim: 'The AI never issues a Shariah ruling',
+    how:
+      'A finding leaves FLAGGED only through a user holding the SHARIAH role — '
+      + 'enforced in the capability matrix, in the service, and by a constraint '
+      + 'requiring reviewer attribution. An administrator cannot do it either.',
+  },
+  {
+    claim: 'No payment is ever submitted',
+    how:
+      'Settlement is simulated, its reference is prefixed MOCK-, and a CHECK '
+      + 'constraint makes a row claiming otherwise unstorable. Two separate tests '
+      + 'read the source and assert that nothing here can reach a network.',
   },
 ] as const;
 
@@ -52,31 +99,32 @@ export default async function HomePage() {
 
   return (
     <main id="main" className="mx-auto max-w-5xl px-5 py-12 sm:py-16">
-      <section className="max-w-2xl">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">
-          Foundation deploy
+      {/*
+        One idea, one primary action. The previous hero offered "Sign in" and
+        "Go to meetings" side by side at equal weight, which asked a first-time
+        visitor to choose between two doors without telling them the second one
+        needs a key. Signing in leads; the rest of the page explains why.
+      */}
+      <section className="max-w-3xl py-6 sm:py-10">
+        <p className="text-caption font-semibold uppercase tracking-[0.12em] text-brand">
+          Shariah-aware meeting capture
         </p>
-        <h1 className="mt-3 text-3xl font-semibold leading-[1.15] tracking-tight sm:text-4xl">
+        <h1 className="mt-3 text-[2rem] font-semibold leading-[1.1] tracking-[-0.02em] sm:text-display">
           Every credit decision, captured and auditable.
         </h1>
-        <p className="mt-4 text-base leading-relaxed text-muted">
-          FinTalk AI records what was actually discussed in a credit meeting — across
-          languages, including the whiteboard — then holds the result to Malaysian
-          data-protection and Shariah requirements before anyone can act on it.
+        <p className="mt-5 max-w-2xl text-base leading-relaxed text-muted sm:text-lg sm:leading-relaxed">
+          FinTalk records what was actually discussed in a credit meeting — across
+          languages, including the whiteboard — masks the personal data before storing
+          anything, and holds the outcome to Malaysian data-protection and Shariah
+          requirements before anyone can act on it.
         </p>
 
-        <div className="mt-6 flex flex-wrap gap-3">
+        <div className="mt-7">
           <Link
             href="/login"
-            className="inline-flex items-center rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-canvas transition hover:opacity-90"
+            className="inline-flex items-center rounded-full bg-brand px-6 py-3 text-sm font-medium text-canvas transition hover:opacity-90"
           >
             Sign in
-          </Link>
-          <Link
-            href="/meetings"
-            className="inline-flex items-center rounded-lg border border-line-strong bg-surface px-4 py-2.5 text-sm font-medium transition hover:bg-raised"
-          >
-            Go to meetings
           </Link>
         </div>
       </section>
@@ -160,18 +208,52 @@ export default async function HomePage() {
         </Card>
       </section>
 
-      <section className="mt-12">
-        <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
-          How it works
-        </h2>
-        <div className="mt-4 grid gap-5 sm:grid-cols-3">
-          {PILLARS.map((pillar) => (
-            <Card key={pillar.title} className="p-5">
-              <h3 className="text-sm font-semibold tracking-tight">{pillar.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted">{pillar.body}</p>
-            </Card>
+      {/*
+        The four stages, named as work rather than as features, and in the order
+        they happen. This mirrors the app's navigation exactly — Capture, Review,
+        Decide, Administration — so someone who reads this page arrives inside
+        already knowing where things are.
+      */}
+      <section className="mt-section-tight sm:mt-section">
+        <h2 className="text-section font-semibold">How a meeting becomes a decision</h2>
+        <ol className="mt-6 grid gap-5 sm:grid-cols-2">
+          {PILLARS.map((pillar, index) => (
+            <li key={pillar.title}>
+              <Card className="h-full p-6">
+                <p className="text-caption font-semibold uppercase tracking-[0.12em] text-brand">
+                  {pillar.stage}
+                </p>
+                <h3 className="mt-2 text-base font-semibold tracking-tight">
+                  {pillar.title}
+                </h3>
+                <p className="mt-2.5 text-body text-muted">{pillar.body}</p>
+                <span className="sr-only">Step {index + 1}</span>
+              </Card>
+            </li>
           ))}
-        </div>
+        </ol>
+      </section>
+
+      {/*
+        The guarantees, stated with how each is enforced. "We take compliance
+        seriously" is worth nothing; "the database rejects it" is checkable, and a
+        reader who does not believe it can go and look.
+      */}
+      <section className="mt-section-tight sm:mt-section">
+        <h2 className="text-section font-semibold">Four guarantees, and their teeth</h2>
+        <p className="mt-3 max-w-2xl text-body text-muted">
+          These are not conventions anyone has to remember. Each one fails loudly if
+          broken — in the type system, in a database constraint, or in a test that
+          stops the build.
+        </p>
+        <dl className="mt-6 divide-y divide-line border-y border-line">
+          {GUARANTEES.map((item) => (
+            <div key={item.claim} className="grid gap-1.5 py-5 sm:grid-cols-5 sm:gap-6">
+              <dt className="text-sm font-medium sm:col-span-2">{item.claim}</dt>
+              <dd className="text-body text-muted sm:col-span-3">{item.how}</dd>
+            </div>
+          ))}
+        </dl>
       </section>
     </main>
   );

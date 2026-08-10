@@ -2,7 +2,7 @@
 
 import { Badge } from '@/components/badge';
 import { Card, CardHeader } from '@/components/card';
-import { EmptyState, ErrorNote, Spinner } from '@/components/ui';
+import { EmptyState, ErrorNote, PageHeader, Spinner } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { api } from '@/lib/api';
 
@@ -11,13 +11,11 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Audit trail</h1>
-        <p className="mt-1 text-sm text-muted">
-          Append-only, and hash-chained so an alteration anywhere invalidates every entry
-          after it.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Administration"
+        title="Audit trail"
+        lead="Append-only, and hash-chained so an alteration anywhere invalidates every entry after it. The chain is verified on each read rather than trusted."
+      />
 
       {audit.loading && <Spinner label="Verifying the chain" />}
       {audit.error !== null && <ErrorNote>{audit.error}</ErrorNote>}

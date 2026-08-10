@@ -40,6 +40,41 @@
     'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo,
     Consolas, monospace;
+
+  /*
+   * A type scale, because the app effectively had one size.
+   *
+   * Nearly every string was text-sm, so nothing was emphasised and a reader had
+   * no way to tell a decision from a footnote. These four steps are what the
+   * layout needs and no more: a display size for a page's single idea, a section
+   * size for headings, body for reading, and caption for provenance a reader
+   * consults rather than reads.
+   *
+   * Line heights tighten as size grows, on purpose. Long body text needs air and
+   * a large heading does not; one ratio everywhere is exactly what makes headings
+   * look loose and paragraphs look cramped.
+   */
+  --text-display: 2.75rem;
+  --text-display--line-height: 1.08;
+  --text-display--letter-spacing: -0.022em;
+
+  --text-section: 1.5rem;
+  --text-section--line-height: 1.2;
+  --text-section--letter-spacing: -0.014em;
+
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.65;
+
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.5;
+
+  /*
+   * Vertical rhythm for stacked sections, named rather than sprinkled as
+   * arbitrary values — so two pages cannot quietly disagree about what "a gap
+   * between sections" means.
+   */
+  --spacing-section: 4rem;
+  --spacing-section-tight: 2.5rem;
 }
 
 :root {

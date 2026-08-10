@@ -10,6 +10,7 @@ import {
   ErrorNote,
   Field,
   Input,
+  PageHeader,
   Spinner,
   SuccessNote,
 } from '@/components/ui';
@@ -141,13 +142,21 @@ export default function MeetingsPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Meetings</h1>
-        <p className="mt-1 text-sm text-muted">
-          Recordings are transcribed, redacted and screened for Shariah issues before
-          anything is stored.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Review"
+        title="Meetings"
+        lead="Recordings are transcribed, masked and screened for Shariah issues before anything is stored. Open one to read its transcript and act on what was found."
+        action={
+          mayCreate ? (
+            <Link
+              href="/record"
+              className="inline-flex items-center rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-canvas transition hover:opacity-90"
+            >
+              Record a meeting
+            </Link>
+          ) : undefined
+        }
+      />
 
       {mayCreate && (
         <Card>

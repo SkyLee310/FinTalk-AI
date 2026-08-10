@@ -9,7 +9,15 @@ import {
   type TransferAcknowledgement,
   TransferNotice,
 } from '@/components/transfer-notice';
-import { Button, ErrorNote, Field, Input, Spinner, Textarea } from '@/components/ui';
+import {
+  Button,
+  ErrorNote,
+  Field,
+  Input,
+  PageHeader,
+  Spinner,
+  Textarea,
+} from '@/components/ui';
 import { describeError, useAsync } from '@/hooks/use-async';
 import { formatElapsed, recordingFilename, useRecorder } from '@/hooks/use-recorder';
 import { api, can, type Session } from '@/lib/api';
@@ -167,14 +175,11 @@ export default function RecordPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Record a meeting</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Capture the discussion here in the browser. It is transcribed across
-          English, Malay and Chinese, then masked and screened before anything is
-          stored.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Capture"
+        title="Record a meeting"
+        lead="Capture the discussion here in the browser. It is transcribed across English, Malay and Chinese, then masked and screened before anything is stored."
+      />
 
       {error !== null && <ErrorNote>{error}</ErrorNote>}
 

@@ -9,6 +9,7 @@ import {
   EmptyState,
   ErrorNote,
   Field,
+  PageHeader,
   Select,
   Spinner,
   SuccessNote,
@@ -210,13 +211,11 @@ export default function ApprovalsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Approvals</h1>
-        <p className="mt-1 text-sm text-muted">
-          A term sheet is submitted by a maker and decided by a different person. One
-          account can never do both.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Decide"
+        title="Approvals and settlement"
+        lead="A term sheet is submitted by a maker and decided by a different person — one account can never do both. The checker who approves a facility then records its settlement, which is always simulated."
+      />
 
       {done && <SuccessNote>{done}</SuccessNote>}
       {approvals.loading && <Spinner label="Loading approvals" />}

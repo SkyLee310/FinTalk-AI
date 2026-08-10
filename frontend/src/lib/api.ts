@@ -223,6 +223,18 @@ export interface AuditRow {
   prevHash: string;
 }
 
+export interface ManagedUser {
+  id: string;
+  email: string;
+  displayName: string;
+  role: Role;
+  createdAt: string;
+  /** Null means active. A deactivated account cannot sign in. */
+  deactivatedAt: string | null;
+  /** What this role permits, so the UI need not restate the matrix. */
+  capabilities: Capability[];
+}
+
 export interface AuditIntegrity {
   ok: boolean;
   length: number;
@@ -333,6 +345,28 @@ export const api = {
    */
   settle: (termSheetId: string, rail: SettlementRail) =>
     apiFetch<SettlementRow>(`/term-sheets/${termSheetId}/settle`, json({ rail })),
+
+  users: () => apiFetch<{ users: ManagedUser[] }>('/users'),
+
+  /**
+   * Invites a user. No password is sent or returned — the server mints a random
+   * one nobody reads, so the account is unusable until its owner sets their own.
+   */
+  createUser: (email: string, displayName: string, role: Role) =>
+    apiFetch<ManagedUser>('/users', json({ email, displayName, role })),
+
+  setUserRole: (id: string, role: Role) =>
+    apiFetch<ManagedUser>(`/users/${id}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    }),
+
+  /** Deactivates or restores access. Never deletes — audit entries name the user. */
+  setUserActive: (id: string, active: boolean) =>
+    apiFetch<ManagedUser>(`/users/${id}/active`, {
+      method: 'PATCH',
+      body: JSON.stringify({ active }),
+    }),
 
   audit: () => apiFetch<{ integrity: AuditIntegrity; entries: AuditRow[] }>('/audit'),
 };

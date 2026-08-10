@@ -86,6 +86,11 @@ model User {
   displayName  String
   role         Role
   createdAt    DateTime @default(now())
+  /// Set when an administrator revokes access. Deactivated, never deleted: a
+  /// User is referenced by audit entries, approvals, settlements and confirmed
+  /// segments, and removing the row would orphan attribution the record depends
+  /// on. Login refuses a deactivated account.
+  deactivatedAt DateTime?
 
   meetings          Meeting[]
   shariahReviews    ShariahFlag[]       @relation("ShariahReviewer")

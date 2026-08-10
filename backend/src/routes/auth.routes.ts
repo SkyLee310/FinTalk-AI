@@ -69,6 +69,28 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
       );
     }
 
+    /**
+     * A deactivated account cannot sign in.
+     *
+     * Checked *after* the password comparison, deliberately. Refusing earlier
+     * would answer faster for a deactivated account than for a wrong password,
+     * and that timing difference reveals which addresses are registered — the
+     * same leak the shared message above exists to prevent.
+     *
+     * This is what makes deactivation real rather than decorative: without it an
+     * administrator could revoke access in the UI while the revoked user carried
+     * on logging in. A user deactivated mid-session still holds a valid access
+     * token until it expires, which the 15-minute default TTL bounds.
+     */
+    if (user.deactivatedAt !== null) {
+      return sendProblem(
+        reply,
+        403,
+        'Account deactivated',
+        'This account has been deactivated. Contact an administrator.',
+      );
+    }
+
     const env = getEnv();
     const subject = { sub: user.id, role: user.role };
     const [access, refresh] = await Promise.all([

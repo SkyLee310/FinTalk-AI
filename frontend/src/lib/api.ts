@@ -10,6 +10,9 @@ import { apiFetch } from './api-client';
 
 export type Role = 'VIEWER' | 'MAKER' | 'CHECKER' | 'SHARIAH' | 'SUPERVISOR' | 'ADMIN';
 
+/** PENDING has no role and no session; ACTIVE can sign in. Set by POST /auth/register and PATCH /users/:id/approve. */
+export type AccountStatus = 'PENDING' | 'ACTIVE';
+
 export type Capability =
   | 'meeting:create'
   | 'meeting:read'
@@ -286,6 +289,14 @@ export interface AuditIntegrity {
   reason?: string;
 }
 
+export interface RegisterBody {
+  displayName: string;
+  email: string;
+  password: string;
+  username: string;
+  staffId: string;
+}
+
 export interface DraftTermSheetBody {
   applicantName: string;
   currency?: string;
@@ -309,6 +320,14 @@ export const api = {
   me: () => apiFetch<Session>('/auth/me'),
 
   logout: () => apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
+
+  /**
+   * Self-service registration. Always comes back PENDING — there is no
+   * session to grant yet, since a PENDING account has no role. An
+   * administrator assigns one via the pending-approval queue.
+   */
+  register: (body: RegisterBody) =>
+    apiFetch<{ accountStatus: AccountStatus }>('/auth/register', json(body)),
 
   meetings: () => apiFetch<{ meetings: MeetingSummary[] }>('/meetings'),
 

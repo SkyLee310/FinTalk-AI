@@ -69,6 +69,12 @@ const NAV: readonly NavItem[] = [
     needs: ['termsheet:draft', 'termsheet:approve'],
   },
   {
+    href: '/knowledge',
+    label: 'Knowledge',
+    hint: 'Ask across every meeting, and see how they connect',
+    needs: ['transcript:read'],
+  },
+  {
     href: '/admin',
     label: 'Administration',
     hint: 'Users, audit trail and system health',

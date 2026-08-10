@@ -2,7 +2,10 @@ import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import {
   type AudioInput,
+  type GroundedAnswer,
+  type GroundingExcerpt,
   type ImageInput,
+  type TopicDraft,
   TranscriptionError,
   type TranscriptionProvider,
   type TranscriptionResult,
@@ -72,11 +75,67 @@ const ResponseSchema = z.object({
     .min(1),
 });
 
+const ANSWER_PROMPT_VERSION = 'gemini-answer-v1';
+
+const TOPICS_PROMPT = `Read this credit-meeting summary and list the topics it discusses.
+
+Rules:
+- Between 3 and 8 topics. Fewer is better than padding the list.
+- Each label is 1-4 words, lower case, and describes a subject rather than an event. Examples: "murabahah", "working capital", "late payment penalty", "manufacturing sector".
+- "kind" is one of CONTRACT, SECTOR, PRODUCT, ISSUE, TERM.
+- "weight" is 0 to 1: how central the topic is to the discussion.
+- Never name a person, a company, or any individual. These labels are shared across meetings, and a name would link records that have nothing to do with each other.
+- The text contains placeholders such as [NRIC_1]. Never return one as a label, and never build a label from one.
+- Use only what the summary says. Do not infer a sector or a contract that is not stated.
+
+Return JSON only:
+{"topics":[{"label":"murabahah","kind":"CONTRACT","weight":0.9}]}`;
+
+const ANSWER_PROMPT = `Answer the question using ONLY the meeting transcripts supplied below.
+
+Rules, in order of importance:
+- Use nothing but the supplied transcripts. No outside knowledge, not even well-known facts about Islamic finance or Malaysian regulation.
+- If the transcripts do not answer the question, set "unanswerable" to true and say plainly what is missing. This is a correct and useful outcome, not a failure.
+- Never give a Shariah ruling, a compliance opinion, or financial advice. If asked whether something is permissible or advisable, report what the meeting participants said about it and set "unanswerable" to true. A qualified human decides; you report.
+- Cite every meeting you used in "citedMeetingIds", using the id attribute exactly as given. Never cite a meeting you were not given.
+- The transcripts contain placeholders such as [NRIC_1] in place of personal data. Keep them exactly as they appear. Never invent a value to fill one, and never guess who a placeholder refers to.
+- Quote figures only as they appear. Do not calculate, convert, or round.
+- Be brief. Under 150 words unless the question genuinely needs more.
+
+Return JSON only:
+{"answer":"...","citedMeetingIds":["..."],"unanswerable":false}`;
+
+const TopicsSchema = z.object({
+  topics: z
+    .array(
+      z.object({
+        label: z.string().min(1).max(60),
+        kind: z.enum(['CONTRACT', 'SECTOR', 'PRODUCT', 'ISSUE', 'TERM']),
+        weight: z.number().min(0).max(1),
+      }),
+    )
+    .max(12),
+});
+
+const AnswerSchema = z.object({
+  answer: z.string(),
+  citedMeetingIds: z.array(z.string()).default([]),
+  unanswerable: z.boolean(),
+});
+
 export interface GeminiConfig {
   readonly apiKey: string;
   readonly transcribeModel: string;
   readonly textModel: string;
   readonly visionModel: string;
+  /**
+   * Embedding model, for cross-meeting similarity.
+   *
+   * Separate from textModel because embedding and generation are different model
+   * families with different ids — and an id that happens to work for one is not
+   * guaranteed to work for the other.
+   */
+  readonly embeddingModel: string;
 }
 
 /** Models sometimes wrap JSON in a markdown fence even when asked not to. */
@@ -224,8 +283,20 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       });
       raw = response.text ?? '';
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'unknown failure';
-      throw new TranscriptionError('gemini', `whiteboard extraction failed: ${message}`);
+      /**
+       * The class only, never the message.
+       *
+       * This previously forwarded `cause.message`, contradicting the rule at the
+       * top of this file: a failed request can quote the payload it was sent, and
+       * here that payload is a photograph of a whiteboard. The transcribe path
+       * always got this right; this branch did not.
+       */
+      throw new TranscriptionError(
+        'gemini',
+        cause instanceof Error
+          ? `whiteboard extraction failed (${cause.name})`
+          : 'whiteboard extraction failed',
+      );
     }
 
     let parsed: unknown;
@@ -250,6 +321,149 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       structured: result.data.structured,
       modelId: this.config.visionModel,
       promptVersion: 'gemini-whiteboard-v1',
+    };
+  }
+
+  /**
+   * Topic labels from an already-redacted summary.
+   *
+   * The prompt forbids naming a person and forbids returning a placeholder,
+   * because a topic becomes a node in a shared graph — and `[NRIC_1]` means a
+   * different person in every meeting, so a placeholder node would link people who
+   * have nothing to do with each other. `isStorableTopicLabel` rejects them
+   * anyway; asking is cheaper than filtering.
+   */
+  async extractTopics(redactedSummary: string): Promise<readonly TopicDraft[]> {
+    if (redactedSummary.trim() === '') return [];
+
+    let raw: string;
+    try {
+      const response = await this.client.models.generateContent({
+        model: this.config.textModel,
+        contents: [{ role: 'user', parts: [{ text: TOPICS_PROMPT }, { text: redactedSummary }] }],
+        config: { responseMimeType: 'application/json', temperature: 0 },
+      });
+      raw = response.text ?? '';
+    } catch (cause) {
+      throw new TranscriptionError(
+        'gemini',
+        cause instanceof Error
+          ? `topic extraction failed (${cause.name})`
+          : 'topic extraction failed',
+      );
+    }
+
+    const parsed = TopicsSchema.safeParse(parseJsonLoosely(raw));
+    if (!parsed.success) {
+      // A malformed topic list loses the graph edges for one meeting, not the
+      // meeting. Returning none is honest; guessing would put invented topics
+      // into a shared graph.
+      return [];
+    }
+
+    return parsed.data.topics.map((topic) => ({
+      label: topic.label.trim().toLowerCase(),
+      kind: topic.kind,
+      weight: topic.weight,
+    }));
+  }
+
+  /**
+   * Embeds already-redacted text for similarity.
+   *
+   * Uses the text model's embedding sibling via the same client. A failure throws
+   * rather than returning a zero vector: a zero vector is similar to nothing, so it
+   * would silently exclude the meeting from the graph and look like a corpus with
+   * no relationships rather than an embedding that failed.
+   */
+  async embed(redactedText: string): Promise<readonly number[]> {
+    /**
+     * Unconfigured is a first-class failure, not a silent one.
+     *
+     * `embed` is a class method, so it exists on the instance whether or not a
+     * model id was supplied — the assistant's `=== undefined` check cannot see the
+     * difference. Throwing here is what turns a missing GEMINI_MODEL_EMBEDDING into
+     * an honest "the assistant is unavailable" rather than an opaque upstream 400.
+     */
+    if (this.config.embeddingModel === '') {
+      throw new TranscriptionError(
+        'gemini',
+        'no embedding model is configured (set GEMINI_MODEL_EMBEDDING)',
+      );
+    }
+
+    try {
+      const response = await this.client.models.embedContent({
+        model: this.config.embeddingModel,
+        contents: [{ role: 'user', parts: [{ text: redactedText }] }],
+      });
+      const values = response.embeddings?.[0]?.values;
+      if (values === undefined || values.length === 0) {
+        throw new TranscriptionError('gemini', 'embedding response carried no vector');
+      }
+      return values;
+    } catch (cause) {
+      if (cause instanceof TranscriptionError) throw cause;
+      throw new TranscriptionError(
+        'gemini',
+        cause instanceof Error ? `embedding failed (${cause.name})` : 'embedding failed',
+      );
+    }
+  }
+
+  /**
+   * Answers strictly from the excerpts supplied.
+   *
+   * The prompt is the enforcement for the rule the assistant module documents: no
+   * outside knowledge, no Shariah or financial opinion, cite or say nothing was
+   * found. `unanswerable` is a field the model sets rather than something inferred
+   * from the prose, so "I could not find this" cannot be mistaken for an answer.
+   */
+  async answerFromContext(
+    question: string,
+    excerpts: readonly GroundingExcerpt[],
+  ): Promise<GroundedAnswer> {
+    const context = excerpts
+      .map((excerpt) => `<meeting id="${excerpt.meetingId}">\n${excerpt.text}\n</meeting>`)
+      .join('\n\n');
+
+    let raw: string;
+    try {
+      const response = await this.client.models.generateContent({
+        model: this.config.textModel,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: ANSWER_PROMPT },
+              { text: `Question: ${question}` },
+              { text: `Meetings:\n${context}` },
+            ],
+          },
+        ],
+        // temperature 0: the same question over the same corpus should not give a
+        // reviewer two different answers on two days.
+        config: { responseMimeType: 'application/json', temperature: 0 },
+      });
+      raw = response.text ?? '';
+    } catch (cause) {
+      throw new TranscriptionError(
+        'gemini',
+        cause instanceof Error ? `answer failed (${cause.name})` : 'answer failed',
+      );
+    }
+
+    const parsed = AnswerSchema.safeParse(parseJsonLoosely(raw));
+    if (!parsed.success) {
+      throw new TranscriptionError('gemini', 'answer did not match the expected shape');
+    }
+
+    return {
+      answer: parsed.data.answer,
+      citedMeetingIds: parsed.data.citedMeetingIds,
+      unanswerable: parsed.data.unanswerable,
+      modelId: this.config.textModel,
+      promptVersion: ANSWER_PROMPT_VERSION,
     };
   }
 

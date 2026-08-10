@@ -23,7 +23,12 @@ export type ComplianceErrorCode =
   | 'correction-identical'
   | 'correction-contains-personal-data'
   // Mock settlement (Phase 3).
-  | 'already-settled';
+  | 'already-settled'
+  // Knowledge assistant (Phase 5).
+  | 'question-too-short'
+  | 'question-contains-personal-data'
+  | 'assistant-unavailable'
+  | 'answer-contains-personal-data';
 
 export class ComplianceError extends Error {
   readonly code: ComplianceErrorCode;

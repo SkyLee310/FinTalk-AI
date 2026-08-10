@@ -102,6 +102,22 @@ ALTER TABLE "Settlement" ADD CONSTRAINT settlement_amount_positive CHECK (
   "amountMinor" > 0
 );
 
+-- A topic weight is a proportion, and its label is normalised.
+--
+-- The label check is not cosmetic: "Murabahah" and "murabahah" would become two
+-- nodes in the knowledge graph that never link to each other, so two meetings
+-- discussing the same contract would appear unrelated. Normalising in application
+-- code alone would leave that failure one careless insert away.
+ALTER TABLE "MeetingTopic" DROP CONSTRAINT IF EXISTS topic_weight_range;
+ALTER TABLE "MeetingTopic" ADD CONSTRAINT topic_weight_range CHECK (
+  weight >= 0 AND weight <= 1
+);
+
+ALTER TABLE "MeetingTopic" DROP CONSTRAINT IF EXISTS topic_label_normalised;
+ALTER TABLE "MeetingTopic" ADD CONSTRAINT topic_label_normalised CHECK (
+  label = lower(label) AND length(trim(label)) > 0
+);
+
 -- Spec §5.6 — audit log is append-only. Triggers raise so tests can assert.
 CREATE OR REPLACE FUNCTION audit_entry_append_only() RETURNS trigger AS $$
 BEGIN

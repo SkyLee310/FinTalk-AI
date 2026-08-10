@@ -111,6 +111,62 @@ export interface TranscriptionProvider {
    * and the route answers 501 rather than pretending it captured something.
    */
   extractWhiteboard?(image: ImageInput): Promise<WhiteboardExtraction>;
+
+  /**
+   * Optional topic extraction from already-redacted text.
+   *
+   * Returns plain strings, like every other provider method — the labels are
+   * model output and get re-redacted before storage, on the same reasoning as
+   * `summarize`: a model handed placeholders has no identifier to leak, but a
+   * model is not a thing to trust at a boundary like this one.
+   */
+  extractTopics?(redactedSummary: string): Promise<readonly TopicDraft[]>;
+
+  /**
+   * Optional embedding of already-redacted text, for similarity.
+   *
+   * A provider without an embedding model omits it, and the graph falls back to
+   * topic overlap alone rather than reporting relationships it cannot compute.
+   */
+  embed?(redactedText: string): Promise<readonly number[]>;
+
+  /**
+   * Optional grounded answer over already-redacted excerpts.
+   *
+   * `excerpts` are redacted transcripts. The implementation must instruct the
+   * model to answer only from them and to say so when they do not contain the
+   * answer — an assistant that fills a gap with general knowledge would be
+   * issuing exactly the kind of unsourced financial or Shariah opinion this
+   * product exists not to issue.
+   */
+  answerFromContext?(
+    question: string,
+    excerpts: readonly GroundingExcerpt[],
+  ): Promise<GroundedAnswer>;
+}
+
+/** A topic as the extractor read it. Raw model output — unredacted by construction. */
+export interface TopicDraft {
+  readonly label: string;
+  readonly kind: 'CONTRACT' | 'SECTOR' | 'PRODUCT' | 'ISSUE' | 'TERM';
+  readonly weight: number;
+}
+
+export interface GroundingExcerpt {
+  readonly meetingId: string;
+  /** Already redacted. Placeholders only. */
+  readonly text: string;
+}
+
+export interface GroundedAnswer {
+  /** Raw model output. Re-redacted before it reaches a user. */
+  readonly answer: string;
+  /** Meeting ids the model says it used. Verified against what was supplied. */
+  readonly citedMeetingIds: readonly string[];
+  /** True when the model reports the corpus does not answer the question. */
+  readonly unanswerable: boolean;
+  readonly modelId: string;
+  readonly promptVersion: string;
 }
 
 /** Raised when a provider cannot produce a transcript. Carries no audio or text. */

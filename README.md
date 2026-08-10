@@ -14,6 +14,8 @@ A credit committee meets, argues in three languages at once, and reaches a decis
 | **Redact** | NRIC, bank account, card, phone and email are replaced with stable placeholders and sealed into an encrypted vault **before** anything reaches the database. |
 | **Screen** | Six Shariah rules run over the redacted transcript and raise findings — riba, gharar, maysir, prohibited sector, contract mismatch, late-payment penalty. |
 | **Decide** | A maker drafts a term sheet; a different person approves it. Every step is written to a hash-chained audit log. |
+| **Connect** | Meetings discussing the same things are linked automatically, and you can ask a question across the whole corpus. Answers cite the meetings they came from, or say nothing was found. |
+| **Settle** | The approving checker records a **simulated** DuitNow/FPX transfer. No money moves, no bank is contacted, and a database constraint makes a row claiming otherwise unstorable. |
 | **Export** | An approved facility produces a CSV handoff of the approved figures, for a human to complete in their own banking channel. Never a payment instruction. |
 
 ### Four guarantees, and how each is enforced
@@ -169,7 +171,10 @@ GEMINI_API_KEY=...
 GEMINI_MODEL_TRANSCRIBE=...
 GEMINI_MODEL_VISION=...
 GEMINI_MODEL_TEXT=...
+GEMINI_MODEL_EMBEDDING=...   # optional
 ```
+
+`GEMINI_MODEL_EMBEDDING` is the one optional value. Without it the knowledge graph links meetings by shared topics only and Ask FinTalk AI reports itself unavailable — both degrade honestly rather than the server refusing to boot.
 
 Model IDs come from [AI Studio](https://aistudio.google.com/apikey) and are never hardcoded. All four are required when the provider is `gemini`; the process refuses to start if any is missing.
 
@@ -216,9 +221,11 @@ Root directory `frontend`. Set `NEXT_PUBLIC_API_BASE_URL` to the Railway backend
 
 ## Project status
 
-Built and tested: audio capture, whiteboard capture with the diagram drawn, PDPA redaction, Shariah screening, maker–checker approval, hash-chained audit, CSV handoff, and the screens for all of it.
+Built and tested: in-browser recording and file upload, whiteboard capture with the diagram drawn, per-segment transcription confidence with human confirmation, PDPA redaction, Shariah screening resolved by an explicit human yes/no, maker–checker approval, simulated DuitNow/FPX settlement, a cross-meeting knowledge graph, an assistant that answers only from the corpus and cites it, user administration, hash-chained audit, CSV handoff, and the screens for all of it.
 
-Not built: name and address detection, historical meeting search, and the full BNM rule library — this ships a starter set of six rules.
+Not built: name and address detection in free-flowing speech (declared fields such as a participant's name *are* masked), self-service password reset, and the full BNM rule library — this ships a starter set of six rules.
+
+**Scale ceiling, stated plainly.** The knowledge graph compares every pair of meetings in memory and holds every embedding at once. That is milliseconds for the tens-to-low-hundreds a demo or pilot has, and wrong for a real deployment, which needs pgvector or a vector store with an indexed nearest-neighbour query.
 
 Withdrawn: on-device transcription and on-device audio pre-screening, both removed on 2026-08-10. They were interfaces without implementations.
 

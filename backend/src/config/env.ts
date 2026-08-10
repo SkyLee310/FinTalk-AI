@@ -18,6 +18,15 @@ const base = z.object({
   GEMINI_MODEL_TRANSCRIBE: z.string().optional(),
   GEMINI_MODEL_VISION: z.string().optional(),
   GEMINI_MODEL_TEXT: z.string().optional(),
+  /**
+   * Optional, unlike the other three.
+   *
+   * Without it the knowledge graph falls back to topic overlap alone and the
+   * assistant answers 501 — both degrade honestly. Making it required would stop
+   * every existing deployment from booting to enable a feature they had not asked
+   * for, which is a worse trade than a graph with fewer edges.
+   */
+  GEMINI_MODEL_EMBEDDING: z.string().optional(),
 
   JWT_ACCESS_SECRET: z.string().min(32, 'must be at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'must be at least 32 characters'),

@@ -223,6 +223,50 @@ export interface AuditRow {
   prevHash: string;
 }
 
+export interface GraphNode {
+  meetingId: string;
+  title: string;
+  occurredAt: string;
+  status: string;
+  termSheetCount: number;
+  openFindingCount: number;
+  /** Topic labels. Never a person — see the backend graph module for why. */
+  topics: string[];
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
+  /** 0–1. Drives line weight only; not a probability of anything. */
+  strength: number;
+  /** Why this edge exists, checkable against the two meetings. */
+  reason: string;
+  sharedTopics: string[];
+}
+
+export interface KnowledgeGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  /** True when no embedding model is configured, so edges rest on topics alone. */
+  similarityUnavailable: boolean;
+}
+
+export interface AskCitation {
+  meetingId: string;
+  title: string;
+  occurredAt: string;
+  score: number;
+}
+
+export interface AskAnswer {
+  answer: string;
+  citations: AskCitation[];
+  /** True when the corpus does not answer the question. Never a guess instead. */
+  unanswerable: boolean;
+  modelId: string;
+  promptVersion: string;
+}
+
 export interface ManagedUser {
   id: string;
   email: string;
@@ -345,6 +389,18 @@ export const api = {
    */
   settle: (termSheetId: string, rail: SettlementRail) =>
     apiFetch<SettlementRow>(`/term-sheets/${termSheetId}/settle`, json({ rail })),
+
+  knowledgeGraph: () => apiFetch<KnowledgeGraph>('/knowledge/graph'),
+
+  /**
+   * Asks a question of the stored meetings.
+   *
+   * Answers come only from redacted transcripts the corpus actually contains. The
+   * vault is never opened, so no question can retrieve an identifier — and a
+   * question containing one is refused rather than searched, because a placeholder
+   * could never match it anyway.
+   */
+  ask: (question: string) => apiFetch<AskAnswer>('/knowledge/ask', json({ question })),
 
   users: () => apiFetch<{ users: ManagedUser[] }>('/users'),
 

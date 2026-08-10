@@ -18,6 +18,7 @@ import {
   storeTranscript,
   type TranscriptSegmentInput,
 } from '../pdpa/transcript-store.js';
+import { isStorableTopicLabel } from '../knowledge/graph.js';
 import { analyseTranscript } from '../shariah/engine.js';
 
 /**
@@ -68,11 +69,23 @@ export interface PipelineDeps {
   readonly vaultKey: Buffer;
 }
 
+/**
+ * How knowledge indexing went. Never fatal — a meeting with no topics is a meeting
+ * with fewer graph edges, not a failed capture.
+ */
+export interface IndexingOutcome {
+  readonly topicCount: number;
+  readonly embedded: boolean;
+  /** Stage and error class, PII-free like PipelineError.persistableReason. */
+  readonly failure: string | null;
+}
+
 export interface ProcessResult {
   readonly transcriptId: string;
   readonly redactionCount: number;
   readonly segmentCount: number;
   readonly shariahFlagCount: number;
+  readonly indexing: IndexingOutcome;
 }
 
 export const SEGMENT_SEPARATOR = '\n';
@@ -289,6 +302,30 @@ export async function processMeeting(
     throw await failed('shariah', cause);
   }
 
+  /**
+   * Topics and the summary embedding, for cross-meeting connections.
+   *
+   * Deliberately last, and deliberately non-fatal. A meeting whose topics failed to
+   * extract is a meeting with fewer graph edges; a meeting marked FAILED because a
+   * topic list did not parse would have lost its transcript, its redactions and its
+   * Shariah findings over a convenience feature. The stage is indexing, not capture.
+   *
+   * Both inputs are the already-redacted summary, so the extractor and the
+   * embedding model see placeholders — never identifiers.
+   */
+  let indexing: IndexingOutcome;
+  try {
+    indexing = await indexForKnowledge(deps, meetingId, transcriptId, summary);
+  } catch (cause) {
+    /**
+     * Reported, not swallowed. The stage name and error class are returned to the
+     * caller, which logs them — a failure nobody can see is how "the graph looks
+     * empty" becomes an afternoon of guessing.
+     */
+    const causeName = cause instanceof Error ? cause.name : typeof cause;
+    indexing = { topicCount: 0, embedded: false, failure: `indexing:${causeName}` };
+  }
+
   await prisma.meeting.update({
     where: { id: meetingId },
     data: { status: 'READY', failureReason: null },
@@ -299,5 +336,76 @@ export async function processMeeting(
     redactionCount: document.records.length,
     segmentCount: document.segments.length,
     shariahFlagCount: flagCount,
+    indexing,
   };
+}
+
+/**
+ * Extracts topics and embeds the summary, so this meeting can be connected to
+ * others and searched by the assistant.
+ *
+ * Both provider methods are optional. A provider without them is not an error — the
+ * graph falls back to whatever topics exist and the assistant reports itself
+ * unavailable, which is honest. Silently writing an empty topic list as though
+ * extraction had succeeded would not be.
+ */
+async function indexForKnowledge(
+  deps: PipelineDeps,
+  meetingId: string,
+  transcriptId: string,
+  summary: RedactedText,
+): Promise<IndexingOutcome> {
+  const { prisma, provider } = deps;
+
+  // Bound once: `?.` does not narrow across an await, and a bare reference to a
+  // method loses `this`.
+  const extractTopics = provider.extractTopics?.bind(provider);
+  const embed = provider.embed?.bind(provider);
+
+  let topicCount = 0;
+  if (extractTopics !== undefined) {
+    const drafts = await extractTopics(summary);
+
+    /**
+     * Placeholder-shaped labels are dropped here, whatever the model returned.
+     *
+     * A topic becomes a node in a graph shared across meetings, and `[NRIC_1]`
+     * means a different person in every meeting — so a placeholder node would
+     * link people who have nothing to do with each other. The prompt forbids it
+     * and this filter enforces it, because a prompt is a request and a filter is
+     * a guarantee.
+     */
+    const usable = drafts.filter((draft) => isStorableTopicLabel(draft.label));
+
+    /**
+     * Upsert rather than create, keyed on (meetingId, label).
+     *
+     * Re-running the pipeline for a meeting must not double its topics: duplicate
+     * rows would inflate the shared-topic count and make an edge look stronger
+     * than its evidence.
+     */
+    for (const draft of usable) {
+      const label = draft.label.trim().toLowerCase();
+      await prisma.meetingTopic.upsert({
+        where: { meetingId_label: { meetingId, label } },
+        create: { meetingId, label, kind: draft.kind, weight: draft.weight },
+        update: { kind: draft.kind, weight: draft.weight },
+      });
+    }
+    topicCount = usable.length;
+  }
+
+  let embedded = false;
+  if (embed !== undefined) {
+    const vector = await embed(summary);
+    if (vector.length > 0) {
+      await prisma.transcript.update({
+        where: { id: transcriptId },
+        data: { summaryEmbedding: [...vector] },
+      });
+      embedded = true;
+    }
+  }
+
+  return { topicCount, embedded, failure: null };
 }

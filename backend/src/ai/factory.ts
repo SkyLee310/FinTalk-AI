@@ -43,6 +43,12 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
         transcribeModel: GEMINI_MODEL_TRANSCRIBE,
         textModel: GEMINI_MODEL_TEXT,
         visionModel: GEMINI_MODEL_VISION,
+        /**
+         * Optional. An empty string means no embedding model is configured, and
+         * the knowledge features degrade rather than the server refusing to boot:
+         * the graph falls back to topic overlap and the assistant answers 501.
+         */
+        embeddingModel: env.GEMINI_MODEL_EMBEDDING ?? '',
       });
     }
   }

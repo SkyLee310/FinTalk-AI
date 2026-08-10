@@ -135,6 +135,7 @@ model Meeting {
   shariahFlags ShariahFlag[]
   termSheets   TermSheet[]
   participants MeetingParticipant[]
+  topics       MeetingTopic[]
 
   @@index([createdById])
 }
@@ -175,9 +176,43 @@ model Transcript {
   promptVersion String
   createdAt     DateTime @default(now())
 
+  /// Embedding of summaryEn, for cross-meeting similarity.
+  ///
+  /// Stored as a plain float array, not pgvector: Railway's Postgres image
+  /// cannot be assumed to carry the extension, and cosine similarity over a
+  /// demo-sized corpus is a millisecond loop in Node. That is a real scale
+  /// ceiling — see findRelatedMeetings in src/knowledge/graph.ts, which says so
+  /// where someone would hit it.
+  ///
+  /// Empty when not yet embedded. Derived from already-redacted text, so it
+  /// encodes placeholders rather than identifiers.
+  summaryEmbedding Float[]
+
   meeting    Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   segments   TranscriptSegment[]
   redactions Redaction[]
+}
+
+/// A topic a meeting discussed, extracted from its already-redacted summary.
+///
+/// This is what a knowledge-graph edge is made of. Deliberately never a person:
+/// redaction contexts are per-meeting, so [NRIC_1] in one meeting and [NRIC_1]
+/// in another are different people, and an edge drawn between them would assert
+/// a relationship that does not exist.
+model MeetingTopic {
+  id        String @id @default(cuid())
+  meetingId String
+  /// Normalised lower-case label, e.g. "murabahah" or "working capital".
+  label String
+  /// What kind of thing it is: CONTRACT, SECTOR, PRODUCT, ISSUE or TERM.
+  kind String
+  /// 0–1. How central the extractor judged it to the discussion.
+  weight Float
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, label])
+  @@index([label])
 }
 
 model TranscriptSegment {

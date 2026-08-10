@@ -1,5 +1,8 @@
 import {
   type AudioInput,
+  type GroundedAnswer,
+  type GroundingExcerpt,
+  type TopicDraft,
   TranscriptionError,
   type TranscriptionProvider,
   type TranscriptionResult,
@@ -128,6 +131,79 @@ export class FakeTranscriptionProvider implements TranscriptionProvider {
       },
       modelId: 'fake-vision',
       promptVersion: 'fake-whiteboard-v1',
+    });
+  }
+
+  /**
+   * A deterministic topic list, including one placeholder label on purpose.
+   *
+   * `[NRIC_1]` is returned so a test can prove the pipeline filters it out rather
+   * than storing it. A fake that only returned clean labels would let the
+   * placeholder guard pass while never running — the same vacuity trap as a
+   * redaction test whose input holds no identifier.
+   */
+  extractTopics(): Promise<readonly TopicDraft[]> {
+    return Promise.resolve([
+      { label: 'murabahah', kind: 'CONTRACT', weight: 0.9 },
+      { label: 'working capital', kind: 'PRODUCT', weight: 0.8 },
+      { label: 'interest rate', kind: 'ISSUE', weight: 0.75 },
+      { label: 'sme lending', kind: 'PRODUCT', weight: 0.6 },
+      // Must never reach the database. See indexForKnowledge.
+      { label: '[NRIC_1]', kind: 'TERM', weight: 0.5 },
+    ]);
+  }
+
+  /**
+   * A deterministic pseudo-embedding derived from the text's own characters.
+   *
+   * Not a real embedding and not pretending to be: it exists so similarity code
+   * has stable, non-degenerate vectors to work on in tests. Two identical texts
+   * embed identically and two different ones differ, which is all the graph and
+   * ranking logic need to be exercised.
+   */
+  embed(redactedText: string): Promise<readonly number[]> {
+    const dimensions = 32;
+    const vector = new Array<number>(dimensions).fill(0);
+    for (let i = 0; i < redactedText.length; i += 1) {
+      const code = redactedText.charCodeAt(i);
+      const slot = code % dimensions;
+      vector[slot] = (vector[slot] ?? 0) + 1;
+    }
+    // Normalised, so cosine similarity behaves the way it would on real vectors.
+    const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+    return Promise.resolve(norm === 0 ? vector : vector.map((value) => value / norm));
+  }
+
+  /**
+   * Answers only from what it was handed, like the real one.
+   *
+   * Cites every meeting supplied and reports unanswerable when given none, so the
+   * assistant's citation-intersection and unanswerable paths are both reachable
+   * without an API key.
+   */
+  answerFromContext(
+    question: string,
+    excerpts: readonly GroundingExcerpt[],
+  ): Promise<GroundedAnswer> {
+    if (excerpts.length === 0) {
+      return Promise.resolve({
+        answer: 'The supplied meetings do not answer that question.',
+        citedMeetingIds: [],
+        unanswerable: true,
+        modelId: FAKE_MODEL_ID,
+        promptVersion: FAKE_PROMPT_VERSION,
+      });
+    }
+
+    return Promise.resolve({
+      answer:
+        `Based on ${String(excerpts.length)} meeting(s): the committee discussed an `
+        + 'SME working capital facility, and the pricing basis was left unresolved '
+        + 'between an interest rate and a Murabahah profit rate.',
+      citedMeetingIds: excerpts.map((excerpt) => excerpt.meetingId),
+      unanswerable: false,
+      modelId: FAKE_MODEL_ID,
+      promptVersion: FAKE_PROMPT_VERSION,
     });
   }
 

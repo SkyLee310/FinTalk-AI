@@ -38,6 +38,9 @@ interface Participant {
 
 const EMPTY_PARTICIPANT: Participant = { name: '', role: '' };
 
+/** How the audio for this capture is being obtained. */
+type CaptureMode = 'record' | 'upload';
+
 /** Local time in the format a datetime-local input expects. */
 function localDateTimeValue(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -83,6 +86,16 @@ export default function RecordPage() {
   const [participants, setParticipants] = useState<Participant[]>([EMPTY_PARTICIPANT]);
   const [ack, setAck] = useState<TransferAcknowledgement>(NO_ACKNOWLEDGEMENT);
 
+  /**
+   * Upload is the fallback for a browser that cannot record, or a recording
+   * made elsewhere (a phone, a Zoom call). It lives here rather than on the
+   * Review page because both are ways to do the same one thing — capture a
+   * meeting — and Review is where a meeting is read, not where it starts.
+   */
+  const [mode, setMode] = useState<CaptureMode>('record');
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [boardFile, setBoardFile] = useState<File | null>(null);
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
@@ -90,10 +103,13 @@ export default function RecordPage() {
   const mayCreate = can(session.data, 'meeting:create');
   const armed = title.trim() !== '' && isFullyAcknowledged(ack);
 
+  /** The take to submit, whichever way it was obtained. */
+  const readyBlob: Blob | null = mode === 'record' ? recorder.blob : audioFile;
+
   /** An object URL, so the take can be heard before it is committed. */
   const previewUrl = useMemo(
-    () => (recorder.blob === null ? null : URL.createObjectURL(recorder.blob)),
-    [recorder.blob],
+    () => (readyBlob === null ? null : URL.createObjectURL(readyBlob)),
+    [readyBlob],
   );
   useEffect(() => {
     if (previewUrl === null) return undefined;
@@ -111,7 +127,9 @@ export default function RecordPage() {
    */
   const atRisk = recorder.state === 'recording'
     || recorder.state === 'paused'
-    || (recorder.blob !== null && !busy);
+    // Only the recorded take is irreplaceable. A chosen upload file still
+    // exists on disk, so re-selecting it after a reload loses nothing.
+    || (mode === 'record' && recorder.blob !== null && !busy);
 
   useEffect(() => {
     if (!atRisk) return undefined;
@@ -131,7 +149,7 @@ export default function RecordPage() {
   }
 
   async function submit(): Promise<void> {
-    if (recorder.blob === null) return;
+    if (readyBlob === null) return;
 
     setBusy(true);
     setError(null);
@@ -148,11 +166,36 @@ export default function RecordPage() {
     form.set('consentConfirmed', String(ack.consentConfirmed));
     form.set('transferAcknowledged', String(ack.transferAcknowledged));
     if (named.length > 0) form.set('participants', JSON.stringify(named));
-    form.set('audio', recorder.blob, recordingFilename(recorder.blob));
+    form.set(
+      'audio',
+      readyBlob,
+      mode === 'record' ? recordingFilename(readyBlob) : audioFile?.name,
+    );
 
     try {
       const { meetingId } = await api.uploadMeeting(form);
-      setProgress('Uploaded. Transcribing now — this takes a few minutes.');
+
+      /**
+       * A separate request, because extraction is synchronous and takes
+       * seconds where transcription takes minutes. Its failure is reported
+       * rather than thrown: the recording has already been accepted and is
+       * already being processed, and discarding that because a photograph
+       * failed would lose the more valuable half of the capture.
+       */
+      let boardNote = '';
+      if (boardFile !== null) {
+        setProgress('Recording accepted. Extracting the whiteboard…');
+        const boardForm = new FormData();
+        boardForm.set('image', boardFile);
+        try {
+          const extracted = await api.uploadWhiteboard(meetingId, boardForm);
+          boardNote = ` Whiteboard extracted, ${String(extracted.redactionCount)} identifier(s) masked.`;
+        } catch (cause) {
+          boardNote = ` The recording was accepted, but the whiteboard failed: ${describeError(cause)}`;
+        }
+      }
+
+      setProgress(`Uploaded. Transcribing now — this takes a few minutes.${boardNote}`);
       // Straight to the meeting, which already polls its own status and reveals
       // the transcript, redactions and Shariah findings as they land.
       router.push(`/meetings/${meetingId}`);
@@ -289,108 +332,171 @@ export default function RecordPage() {
 
       <Card>
         <CardHeader
-          title="3. Record"
-          description="Audio is held in this browser tab until you upload it."
+          title="3. Capture the audio"
+          description="Record here, or upload a file captured elsewhere — a phone, a Zoom export."
         />
         <div className="space-y-4 px-5 py-4">
-          {!recorder.supported && (
-            <ErrorNote>
-              This browser cannot record audio. Use the upload form on the Meetings
-              page instead.
-            </ErrorNote>
-          )}
+          <fieldset className="flex flex-wrap gap-4" disabled={busy}>
+            <legend className="sr-only">How was this meeting recorded</legend>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="captureMode"
+                className="accent-brand"
+                checked={mode === 'record'}
+                onChange={() => setMode('record')}
+              />
+              Record here
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="captureMode"
+                className="accent-brand"
+                checked={mode === 'upload'}
+                onChange={() => setMode('upload')}
+              />
+              Upload a file
+            </label>
+          </fieldset>
 
-          {recorder.error !== null && <ErrorNote>{recorder.error}</ErrorNote>}
-
-          {!armed && recorder.state === 'idle' && (
+          {!armed && (
             <p className="text-sm text-muted">
-              Give the meeting a title and tick both boxes above to enable recording.
+              Give the meeting a title and tick both boxes above to continue.
             </p>
           )}
 
-          <div className="flex flex-wrap items-center gap-4">
-            <p
-              className="font-mono text-3xl tabular-nums"
-              aria-label={`Elapsed ${formatElapsed(recorder.elapsedMs)}`}
-            >
-              {formatElapsed(recorder.elapsedMs)}
-            </p>
-            <LevelMeter level={recorder.level} active={recorder.state === 'recording'} />
-            {recorder.state === 'recording' && (
-              <span className="flex items-center gap-2 text-sm font-medium text-danger">
-                <span
-                  aria-hidden="true"
-                  className="size-2.5 animate-pulse rounded-full bg-danger"
+          {mode === 'record' ? (
+            <>
+              {!recorder.supported && (
+                <ErrorNote>
+                  This browser cannot record audio. Switch to &ldquo;Upload a
+                  file&rdquo; above instead.
+                </ErrorNote>
+              )}
+
+              {recorder.error !== null && <ErrorNote>{recorder.error}</ErrorNote>}
+
+              <div className="flex flex-wrap items-center gap-4">
+                <p
+                  className="font-mono text-3xl tabular-nums"
+                  aria-label={`Elapsed ${formatElapsed(recorder.elapsedMs)}`}
+                >
+                  {formatElapsed(recorder.elapsedMs)}
+                </p>
+                <LevelMeter level={recorder.level} active={recorder.state === 'recording'} />
+                {recorder.state === 'recording' && (
+                  <span className="flex items-center gap-2 text-sm font-medium text-danger">
+                    <span
+                      aria-hidden="true"
+                      className="size-2.5 animate-pulse rounded-full bg-danger"
+                    />
+                    Recording
+                  </span>
+                )}
+                {recorder.state === 'paused' && (
+                  <span className="text-sm font-medium text-warn">Paused</span>
+                )}
+              </div>
+
+              {/*
+                aria-live lives on its own node, away from the timer. Announcing
+                every tick would make a screen reader unusable; announcing state
+                changes is what a listener actually needs.
+              */}
+              <p className="sr-only" aria-live="polite">
+                {recorder.state === 'recording'
+                  ? 'Recording'
+                  : recorder.state === 'paused'
+                    ? 'Paused'
+                    : recorder.state === 'stopped'
+                      ? 'Recording finished'
+                      : ''}
+              </p>
+
+              <div className="flex flex-wrap gap-2">
+                {(recorder.state === 'idle' || recorder.state === 'requesting') && (
+                  <Button
+                    disabled={!armed || !recorder.supported || recorder.state === 'requesting'}
+                    onClick={() => {
+                      void recorder.start();
+                    }}
+                  >
+                    {recorder.state === 'requesting' ? 'Opening microphone…' : 'Start recording'}
+                  </Button>
+                )}
+
+                {recorder.state === 'recording' && (
+                  <>
+                    <Button variant="secondary" onClick={recorder.pause}>
+                      Pause
+                    </Button>
+                    <Button variant="danger" onClick={recorder.stop}>
+                      Stop
+                    </Button>
+                  </>
+                )}
+
+                {recorder.state === 'paused' && (
+                  <>
+                    <Button onClick={recorder.resume}>Resume</Button>
+                    <Button variant="danger" onClick={recorder.stop}>
+                      Stop
+                    </Button>
+                  </>
+                )}
+              </div>
+
+              {(recorder.state === 'recording' || recorder.state === 'paused') && (
+                <p className="text-xs text-faint">
+                  Keep this tab open. The audio is only in this browser until you
+                  upload it, so closing the tab loses the recording.
+                </p>
+              )}
+            </>
+          ) : (
+            audioFile === null && (
+              <Field label="Audio file" htmlFor="audioFile">
+                <Input
+                  id="audioFile"
+                  type="file"
+                  accept="audio/*"
+                  disabled={busy || !armed}
+                  onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)}
                 />
-                Recording
-              </span>
-            )}
-            {recorder.state === 'paused' && (
-              <span className="text-sm font-medium text-warn">Paused</span>
-            )}
-          </div>
-
-          {/*
-            aria-live lives on its own node, away from the timer. Announcing
-            every tick would make a screen reader unusable; announcing state
-            changes is what a listener actually needs.
-          */}
-          <p className="sr-only" aria-live="polite">
-            {recorder.state === 'recording'
-              ? 'Recording'
-              : recorder.state === 'paused'
-                ? 'Paused'
-                : recorder.state === 'stopped'
-                  ? 'Recording finished'
-                  : ''}
-          </p>
-
-          <div className="flex flex-wrap gap-2">
-            {(recorder.state === 'idle' || recorder.state === 'requesting') && (
-              <Button
-                disabled={!armed || !recorder.supported || recorder.state === 'requesting'}
-                onClick={() => {
-                  void recorder.start();
-                }}
-              >
-                {recorder.state === 'requesting' ? 'Opening microphone…' : 'Start recording'}
-              </Button>
-            )}
-
-            {recorder.state === 'recording' && (
-              <>
-                <Button variant="secondary" onClick={recorder.pause}>
-                  Pause
-                </Button>
-                <Button variant="danger" onClick={recorder.stop}>
-                  Stop
-                </Button>
-              </>
-            )}
-
-            {recorder.state === 'paused' && (
-              <>
-                <Button onClick={recorder.resume}>Resume</Button>
-                <Button variant="danger" onClick={recorder.stop}>
-                  Stop
-                </Button>
-              </>
-            )}
-          </div>
-
-          {(recorder.state === 'recording' || recorder.state === 'paused') && (
-            <p className="text-xs text-faint">
-              Keep this tab open. The audio is only in this browser until you upload
-              it, so closing the tab loses the recording.
-            </p>
+              </Field>
+            )
           )}
 
-          {recorder.blob !== null && previewUrl !== null && (
+          {boardFile === null ? (
+            <Field
+              label="Whiteboard photo"
+              htmlFor="boardFile"
+              hint="Optional. A photo of any whiteboard or flipchart used."
+            >
+              <Input
+                id="boardFile"
+                type="file"
+                accept="image/*"
+                disabled={busy}
+                onChange={(event) => setBoardFile(event.target.files?.[0] ?? null)}
+              />
+            </Field>
+          ) : (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-raised px-3 py-2">
+              <p className="truncate text-sm">{boardFile.name}</p>
+              <Button variant="secondary" disabled={busy} onClick={() => setBoardFile(null)}>
+                Remove
+              </Button>
+            </div>
+          )}
+
+          {readyBlob !== null && previewUrl !== null && (
             <div className="space-y-3 rounded-lg border border-line bg-raised p-4">
               <p className="text-sm font-medium">
-                {formatElapsed(recorder.elapsedMs)} recorded
+                {mode === 'record' ? `${formatElapsed(recorder.elapsedMs)} recorded` : audioFile?.name}
                 <span className="ml-2 font-normal text-faint">
-                  {(recorder.blob.size / 1_048_576).toFixed(1)} MB
+                  {(readyBlob.size / 1_048_576).toFixed(1)} MB
                 </span>
               </p>
               {/* Heard before it is committed. A silent take should be discovered
@@ -407,8 +513,18 @@ export default function RecordPage() {
                 >
                   {busy ? 'Uploading…' : 'Upload and transcribe'}
                 </Button>
-                <Button variant="secondary" disabled={busy} onClick={recorder.reset}>
-                  Discard and re-record
+                <Button
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    if (mode === 'record') {
+                      recorder.reset();
+                    } else {
+                      setAudioFile(null);
+                    }
+                  }}
+                >
+                  {mode === 'record' ? 'Discard and re-record' : 'Choose a different file'}
                 </Button>
               </div>
               {progress !== null && <p className="text-sm text-muted">{progress}</p>}

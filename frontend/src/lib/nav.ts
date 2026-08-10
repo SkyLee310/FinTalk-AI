@@ -8,10 +8,11 @@ import { can, type Capability, type Session } from './api';
  * meant. These five are the stages of the actual process: capture it, review it,
  * decide on it, look across all of it, administer who may do any of that.
  *
- * This lives in lib rather than in the layout because the post-login landing page
- * is derived from it. Sending someone to a page their own nav does not contain
- * strands them: an ADMIN landed on /meetings, could read the list, and then had no
- * link back after navigating away. One list, two consumers, no drift.
+ * This lives in lib rather than in the layout because /home, the post-login
+ * chooser, renders a card per entry this file yields. Sending someone to a page
+ * their own nav does not contain strands them: an ADMIN landed on /meetings,
+ * could read the list, and then had no link back after navigating away. One
+ * list, every consumer, no drift.
  */
 
 export interface NavItem {
@@ -72,19 +73,4 @@ export function isActive(pathname: string, item: NavItem): boolean {
 /** The sections this session may use. A nav item that 403s is worse than none. */
 export function visibleNav(session: Session | null): readonly NavItem[] {
   return NAV.filter((item) => item.needs.some((capability) => can(session, capability)));
-}
-
-/**
- * Where to send someone after they sign in.
- *
- * The first section their own navigation contains — so a MAKER lands on Capture, a
- * CHECKER on Decide, and an ADMIN on Administration rather than on a meetings list
- * with no link back to it.
- *
- * `/meetings` is the fallback for a role with no visible section at all. That is a
- * legitimate destination rather than a guess: every role holds `meeting:read`, and
- * the page renders an empty state rather than an error.
- */
-export function landingFor(session: Session | null): string {
-  return visibleNav(session)[0]?.href ?? '/meetings';
 }

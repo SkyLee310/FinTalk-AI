@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
+import { EXAMPLES } from '@/components/ask-fintalk-ai';
 import { Card, CardHeader } from '@/components/card';
 import { KnowledgeGraphView } from '@/components/knowledge-graph';
 import {
@@ -26,12 +27,6 @@ import { api, type AskAnswer } from '@/lib/api';
  * Every claim on this page about what the assistant will not do is enforced in
  * backend/src/knowledge/assistant.ts rather than merely promised here.
  */
-
-const EXAMPLES = [
-  'Which meetings discussed Murabahah pricing?',
-  'What was said about late payment penalties?',
-  'Where was an interest rate raised on an Islamic facility?',
-] as const;
 
 function Answer({ answer }: { answer: AskAnswer }) {
   return (

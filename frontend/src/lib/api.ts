@@ -261,6 +261,12 @@ export interface AskCitation {
   score: number;
 }
 
+/** Mirrors backend/src/knowledge/assistant.ts's AskHistoryTurn — the wire shape for one prior turn. */
+export interface AskHistoryTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface AskAnswer {
   answer: string;
   citations: AskCitation[];
@@ -419,7 +425,15 @@ export const api = {
    * question containing one is refused rather than searched, because a placeholder
    * could never match it anyway.
    */
-  ask: (question: string) => apiFetch<AskAnswer>('/knowledge/ask', json({ question })),
+  /**
+   * `history` is capped at 10 turns server-side (AskBody.history.max(10));
+   * callers slice before sending so a full conversation never 400s on a
+   * bound the client could have respected. Omitted entirely (not sent as
+   * an empty array) when there is no prior turn, so a first question is
+   * byte-identical to the pre-history request shape.
+   */
+  ask: (question: string, history?: readonly AskHistoryTurn[]) =>
+    apiFetch<AskAnswer>('/knowledge/ask', json({ question, history })),
 
   users: () => apiFetch<{ users: ManagedUser[] }>('/users'),
 

@@ -2,12 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
+import { AskFinTalkAI, AskFinTalkAITrigger, type ChatMessage } from '@/components/ask-fintalk-ai';
 import { Badge } from '@/components/badge';
 import { Logo } from '@/components/logo';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Button, ErrorNote, Spinner } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
-import { api, type Session } from '@/lib/api';
+import { api, can, type Session } from '@/lib/api';
 import { isActive, visibleNav } from '@/lib/nav';
 
 /**
@@ -21,6 +23,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { data: session, error, loading } = useAsync<Session>(() => api.me(), 'session');
+
+  // Lives here, not inside AskFinTalkAI, so a page navigation does not
+  // clear the conversation. Both still reset for free: this whole layout
+  // unmounts on sign-out (redirect to /login, outside this route group)
+  // and on a hard reload (fresh component instance, fresh useState).
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   // An expired or absent session sends the user to sign in rather than leaving
   // them on a shell full of empty panels.
@@ -80,6 +89,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="ml-auto flex items-center gap-3">
+            <ThemeToggle />
+            {/*
+              Gated on transcript:read, deliberately: the assistant reads the
+              redacted transcript corpus, and ADMIN holds every other broad
+              capability but not this one (backend/src/auth/rbac.ts). Showing
+              the trigger regardless of that gate would open a side door into
+              transcript content for a role the capability matrix keeps out.
+            */}
+            {can(session, 'transcript:read') && (
+              <AskFinTalkAITrigger onClick={() => setChatOpen(true)} />
+            )}
             <div className="text-right">
               <p className="text-xs font-medium leading-tight">{session.displayName}</p>
               <p className="text-xs leading-tight text-faint">{session.email}</p>
@@ -102,6 +122,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-5 py-8">
         {children}
       </main>
+
+      <AskFinTalkAI
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        messages={chatMessages}
+        setMessages={setChatMessages}
+      />
     </div>
   );
 }

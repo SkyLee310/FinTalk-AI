@@ -3,6 +3,7 @@ import type {
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
+  SyntheticEvent,
   TextareaHTMLAttributes,
 } from 'react';
 
@@ -119,12 +120,26 @@ export function Stat({
 export function Disclosure({
   summary,
   children,
+  open,
+  onToggle,
 }: {
   summary: string;
   children: ReactNode;
+  /** Omit for the existing uncontrolled behavior — the native <details> manages its own state. */
+  open?: boolean;
+  /** Fires on every open AND close. Task 13's accordion only acts on the open case. */
+  onToggle?: (open: boolean) => void;
 }) {
   return (
-    <details className="group rounded-lg border border-line bg-raised">
+    <details
+      open={open}
+      onToggle={
+        onToggle === undefined
+          ? undefined
+          : (event: SyntheticEvent<HTMLDetailsElement>) => onToggle(event.currentTarget.open)
+      }
+      className="group rounded-lg border border-line bg-raised"
+    >
       <summary
         className={`cursor-pointer list-none rounded-lg px-4 py-2.5 text-caption font-medium text-muted hover:text-text ${FOCUS}`}
       >
@@ -149,10 +164,18 @@ export function Button({
   className = '',
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof VARIANTS }) {
+  // `active:scale-[0.98]` rides on the existing bare `transition` utility
+  // rather than adding `transition-transform` alongside it: Tailwind's
+  // default `transition` already includes `transform`/`scale` in its
+  // property list, and a second transition-property utility on the same
+  // element would race it for which properties actually animate — risking
+  // the hover color/opacity transitions above going instant. One
+  // transition utility, one clear winner. globals.css's
+  // prefers-reduced-motion block still zeroes it, unchanged.
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium tracking-tight transition disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS} ${VARIANTS[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium tracking-tight transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS} ${VARIANTS[variant]} ${className}`}
     />
   );
 }

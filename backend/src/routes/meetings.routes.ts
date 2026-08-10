@@ -316,6 +316,10 @@ export function registerMeetingRoutes(
     { preHandler: [requireAuth, requireCapability('meeting:read')] },
     async (_request, reply) => {
       const meetings = await prisma.meeting.findMany({
+        // Archived rows are hidden from this list only — GET /meetings/:id and
+        // every referencing row (TermSheet, Approval, Settlement, ShariahFlag,
+        // Transcript) keep resolving them normally.
+        where: { archivedAt: null },
         orderBy: { occurredAt: 'desc' },
         select: {
           id: true,
@@ -324,6 +328,7 @@ export function registerMeetingRoutes(
           status: true,
           consentConfirmed: true,
           transferAcknowledged: true,
+          createdById: true,
           _count: { select: { shariahFlags: true, termSheets: true } },
         },
       });
@@ -336,10 +341,67 @@ export function registerMeetingRoutes(
           status: meeting.status,
           consentConfirmed: meeting.consentConfirmed,
           transferAcknowledged: meeting.transferAcknowledged,
+          createdById: meeting.createdById,
           shariahFlagCount: meeting._count.shariahFlags,
           termSheetCount: meeting._count.termSheets,
         })),
       });
+    },
+  );
+
+  /**
+   * Archive, never delete — the same reasoning as user deactivation. A
+   * Meeting is referenced by TermSheet, Approval, Settlement, ShariahFlag and
+   * Transcript, and every one of them must keep resolving meetingId after
+   * this route runs. Only this list's own query excludes an archived row.
+   *
+   * Scoped to the meeting's own creator: archiving is personal cleanup, not
+   * shared moderation. Widening it to SUPERVISOR or ADMIN later is a
+   * capability decision (meeting:archive), not a tweak to this check.
+   */
+  app.patch<{ Params: { id: string } }>(
+    '/meetings/:id/archive',
+    { preHandler: [requireAuth, requireCapability('meeting:create')] },
+    async (request, reply) => {
+      const actor = request.authUser;
+      if (actor === undefined) {
+        return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
+      }
+
+      const meeting = await prisma.meeting.findUnique({ where: { id: request.params.id } });
+      if (meeting === null) {
+        return sendProblem(reply, 404, 'Not found', 'No meeting exists with that id.');
+      }
+      if (meeting.createdById !== actor.id) {
+        return sendProblem(
+          reply,
+          403,
+          'Forbidden',
+          'Only the meeting you captured can be archived by you.',
+        );
+      }
+      if (meeting.archivedAt !== null) {
+        return sendProblem(reply, 409, 'Already archived', 'This meeting is already archived.');
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.meeting.update({ where: { id: meeting.id }, data: { archivedAt: new Date() } });
+
+        // Empty payload: the meeting's title is operator-typed free text that
+        // meeting.uploaded already excludes from audit payloads, for the
+        // same reason.
+        await appendAuditWithin(tx, {
+          at: new Date(),
+          actorId: actor.id,
+          actorRole: actor.role,
+          action: 'meeting.archived',
+          entityType: 'Meeting',
+          entityId: meeting.id,
+          payload: {},
+        });
+      });
+
+      return reply.status(200).send({ ok: true });
     },
   );
 

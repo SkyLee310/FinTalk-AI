@@ -25,8 +25,8 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-async function sessionFor(role: Role): Promise<string> {
-  const email = `${role.toLowerCase()}@fintalk.test`;
+async function sessionFor(role: Role, suffix = ''): Promise<string> {
+  const email = `${role.toLowerCase()}${suffix}@fintalk.test`;
   await prisma.user.create({
     data: {
       email,
@@ -353,5 +353,117 @@ describe('POST /meetings — the capture round trip', () => {
       headers: { cookie: await sessionFor('MAKER') },
     });
     expect(response.statusCode).toBe(404);
+  });
+});
+
+describe('PATCH /meetings/:id/archive', () => {
+  it('archives a meeting for the maker who created it', async () => {
+    const maker = await sessionFor('MAKER');
+    const meetingId = await uploadAndWait(maker);
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/meetings/${meetingId}/archive`,
+      headers: { cookie: maker },
+    });
+    expect(response.statusCode).toBe(200);
+
+    const stored = await prisma.meeting.findUniqueOrThrow({ where: { id: meetingId } });
+    expect(stored.archivedAt).not.toBeNull();
+
+    const entry = await prisma.auditEntry.findFirst({
+      where: { action: 'meeting.archived', entityId: meetingId },
+    });
+    expect(entry).not.toBeNull();
+  });
+
+  it('excludes an archived meeting from the list but the detail route still resolves it', async () => {
+    const maker = await sessionFor('MAKER', '-list');
+    const meetingId = await uploadAndWait(maker);
+
+    await app.inject({ method: 'PATCH', url: `/meetings/${meetingId}/archive`, headers: { cookie: maker } });
+
+    const list = await app.inject({ method: 'GET', url: '/meetings', headers: { cookie: maker } });
+    const ids = list.json<{ meetings: Array<{ id: string }> }>().meetings.map((m) => m.id);
+    expect(ids).not.toContain(meetingId);
+
+    const detail = await app.inject({ method: 'GET', url: `/meetings/${meetingId}`, headers: { cookie: maker } });
+    expect(detail.statusCode).toBe(200);
+
+    // A referencing row must keep resolving meetingId after the meeting is archived.
+    const sheet = await prisma.termSheet.create({
+      data: {
+        meetingId,
+        applicantName: 'Archived-facility Sdn Bhd',
+        currency: 'MYR',
+        principalMinor: 10_000_00n,
+        tenureMonths: 12,
+        facilityKind: 'CONVENTIONAL',
+        interestRateBps: 500,
+      },
+    });
+    const reloaded = await prisma.termSheet.findUniqueOrThrow({ where: { id: sheet.id } });
+    expect(reloaded.meetingId).toBe(meetingId);
+  });
+
+  it('refuses a maker who did not create this meeting', async () => {
+    const creator = await sessionFor('MAKER', '-owner');
+    const other = await sessionFor('MAKER', '-other');
+    const meetingId = await uploadAndWait(creator);
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/meetings/${meetingId}/archive`,
+      headers: { cookie: other },
+    });
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('refuses a role without meeting:create', async () => {
+    const maker = await sessionFor('MAKER', '-viewed');
+    const viewer = await sessionFor('VIEWER', '-x');
+    const meetingId = await uploadAndWait(maker);
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/meetings/${meetingId}/archive`,
+      headers: { cookie: viewer },
+    });
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('refuses archiving the same meeting twice', async () => {
+    const maker = await sessionFor('MAKER', '-twice');
+    const meetingId = await uploadAndWait(maker);
+
+    await app.inject({ method: 'PATCH', url: `/meetings/${meetingId}/archive`, headers: { cookie: maker } });
+    const second = await app.inject({
+      method: 'PATCH',
+      url: `/meetings/${meetingId}/archive`,
+      headers: { cookie: maker },
+    });
+    expect(second.statusCode).toBe(409);
+  });
+
+  it('answers 404 for an unknown meeting', async () => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/meetings/does-not-exist/archive',
+      headers: { cookie: await sessionFor('MAKER', '-404') },
+    });
+    expect(response.statusCode).toBe(404);
+  });
+});
+
+describe('GET /meetings response shape', () => {
+  it('includes createdById on each row', async () => {
+    const maker = await sessionFor('MAKER', '-shape');
+    const meetingId = await uploadAndWait(maker);
+
+    const response = await app.inject({ method: 'GET', url: '/meetings', headers: { cookie: maker } });
+    const row = response
+      .json<{ meetings: Array<{ id: string; createdById: string }> }>()
+      .meetings.find((m) => m.id === meetingId);
+    expect(row?.createdById).toBeTruthy();
   });
 });

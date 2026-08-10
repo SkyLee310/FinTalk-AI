@@ -1,4 +1,4 @@
-import { Prisma, type Role } from '@prisma/client';
+import { type Role } from '@prisma/client';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { FakeTranscriptionProvider } from '../../src/ai/fake.provider.js';
 import { ACCESS_COOKIE } from '../../src/auth/middleware.js';
@@ -251,7 +251,7 @@ describe('Settlement constraints', () => {
           simulated: false,
         },
       }),
-    ).rejects.toThrow(Prisma.PrismaClientKnownRequestError);
+    ).rejects.toThrow(/settlement_is_simulated/);
   });
 
   it('refuses a reference that could pass for a real one', async () => {
@@ -269,7 +269,7 @@ describe('Settlement constraints', () => {
           settledById: checkerId,
         },
       }),
-    ).rejects.toThrow(Prisma.PrismaClientKnownRequestError);
+    ).rejects.toThrow(/settlement_reference_is_marked_mock/);
   });
 
   it('refuses a zero amount', async () => {
@@ -286,6 +286,6 @@ describe('Settlement constraints', () => {
           settledById: checkerId,
         },
       }),
-    ).rejects.toThrow(Prisma.PrismaClientKnownRequestError);
+    ).rejects.toThrow(/settlement_amount_positive/);
   });
 });

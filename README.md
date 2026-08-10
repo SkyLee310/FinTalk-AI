@@ -205,9 +205,19 @@ CI runs all of it against a real Postgres 16, plus `gitleaks`, on every push.
 
 ### Backend → Railway
 
-Root directory `backend`. `railway.json` supplies the build and start commands; the start command applies migrations and `constraints.sql` before booting, so a fresh database is correct on first deploy.
+Root directory `backend`.
 
-Required variables: `DATABASE_URL`, `CORS_ORIGIN` (your Vercel URL), `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `PII_VAULT_KEY`, `TRANSCRIPTION_PROVIDER`, and the four `GEMINI_*` values if using Gemini.
+> **The pre-deploy command must apply migrations.** Set it, in the Railway dashboard, to:
+>
+> ```
+> npm run db:deploy && npm run db:constraints
+> ```
+>
+> Dashboard settings override `railway.json`, and on 2026-08-10 this service was configured to run `npm run db:seed:deploy` there instead — seeding but never migrating. Five consecutive deploys failed with Prisma `P2022`, because the pre-deploy seed used a client that knew about new columns against a database no migration had touched. The server never started, and Railway kept serving the last good build, so the app looked healthy while running stale code.
+>
+> Two rules follow from that. **Migrations run before anything else touches the database** — `constraints.sql` ALTERs tables the migrations create, so it cannot go first. And **seeding must never gate a deploy**: demo data failing to load is not a reason to refuse to serve.
+
+Required variables: `DATABASE_URL`, `CORS_ORIGIN` (your Vercel URL), `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `PII_VAULT_KEY`, `TRANSCRIPTION_PROVIDER`, and the four `GEMINI_*` values if using Gemini. `GEMINI_MODEL_EMBEDDING` is optional.
 
 Give the Postgres service a persistent volume at `/var/lib/postgresql/data`. Without one, the database is wiped whenever the container is recreated.
 

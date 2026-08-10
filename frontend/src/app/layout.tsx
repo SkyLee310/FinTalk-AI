@@ -18,6 +18,31 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        {/*
+          Runs before first paint so a stored theme choice never flashes the
+          wrong colors first. Mirrors lib/theme.ts's resolveTheme() logic
+          inline in plain JS — this executes before any module import is
+          possible, so it cannot import that function directly, and it must
+          read the exact same storage key lib/theme.ts writes
+          ('fintalk-theme') or the two would disagree. Wrapped in try/catch:
+          a browser with storage blocked (private mode, disabled cookies)
+          must still render.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                var stored = localStorage.getItem('fintalk-theme');
+                var theme = stored === 'light' || stored === 'dark'
+                  ? stored
+                  : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                document.documentElement.setAttribute('data-theme', theme);
+              } catch (e) {}
+            `,
+          }}
+        />
+      </head>
       <body className="min-h-screen antialiased">
         <a
           href="#main"

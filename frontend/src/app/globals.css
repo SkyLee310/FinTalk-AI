@@ -33,6 +33,10 @@
   --color-warn-soft: var(--warn-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+
+  --color-glass-bg: var(--glass-bg);
+  --color-glass-border: var(--glass-border);
+  --color-glass-highlight: var(--glass-highlight);
 }
 
 @theme {
@@ -102,10 +106,29 @@
   --warn-soft: #fdf1dc;
   --danger: #a81f18;
   --danger-soft: #fdeae8;
+
+  /*
+   * Glass tokens, additive to the opaque surface scale above. `--glass-bg`
+   * is deliberately mostly-opaque (not a thin 10-20% tint): backdrop-blur
+   * already erodes effective contrast versus a flat color, so the alpha
+   * here is chosen to keep --text and --muted over it clearing the same
+   * 4.5:1 floor --faint documents above, not to look maximally "glassy".
+   */
+  --glass-bg: rgb(255 255 255 / 68%);
+  --glass-border: rgb(255 255 255 / 55%);
+  --glass-highlight: rgb(255 255 255 / 85%);
 }
 
+/*
+ * `:not([data-theme="light"])` rather than plain `:root`: a media query
+ * gates applicability but contributes zero specificity, so without this
+ * exclusion an explicit light choice would lose to a dark OS preference.
+ * With it, system-dark still applies when the visitor has made no choice
+ * (the attribute is absent) and correctly stands down once they choose
+ * light explicitly.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --canvas: #060b11;
     --surface: #0c141d;
     --raised: #121d28;
@@ -127,7 +150,48 @@
     --warn-soft: #2a2008;
     --danger: #ff7a72;
     --danger-soft: #2d1211;
+
+    --glass-bg: rgb(18 29 40 / 62%);
+    --glass-border: rgb(255 255 255 / 8%);
+    --glass-highlight: rgb(255 255 255 / 6%);
   }
+}
+
+/*
+ * Unconditional dark block for an explicit choice. Its attribute selector
+ * outranks the plain `:root` light block regardless of source order, so
+ * choosing dark wins even on a light-OS visitor. Values are duplicated from
+ * the media block above rather than shared, because CSS custom properties
+ * cannot be conditionally imported — this is the accepted cost of two
+ * theme-selection paths (system preference and explicit override) needing
+ * the same numbers.
+ */
+:root[data-theme='dark'] {
+  --canvas: #060b11;
+  --surface: #0c141d;
+  --raised: #121d28;
+
+  --line: #1d2a37;
+  --line-strong: #2b3c4d;
+
+  --text: #e8eff6;
+  --muted: #9db0c3;
+  --faint: #6f8499;
+
+  --brand: #2ecfa9;
+  --brand-strong: #74e3c8;
+  --brand-soft: #0a2a24;
+
+  --ok: #35d39f;
+  --ok-soft: #082721;
+  --warn: #e0b341;
+  --warn-soft: #2a2008;
+  --danger: #ff7a72;
+  --danger-soft: #2d1211;
+
+  --glass-bg: rgb(18 29 40 / 62%);
+  --glass-border: rgb(255 255 255 / 8%);
+  --glass-highlight: rgb(255 255 255 / 6%);
 }
 
 @layer base {

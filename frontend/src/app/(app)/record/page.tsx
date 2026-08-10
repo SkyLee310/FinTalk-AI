@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { Card, CardHeader } from '@/components/card';
 import {
   isFullyAcknowledged,
   NO_ACKNOWLEDGEMENT,
@@ -11,6 +10,7 @@ import {
 } from '@/components/transfer-notice';
 import {
   Button,
+  Disclosure,
   ErrorNote,
   Field,
   Input,
@@ -29,6 +29,10 @@ import { api, can, type Session } from '@/lib/api';
  * acknowledgements come first, and the record button stays disabled until they
  * are given — consent obtained after the microphone opened would be consent to a
  * recording that already existed.
+ *
+ * The three steps below are an accordion, not three independent cards: each
+ * one gates the next, so the compliance order above is something the screen
+ * enforces rather than only asks for.
  */
 
 interface Participant {
@@ -100,8 +104,32 @@ export default function RecordPage() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
 
+  /**
+   * Which step is open, and whether each of the first two is satisfied.
+   * Continue only advances past a step once it is complete, and onToggle
+   * (below) only ever acts on *opening* a step — never on closing the one
+   * that is currently open — so a step never self-closes out from under
+   * the person filling it in. Every step stays reachable to reopen and
+   * edit, but only once its own predecessor is currently satisfied: this
+   * is what stops jumping straight to step 3 by clicking its (collapsed,
+   * not-yet-unlocked) summary before step 1 or 2 is done.
+   */
+  const [openStep, setOpenStep] = useState<1 | 2 | 3>(1);
+  const [submitted, setSubmitted] = useState(false);
+  const step1Complete = title.trim() !== '';
+  const step2Complete = isFullyAcknowledged(ack);
   const mayCreate = can(session.data, 'meeting:create');
-  const armed = title.trim() !== '' && isFullyAcknowledged(ack);
+  const armed = step1Complete && step2Complete;
+
+  function requestOpenStep(step: 1 | 2 | 3): void {
+    if (step === 1) setOpenStep(1);
+    else if (step === 2 && step1Complete) setOpenStep(2);
+    else if (step === 3 && armed) setOpenStep(3);
+  }
+
+  const step1Summary = step1Complete && openStep !== 1 ? `1. ${title}` : '1. What is this meeting?';
+  const step2Summary = step2Complete && openStep !== 2 ? '2. Consent confirmed' : '2. Permission to record';
+  const step3Summary = submitted ? '3. Submitted' : '3. Capture the audio';
 
   /** The take to submit, whichever way it was obtained. */
   const readyBlob: Blob | null = mode === 'record' ? recorder.blob : audioFile;
@@ -174,6 +202,7 @@ export default function RecordPage() {
 
     try {
       const { meetingId } = await api.uploadMeeting(form);
+      setSubmitted(true);
 
       /**
        * A separate request, because extraction is synchronous and takes
@@ -226,12 +255,18 @@ export default function RecordPage() {
 
       {error !== null && <ErrorNote>{error}</ErrorNote>}
 
-      <Card>
-        <CardHeader
-          title="1. What is this meeting?"
-          description="Stored with the transcript, so the record can be found again later."
-        />
-        <div className="space-y-4 px-5 py-4">
+      <Disclosure
+        summary={step1Summary}
+        open={openStep === 1}
+        onToggle={(open) => {
+          if (open) requestOpenStep(1);
+        }}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-faint">
+            Stored with the transcript, so the record can be found again later.
+          </p>
+
           <Field label="Title" htmlFor="title">
             <Input
               id="title"
@@ -317,25 +352,43 @@ export default function RecordPage() {
               Add another
             </Button>
           </fieldset>
-        </div>
-      </Card>
 
-      <Card>
-        <CardHeader
-          title="2. Permission to record"
-          description="Both are required before the microphone will open."
-        />
-        <div className="px-5 py-4">
+          <Button disabled={!step1Complete} onClick={() => requestOpenStep(2)}>
+            Continue
+          </Button>
+        </div>
+      </Disclosure>
+
+      <Disclosure
+        summary={step2Summary}
+        open={openStep === 2}
+        onToggle={(open) => {
+          if (open) requestOpenStep(2);
+        }}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-faint">Both are required before the microphone will open.</p>
+
           <TransferNotice value={ack} onChange={setAck} idPrefix="record" />
-        </div>
-      </Card>
 
-      <Card>
-        <CardHeader
-          title="3. Capture the audio"
-          description="Record here, or upload a file captured elsewhere — a phone, a Zoom export."
-        />
-        <div className="space-y-4 px-5 py-4">
+          <Button disabled={!step2Complete} onClick={() => requestOpenStep(3)}>
+            Continue
+          </Button>
+        </div>
+      </Disclosure>
+
+      <Disclosure
+        summary={step3Summary}
+        open={openStep === 3 && !submitted}
+        onToggle={(open) => {
+          if (open) requestOpenStep(3);
+        }}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-faint">
+            Record here, or upload a file captured elsewhere — a phone, a Zoom export.
+          </p>
+
           <fieldset className="flex flex-wrap gap-4" disabled={busy}>
             <legend className="sr-only">How was this meeting recorded</legend>
             <label className="flex items-center gap-2 text-sm">
@@ -359,12 +412,6 @@ export default function RecordPage() {
               Upload a file
             </label>
           </fieldset>
-
-          {!armed && (
-            <p className="text-sm text-muted">
-              Give the meeting a title and tick both boxes above to continue.
-            </p>
-          )}
 
           {mode === 'record' ? (
             <>
@@ -531,7 +578,7 @@ export default function RecordPage() {
             </div>
           )}
         </div>
-      </Card>
+      </Disclosure>
     </div>
   );
 }

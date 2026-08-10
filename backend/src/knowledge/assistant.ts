@@ -37,9 +37,50 @@ const RETRIEVAL_LIMIT = 5;
 /** Per-meeting excerpt cap, so one long transcript cannot crowd out the rest. */
 const EXCERPT_CHARS = 6_000;
 
+export interface AskHistoryTurn {
+  readonly role: 'user' | 'assistant';
+  readonly content: string;
+}
+
 export interface AskInput {
   readonly question: string;
   readonly actor: AuditActor;
+  /**
+   * Prior turns in this chat session, oldest first. Optional and capped by
+   * the route (`AskBody.history`, max 10) — this function accepts whatever
+   * it is given and does not re-enforce the cap, so the limit lives in
+   * exactly one place.
+   *
+   * Explicitly `| undefined` because this project runs with
+   * `exactOptionalPropertyTypes`: the route's zod-parsed `history` is typed
+   * `T[] | undefined` (present-but-undefined, not an absent key), and both
+   * mean "no history" here.
+   */
+  readonly history?: readonly AskHistoryTurn[] | undefined;
+}
+
+/**
+ * Folds prior turns and a new question into one string for retrieval and
+ * generation, so a follow-up ("what about the second one?") can resolve
+ * against what was actually asked and answered before it.
+ *
+ * Deliberately just a string transform: `TranscriptionProvider.embed` and
+ * `.answerFromContext` keep their existing single-string signatures, so
+ * neither `gemini.provider.ts` nor `fake.provider.ts` changes for this.
+ *
+ * Returns `question` unchanged when there is no history, so a first turn is
+ * byte-identical to today's single-turn behavior.
+ */
+export function withHistory(question: string, history?: readonly AskHistoryTurn[]): string {
+  if (history === undefined || history.length === 0) {
+    return question;
+  }
+
+  const transcript = history
+    .map((turn) => `${turn.role === 'user' ? 'User' : 'Assistant'}: ${turn.content}`)
+    .join('\n');
+
+  return `Earlier in this conversation:\n${transcript}\n\nNew question: ${question}`;
 }
 
 export interface Citation {
@@ -137,9 +178,15 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
    * right now, and nothing they type will change that. Conflating them here is
    * deliberate; the distinction is in the server log, where an operator will look.
    */
+  // Retrieval and generation see the history-folded composite, so a
+  // follow-up resolves against prior turns; the length check above, the PII
+  // refusal above, and the audit payload below all use the raw `question` —
+  // a reformulated string is a retrieval device, not what the user asked.
+  const composite = withHistory(question, input.history);
+
   let queryVector: readonly number[];
   try {
-    queryVector = await embed(question);
+    queryVector = await embed(composite);
   } catch {
     throw new ComplianceError(
       'assistant-unavailable',
@@ -179,7 +226,7 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
     }];
   });
 
-  const answer = await answerFromContext(question, excerpts);
+  const answer = await answerFromContext(composite, excerpts);
 
   /**
    * Citations are intersected with what was actually supplied.

@@ -19,6 +19,22 @@ import { buildGraph } from '../knowledge/graph.js';
 
 const AskBody = z.object({
   question: z.string().min(3).max(500),
+  /**
+   * Prior turns, oldest first. Capped at 10 so the composite `withHistory`
+   * builds stays within the provider's context bound. Rejecting an
+   * over-cap request (zod's default) rather than truncating it is
+   * deliberate: a silent truncation would drop the newest turn — the one
+   * the user just typed — without telling them.
+   */
+  history: z
+    .array(
+      z.object({
+        role: z.enum(['user', 'assistant']),
+        content: z.string().min(1).max(2000),
+      }),
+    )
+    .max(10)
+    .optional(),
 });
 
 export interface KnowledgeRouteDeps {
@@ -57,6 +73,7 @@ export function registerKnowledgeRoutes(
       const result = await ask(deps, {
         question: body.data.question,
         actor: { id: actor.id, role: actor.role },
+        history: body.data.history,
       });
       return reply.send(result);
     } catch (error) {

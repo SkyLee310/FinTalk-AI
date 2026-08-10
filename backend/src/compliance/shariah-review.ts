@@ -95,6 +95,37 @@ export async function reviewShariahFlag(
       },
     });
 
+    /**
+     * Whether the human agreed with the machine, recorded explicitly.
+     *
+     * The status alone does not answer that question legibly. A reviewer who
+     * CLEARED a finding disagreed with the engine and one who confirmed it
+     * agreed — but reading that back out of an enum means knowing which rule
+     * fired and what it claimed, which no later report reliably reconstructs.
+     *
+     * Written as a HumanEdit because that is the table this product already
+     * keeps for exactly this shape: the AI's value beside the human's. It makes
+     * the engine's precision measurable per rule, without a new table and
+     * without asking anyone to trust an inference.
+     *
+     * UNDER_REVIEW is excluded deliberately: it is a decision to decide later,
+     * and recording it as either agreement or disagreement would be false.
+     */
+    if (TERMINAL.includes(input.status)) {
+      await tx.humanEdit.create({
+        data: {
+          entityType: 'ShariahFlag',
+          entityId: flag.id,
+          editorId: input.reviewer.id,
+          // Carries which rule made the claim, so precision is measurable per rule.
+          fieldPath: `status:${flag.issueType}`,
+          aiValue: 'FLAGGED',
+          humanValue: input.status,
+          editedAt: at,
+        },
+      });
+    }
+
     await appendAuditWithin(tx, {
       at,
       actorId: input.reviewer.id,

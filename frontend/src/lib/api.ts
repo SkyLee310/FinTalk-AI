@@ -18,6 +18,7 @@ export type Capability =
   | 'termsheet:draft'
   | 'termsheet:submit'
   | 'termsheet:approve'
+  | 'payment:settle'
   | 'audit:read'
   | 'user:manage';
 
@@ -174,6 +175,27 @@ export interface TermSheetRow {
   status: ApprovalStatus;
 }
 
+export type SettlementRail = 'DUITNOW' | 'FPX';
+
+/**
+ * A simulated settlement. No money moved and no bank was contacted.
+ *
+ * `simulated` arrives from the server rather than being assumed here, so the UI
+ * cannot go on claiming a row is a mock if that ever stopped being true.
+ */
+export interface SettlementRow {
+  id: string;
+  rail: SettlementRail;
+  /** Always prefixed MOCK-. A database CHECK enforces it. */
+  mockReference: string;
+  /** Minor units, as a string. Never parsed into a number. */
+  amountMinor: string;
+  amountFormatted: string;
+  currency: string;
+  settledAt: string;
+  simulated: boolean;
+}
+
 export interface ApprovalRow {
   id: string;
   decision: ApprovalStatus;
@@ -184,6 +206,8 @@ export interface ApprovalRow {
   checkerId: string | null;
   note: string | null;
   termSheet: TermSheetRow;
+  /** Null until the approving checker records a settlement. */
+  settlement: SettlementRow | null;
 }
 
 export interface AuditRow {
@@ -300,6 +324,15 @@ export const api = {
       `/approvals/${approvalId}/decide`,
       json({ decision, note }),
     ),
+
+  /**
+   * Records a **simulated** settlement against an approved facility.
+   *
+   * No amount is sent: the server copies it from the approved term sheet, so a
+   * request cannot settle a different figure from the one the checker approved.
+   */
+  settle: (termSheetId: string, rail: SettlementRail) =>
+    apiFetch<SettlementRow>(`/term-sheets/${termSheetId}/settle`, json({ rail })),
 
   audit: () => apiFetch<{ integrity: AuditIntegrity; entries: AuditRow[] }>('/audit'),
 };

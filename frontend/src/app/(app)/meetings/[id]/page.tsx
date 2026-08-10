@@ -68,15 +68,41 @@ function RedactedText({ text }: { text: string }) {
   );
 }
 
+/**
+ * Plain-language names for what each rule looked for.
+ *
+ * The reviewer is answering a question about a concept, not about an enum. RIBA
+ * on a screen tells a qualified officer something; it tells everyone else
+ * nothing, and a decision made from a label nobody parsed is not a review.
+ */
+const ISSUE_LABEL: Record<string, string> = {
+  RIBA: 'riba — interest, or a charge that functions as interest',
+  GHARAR: 'gharar — excessive uncertainty in the contract terms',
+  MAYSIR: 'maysir — a speculative or gambling element',
+  HARAM_SECTOR: 'a prohibited business sector',
+  CONTRACT_MISMATCH: 'a mismatch between the contract named and the terms described',
+  LATE_PAYMENT_PENALTY: 'a late-payment penalty that may function as interest',
+};
+
+/**
+ * The Shariah decision, asked as a question rather than offered as a dropdown.
+ *
+ * Item 7: the human answers yes or no; the system does not decide. The three
+ * outcomes are the same enum values as before — the change is that they are
+ * phrased as answers a person can actually give, and each button states what it
+ * commits to. "Confirmed violation" as a select option asked the reviewer to
+ * translate their judgement into the schema's vocabulary before recording it.
+ *
+ * Yes and no are equally prominent and neither is preselected. A default answer
+ * to a compliance question is an answer nobody gave.
+ */
 function ReviewForm({ flag, onDone }: { flag: ShariahFlagRow; onDone: () => void }) {
-  const [status, setStatus] = useState<ShariahStatus>('CLEARED');
   const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<ShariahStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function submit(event: FormEvent): Promise<void> {
-    event.preventDefault();
-    setBusy(true);
+  async function record(status: ShariahStatus): Promise<void> {
+    setBusy(status);
     setError(null);
     try {
       await api.reviewFlag(flag.id, status, note);
@@ -84,48 +110,88 @@ function ReviewForm({ flag, onDone }: { flag: ShariahFlagRow; onDone: () => void
     } catch (cause) {
       setError(describeError(cause));
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
+  const described = ISSUE_LABEL[flag.issueType] ?? flag.issueType;
+  const noteRequired = note.trim() === '';
+
   return (
-    <form
-      onSubmit={(event) => {
-        void submit(event);
-      }}
-      className="mt-4 space-y-3 border-t border-line pt-4"
-    >
+    <div className="mt-4 space-y-3 border-t border-line pt-4">
       {error && <ErrorNote>{error}</ErrorNote>}
 
-      <Field label="Decision" htmlFor={`status-${flag.id}`}>
-        <Select
-          id={`status-${flag.id}`}
-          value={status}
-          onChange={(event) => setStatus(event.target.value as ShariahStatus)}
-        >
-          <option value="UNDER_REVIEW">Under review</option>
-          <option value="CLEARED">Cleared</option>
-          <option value="CONFIRMED_VIOLATION">Confirmed violation</option>
-        </Select>
-      </Field>
+      <div className="rounded-lg border border-line bg-raised p-4">
+        <p className="text-sm font-medium">
+          Is this a genuine Shariah concern?
+        </p>
+        <p className="mt-1 text-sm text-muted">
+          The <span className="font-mono text-xs">{flag.detectedBy}</span> rule flagged
+          what may be {described}. That is a machine reading of the transcript, not a
+          ruling. Your answer is the ruling.
+        </p>
+      </div>
 
       <Field
-        label="Reasoning"
+        label="Your reasoning"
         htmlFor={`note-${flag.id}`}
-        hint="Cite the placeholder, e.g. [NRIC_1]. A note containing personal data is rejected."
+        hint="Required for yes or no. Cite the placeholder, e.g. [NRIC_1] — a note containing personal data is rejected."
       >
         <Textarea
           id={`note-${flag.id}`}
           rows={3}
           value={note}
+          disabled={busy !== null}
           onChange={(event) => setNote(event.target.value)}
         />
       </Field>
 
-      <Button type="submit" disabled={busy}>
-        {busy ? 'Recording…' : 'Record decision'}
-      </Button>
-    </form>
+      <div className="flex flex-wrap gap-2">
+        {/*
+          Yes is the danger variant because confirming a violation blocks the
+          facility — the visual weight matches the consequence, not the sentiment.
+        */}
+        <Button
+          variant="danger"
+          disabled={busy !== null || noteRequired}
+          onClick={() => {
+            void record('CONFIRMED_VIOLATION');
+          }}
+        >
+          {busy === 'CONFIRMED_VIOLATION' ? 'Recording…' : 'Yes — this is a violation'}
+        </Button>
+        <Button
+          disabled={busy !== null || noteRequired}
+          onClick={() => {
+            void record('CLEARED');
+          }}
+        >
+          {busy === 'CLEARED' ? 'Recording…' : 'No — not an issue'}
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={busy !== null}
+          onClick={() => {
+            void record('UNDER_REVIEW');
+          }}
+        >
+          {busy === 'UNDER_REVIEW' ? 'Recording…' : 'Needs more review'}
+        </Button>
+      </div>
+
+      {noteRequired && (
+        <p className="text-xs text-faint">
+          A yes or no answer must record your reasoning. &ldquo;Needs more
+          review&rdquo; does not.
+        </p>
+      )}
+
+      <p className="text-xs text-faint">
+        Either answer is recorded against the rule that raised it, so how often the
+        system was right can be measured later. A facility cannot be submitted while
+        any finding is still open.
+      </p>
+    </div>
   );
 }
 

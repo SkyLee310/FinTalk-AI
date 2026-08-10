@@ -13,6 +13,7 @@ import {
 } from '../compliance/termsheet.js';
 import { buildPaymentCsv, minorToDecimal } from '../export/pain001.js';
 import { sendProblem } from '../http/problem.js';
+import { settleMock } from '../payments/mock-settlement.js';
 
 /**
  * Compliance surface: Shariah review, term sheets, maker–checker approval, and
@@ -50,6 +51,17 @@ const DecideBody = z.object({
 
 const CorrectBody = z.object({
   correctedText: z.string().min(1).max(4_000),
+});
+
+/**
+ * No amount field, deliberately.
+ *
+ * The settled amount is copied from the approved term sheet inside the service.
+ * Accepting one from the caller would let a request differ from what the checker
+ * approved, and this is precisely the seam where that must be impossible.
+ */
+const SettleBody = z.object({
+  rail: z.enum(['DUITNOW', 'FPX']),
 });
 
 function handleComplianceError(reply: FastifyReply, error: unknown): FastifyReply {
@@ -171,6 +183,56 @@ export function registerComplianceRoutes(
     },
   );
 
+  /**
+   * Records a **simulated** settlement. No money moves and no bank is contacted.
+   *
+   * Gated on `payment:settle`, which only CHECKER holds. The service narrows it
+   * further to the specific checker who approved that facility, so a second
+   * checker cannot release money against a decision they never read.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/term-sheets/:id/settle',
+    { preHandler: [requireAuth, requireCapability('payment:settle')] },
+    async (request, reply) => {
+      const actor = request.authUser;
+      if (actor === undefined) {
+        return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
+      }
+
+      const body = SettleBody.safeParse(request.body);
+      if (!body.success) {
+        return sendProblem(
+          reply,
+          400,
+          'Invalid request',
+          'A rail of DUITNOW or FPX is required.',
+        );
+      }
+
+      try {
+        const settlement = await settleMock(prisma, {
+          termSheetId: request.params.id,
+          rail: body.data.rail,
+          actor: { id: actor.id, role: actor.role },
+        });
+
+        return reply.code(201).send({
+          id: settlement.id,
+          rail: settlement.rail,
+          mockReference: settlement.mockReference,
+          // A string, like every money value crossing this boundary.
+          amountMinor: settlement.amountMinor.toString(),
+          amountFormatted: minorToDecimal(settlement.amountMinor),
+          currency: settlement.currency,
+          settledAt: settlement.settledAt.toISOString(),
+          simulated: settlement.simulated,
+        });
+      } catch (error) {
+        return handleComplianceError(reply, error);
+      }
+    },
+  );
+
   app.post<{ Params: { id: string } }>(
     '/shariah-flags/:id/review',
     { preHandler: [requireAuth, requireCapability('shariah:review')] },
@@ -278,7 +340,10 @@ export function registerComplianceRoutes(
     async (_request, reply) => {
       const approvals = await prisma.approval.findMany({
         orderBy: { submittedAt: 'desc' },
-        include: { termSheet: true, maker: { select: { displayName: true } } },
+        include: {
+          termSheet: { include: { settlement: true } },
+          maker: { select: { displayName: true } },
+        },
       });
 
       return reply.send({
@@ -292,6 +357,24 @@ export function registerComplianceRoutes(
           checkerId: approval.checkerId,
           note: approval.note,
           termSheet: serialiseTermSheet(approval.termSheet),
+          /**
+           * Null until settled. `simulated` is carried on the wire rather than
+           * assumed by the client: a UI that hardcodes "this is a mock" would
+           * keep saying so even if the field ever stopped being true.
+           */
+          settlement:
+            approval.termSheet.settlement === null
+              ? null
+              : {
+                  id: approval.termSheet.settlement.id,
+                  rail: approval.termSheet.settlement.rail,
+                  mockReference: approval.termSheet.settlement.mockReference,
+                  amountMinor: approval.termSheet.settlement.amountMinor.toString(),
+                  amountFormatted: minorToDecimal(approval.termSheet.settlement.amountMinor),
+                  currency: approval.termSheet.settlement.currency,
+                  settledAt: approval.termSheet.settlement.settledAt.toISOString(),
+                  simulated: approval.termSheet.settlement.simulated,
+                },
         })),
       });
     },

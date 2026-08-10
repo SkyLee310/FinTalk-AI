@@ -72,6 +72,13 @@ enum ApprovalStatus {
   WITHDRAWN
 }
 
+/// Malaysian retail payment rails. Named for realism in a simulation — no
+/// integration with either exists, and none is planned in this codebase.
+enum SettlementRail {
+  DUITNOW
+  FPX
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -86,6 +93,7 @@ model User {
   approvalsChecked  Approval[]          @relation("Checker")
   humanEdits        HumanEdit[]
   segmentsConfirmed TranscriptSegment[] @relation("SegmentConfirmer")
+  settlements       Settlement[]        @relation("Settler")
 }
 
 model Meeting {
@@ -297,10 +305,41 @@ model TermSheet {
   status          ApprovalStatus   @default(DRAFT)
   createdAt       DateTime         @default(now())
 
-  meeting  Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  approval Approval?
+  meeting    Meeting     @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  approval   Approval?
+  settlement Settlement?
 
   @@index([meetingId])
+}
+
+/// A **simulated** settlement. No money moves and no bank is contacted.
+///
+/// `simulated` carries a `CHECK (simulated = true)` in prisma/sql/constraints.sql,
+/// so a row cannot be edited to look real without a migration that shows up in
+/// review. `mockReference` is always prefixed MOCK- for the same reason: a
+/// reference that could pass for a genuine DuitNow one in a screenshot would be
+/// the whole problem.
+///
+/// One settlement per term sheet, enforced by the unique key rather than by a
+/// service check, because "we already paid this" is not a race to lose.
+model Settlement {
+  id            String         @id @default(cuid())
+  termSheetId   String         @unique
+  rail          SettlementRail
+  /// Always MOCK-<RAIL>-<random>. Never a plausible real reference.
+  mockReference String         @unique
+  /// Minor units, copied from the approved term sheet — never from a request.
+  amountMinor BigInt
+  currency    String
+  settledById String
+  settledAt   DateTime @default(now())
+  /// Always true. The CHECK constraint makes false unstorable.
+  simulated Boolean @default(true)
+
+  termSheet TermSheet @relation(fields: [termSheetId], references: [id], onDelete: Cascade)
+  settledBy User      @relation("Settler", fields: [settledById], references: [id])
+
+  @@index([settledById])
 }
 
 /// checkerId != makerId is enforced by approval_checker_not_maker.

@@ -19,6 +19,7 @@ export type Capability =
   | 'termsheet:draft'
   | 'termsheet:submit'
   | 'termsheet:approve'
+  | 'payment:settle'
   | 'audit:read'
   | 'user:manage';
 
@@ -33,10 +34,20 @@ const CAPABILITIES: Readonly<Record<Role, readonly Capability[]>> = Object.freez
     'termsheet:submit',
   ]),
 
+  /**
+   * `payment:settle` sits with CHECKER by the product owner's decision.
+   *
+   * It does not weaken four-eyes: CHECKER still holds neither `termsheet:draft`
+   * nor `termsheet:submit`, so the person who wrote the facility is still never
+   * the person who approves or settles it. The service narrows it further —
+   * only the checker who actually approved that facility may settle it, so a
+   * second checker cannot release money against a decision they never read.
+   */
   CHECKER: Object.freeze<Capability[]>([
     'meeting:read',
     'transcript:read',
     'termsheet:approve',
+    'payment:settle',
   ]),
 
   SHARIAH: Object.freeze<Capability[]>([

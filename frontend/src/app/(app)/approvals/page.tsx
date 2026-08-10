@@ -9,12 +9,20 @@ import {
   EmptyState,
   ErrorNote,
   Field,
+  Select,
   Spinner,
   SuccessNote,
   Textarea,
 } from '@/components/ui';
 import { describeError, useAsync } from '@/hooks/use-async';
-import { api, type ApprovalRow, type ApprovalStatus, can, type Session } from '@/lib/api';
+import {
+  api,
+  type ApprovalRow,
+  type ApprovalStatus,
+  can,
+  type Session,
+  type SettlementRail,
+} from '@/lib/api';
 
 const DECISION_TONE: Record<ApprovalStatus, Tone> = {
   DRAFT: 'neutral',
@@ -98,6 +106,94 @@ function DecideForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
   );
 }
 
+/**
+ * Simulated settlement.
+ *
+ * Every surface here says so, and that repetition is deliberate rather than
+ * clumsy: the reference itself carries MOCK-, the badge says Simulated, and the
+ * copy states plainly that no funds moved and no bank was contacted. Someone
+ * screenshotting this for a demo must not be able to crop it into looking like a
+ * real payment confirmation.
+ */
+function SettleForm({ approval, onDone }: { approval: ApprovalRow; onDone: () => void }) {
+  const [rail, setRail] = useState<SettlementRail>('DUITNOW');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const settlement = approval.settlement;
+
+  if (settlement !== null) {
+    return (
+      <div className="mt-4 space-y-2 border-t border-line pt-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="ok" dot>
+            Settled
+          </Badge>
+          <Badge tone="warn">{settlement.simulated ? 'Simulated' : 'NOT SIMULATED'}</Badge>
+          <Badge tone="neutral">{settlement.rail}</Badge>
+        </div>
+        <dl className="divide-y divide-line">
+          <DataRow label="Reference">
+            <span className="font-mono text-xs">{settlement.mockReference}</span>
+          </DataRow>
+          <DataRow label="Amount">
+            <span className="font-mono">
+              {settlement.currency} {settlement.amountFormatted}
+            </span>
+          </DataRow>
+          <DataRow label="Recorded">
+            {new Date(settlement.settledAt).toLocaleString()}
+          </DataRow>
+        </dl>
+        <p className="text-xs text-faint">
+          No funds moved and no bank was contacted. This is a simulated record for
+          demonstration, and the reference is not a real DuitNow or FPX reference.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 space-y-3 border-t border-line pt-4">
+      {error !== null && <ErrorNote>{error}</ErrorNote>}
+
+      <Field
+        label="Record a simulated transfer"
+        htmlFor={`rail-${approval.id}`}
+        hint="Nothing is sent to any bank. The amount is taken from the approved figures, not from this form."
+      >
+        <Select
+          id={`rail-${approval.id}`}
+          value={rail}
+          onChange={(event) => setRail(event.target.value as SettlementRail)}
+        >
+          <option value="DUITNOW">DuitNow</option>
+          <option value="FPX">FPX</option>
+        </Select>
+      </Field>
+
+      <Button
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          setError(null);
+          api
+            .settle(approval.termSheet.id, rail)
+            .then(onDone)
+            .catch((cause: unknown) => {
+              setError(describeError(cause));
+            })
+            .finally(() => {
+              setBusy(false);
+            });
+        }}
+      >
+        {busy ? 'Recording…' : 'Record simulated settlement'}
+      </Button>
+    </div>
+  );
+}
+
 export default function ApprovalsPage() {
   const session = useAsync<Session>(() => api.me(), 'session');
   const approvals = useAsync(() => api.approvals(), 'approvals');
@@ -105,6 +201,12 @@ export default function ApprovalsPage() {
 
   const mayDecide = can(session.data, 'termsheet:approve');
   const mayDownload = can(session.data, 'termsheet:submit');
+  /**
+   * CHECKER only, and the server narrows it further to the checker who actually
+   * approved that facility — so this button appearing is not the same as the
+   * settlement being permitted, and the 403 message says which checker it wants.
+   */
+  const maySettle = can(session.data, 'payment:settle');
 
   return (
     <div className="space-y-6">
@@ -189,6 +291,19 @@ export default function ApprovalsPage() {
                       approval={approval}
                       onDone={() => {
                         setDone('Decision recorded and written to the audit log.');
+                        approvals.reload();
+                      }}
+                    />
+                  )}
+
+                  {maySettle && approval.decision === 'APPROVED' && (
+                    <SettleForm
+                      approval={approval}
+                      onDone={() => {
+                        setDone(
+                          'Simulated settlement recorded and written to the audit log. '
+                          + 'No funds moved.',
+                        );
                         approvals.reload();
                       }}
                     />

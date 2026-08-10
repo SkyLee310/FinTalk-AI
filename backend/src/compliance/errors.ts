@@ -21,7 +21,9 @@ export type ComplianceErrorCode =
   | 'already-confirmed'
   | 'correction-empty'
   | 'correction-identical'
-  | 'correction-contains-personal-data';
+  | 'correction-contains-personal-data'
+  // Mock settlement (Phase 3).
+  | 'already-settled';
 
 export class ComplianceError extends Error {
   readonly code: ComplianceErrorCode;

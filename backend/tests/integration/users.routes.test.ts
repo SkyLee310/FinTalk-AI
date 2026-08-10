@@ -53,6 +53,23 @@ async function sessionFor(role: Role, suffix = ''): Promise<{ id: string; cookie
   };
 }
 
+async function pendingApplicant(suffix: string): Promise<{ id: string; email: string }> {
+  const email = `pending${suffix}@fintalk.test`;
+  await app.inject({
+    method: 'POST',
+    url: '/auth/register',
+    payload: {
+      displayName: `Pending ${suffix}`,
+      email,
+      password: 'Demo!2345',
+      username: `pendinguser${suffix}`,
+      staffId: `STF-${suffix}`,
+    },
+  });
+  const { id } = await prisma.user.findUniqueOrThrow({ where: { email } });
+  return { id, email };
+}
+
 describe('GET /users', () => {
   it('lists users with the capabilities their role grants', async () => {
     const admin = await sessionFor('ADMIN');
@@ -316,5 +333,131 @@ describe('PATCH /users/:id/active', () => {
       where: { action: { in: ['user.reactivated', 'user.deactivated'] } },
     });
     expect(entries).toBe(0);
+  });
+});
+
+describe('PATCH /users/:id/approve', () => {
+  it('grants the chosen role and activates the account', async () => {
+    const admin = await sessionFor('ADMIN');
+    const applicant = await pendingApplicant('a1');
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/users/${applicant.id}/approve`,
+      headers: { cookie: admin.cookie },
+      payload: { role: 'MAKER' },
+    });
+    expect(response.statusCode).toBe(200);
+
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: applicant.id } });
+    expect(stored.role).toBe('MAKER');
+    expect(stored.accountStatus).toBe('ACTIVE');
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: applicant.email, password: 'Demo!2345' },
+    });
+    expect(login.statusCode).toBe(200);
+  });
+
+  it('audits the approval with the granted role', async () => {
+    const admin = await sessionFor('ADMIN');
+    const applicant = await pendingApplicant('a2');
+
+    await app.inject({
+      method: 'PATCH',
+      url: `/users/${applicant.id}/approve`,
+      headers: { cookie: admin.cookie },
+      payload: { role: 'CHECKER' },
+    });
+
+    const entry = await prisma.auditEntry.findFirst({
+      where: { action: 'user.approved', entityId: applicant.id },
+    });
+    expect(entry?.payload).toMatchObject({ role: 'CHECKER' });
+  });
+
+  it('refuses a row that is already active', async () => {
+    const admin = await sessionFor('ADMIN');
+    const other = await sessionFor('VIEWER', '-active');
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/users/${other.id}/approve`,
+      headers: { cookie: admin.cookie },
+      payload: { role: 'MAKER' },
+    });
+    expect(response.statusCode).toBe(409);
+  });
+
+  it('refuses a caller without user:manage', async () => {
+    const checker = await sessionFor('CHECKER');
+    const applicant = await pendingApplicant('a3');
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/users/${applicant.id}/approve`,
+      headers: { cookie: checker.cookie },
+      payload: { role: 'MAKER' },
+    });
+    expect(response.statusCode).toBe(403);
+  });
+});
+
+describe('PATCH /users/:id/reject', () => {
+  it('deletes the row and audits a full snapshot', async () => {
+    const admin = await sessionFor('ADMIN');
+    const applicant = await pendingApplicant('r1');
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/users/${applicant.id}/reject`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(response.statusCode).toBe(200);
+
+    expect(await prisma.user.findUnique({ where: { id: applicant.id } })).toBeNull();
+
+    const entry = await prisma.auditEntry.findFirst({
+      where: { action: 'user.registration.rejected', entityId: applicant.id },
+    });
+    expect(entry?.payload).toMatchObject({
+      email: applicant.email,
+      displayName: 'Pending r1',
+      username: 'pendinguserr1',
+      staffId: 'STF-r1',
+    });
+  });
+
+  it('refuses a row that is already active', async () => {
+    const admin = await sessionFor('ADMIN');
+    const other = await sessionFor('VIEWER', '-active2');
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/users/${other.id}/reject`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(response.statusCode).toBe(409);
+  });
+});
+
+describe('GET /users pending row shape', () => {
+  it('reports a pending applicant with no role and no capabilities', async () => {
+    const admin = await sessionFor('ADMIN');
+    await pendingApplicant('shape1');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/users',
+      headers: { cookie: admin.cookie },
+    });
+    const body = response.json<{
+      users: Array<{ email: string; accountStatus: string; role: string | null; capabilities: string[] }>;
+    }>();
+    const row = body.users.find((u) => u.email === 'pendingshape1@fintalk.test');
+
+    expect(row).toMatchObject({ accountStatus: 'PENDING', role: null, capabilities: [] });
   });
 });

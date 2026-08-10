@@ -40,6 +40,8 @@ const RoleBody = z.object({ role: z.enum(ROLES) });
 
 const ActiveBody = z.object({ active: z.boolean() });
 
+const ApproveBody = z.object({ role: z.enum(ROLES) });
+
 export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): void {
   const gate = { preHandler: [requireAuth, requireCapability('user:manage')] };
 
@@ -51,6 +53,9 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
         email: true,
         displayName: true,
         role: true,
+        accountStatus: true,
+        username: true,
+        staffId: true,
         createdAt: true,
         deactivatedAt: true,
       },
@@ -62,11 +67,15 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
         email: user.email,
         displayName: user.displayName,
         role: user.role,
+        accountStatus: user.accountStatus,
+        username: user.username,
+        staffId: user.staffId,
         createdAt: user.createdAt.toISOString(),
         deactivatedAt: user.deactivatedAt?.toISOString() ?? null,
         // Sent so the UI can show what a role actually permits, rather than
-        // asking an administrator to remember the matrix.
-        capabilities: capabilitiesOf(user.role),
+        // asking an administrator to remember the matrix. A PENDING row has
+        // no role yet, so it gets no capabilities rather than a crash.
+        capabilities: user.role === null ? [] : capabilitiesOf(user.role),
       })),
     });
   });
@@ -148,7 +157,11 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
       role: created.role,
       createdAt: created.createdAt.toISOString(),
       deactivatedAt: null,
-      capabilities: capabilitiesOf(created.role),
+      // body.data.role, not created.role: same reasoning as PATCH
+      // /users/:id/role below — equal at runtime (we just created the row
+      // with it), non-null at the type level because zod already validated
+      // it, whereas created.role stays Role | null per the schema.
+      capabilities: capabilitiesOf(body.data.role),
     });
   });
 
@@ -176,6 +189,21 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
     const user = await prisma.user.findUnique({ where: { id: request.params.id } });
     if (user === null) {
       return sendProblem(reply, 404, 'Not found', 'No user exists with that id.');
+    }
+
+    // This route is for changing an already-active user's role. A still-PENDING
+    // registration has no role to "change" — approving it via PATCH
+    // /users/:id/approve is the dedicated path, and letting this route also
+    // assign a role would leave accountStatus stuck at PENDING with a role
+    // already set, a state approve/reject never produce and shouldn't have to
+    // reason about.
+    if (user.accountStatus === 'PENDING') {
+      return sendProblem(
+        reply,
+        409,
+        'Not active',
+        'This account is still awaiting approval. Approve it instead of changing its role.',
+      );
     }
 
     if (user.role === body.data.role) {
@@ -213,7 +241,11 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
       role: updated.role,
       createdAt: updated.createdAt.toISOString(),
       deactivatedAt: updated.deactivatedAt?.toISOString() ?? null,
-      capabilities: capabilitiesOf(updated.role),
+      // body.data.role, not updated.role: they're equal at runtime (we just
+      // set it), but body.data.role is the non-null value zod already
+      // validated, and the PENDING guard above is what makes that equality
+      // hold — updated.role stays typed Role | null at the schema level.
+      capabilities: capabilitiesOf(body.data.role),
     });
   });
 
@@ -292,7 +324,109 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
       role: updated.role,
       createdAt: updated.createdAt.toISOString(),
       deactivatedAt: updated.deactivatedAt?.toISOString() ?? null,
-      capabilities: capabilitiesOf(updated.role),
+      // Role is untouched by this route, so a still-PENDING row (role null)
+      // is possible here in principle — same null-tolerant treatment as
+      // GET /users, rather than assuming this route only ever sees active
+      // accounts.
+      capabilities: updated.role === null ? [] : capabilitiesOf(updated.role),
     });
+  });
+
+  /**
+   * Grants a role and activates a self-registered account in one step. A
+   * PENDING row has no role and no capability, so it cannot yet be referenced
+   * by anything else in the system — this is the only route that turns one
+   * into a normal, sign-in-able User.
+   */
+  app.patch<{ Params: { id: string } }>('/users/:id/approve', gate, async (request, reply) => {
+    const actor = request.authUser;
+    if (actor === undefined) {
+      return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
+    }
+
+    const body = ApproveBody.safeParse(request.body);
+    if (!body.success) {
+      return sendProblem(reply, 400, 'Invalid request', 'A valid role is required.');
+    }
+
+    const target = await prisma.user.findUnique({ where: { id: request.params.id } });
+    if (target === null) {
+      return sendProblem(reply, 404, 'Not found', 'No user exists with that id.');
+    }
+    if (target.accountStatus !== 'PENDING') {
+      return sendProblem(
+        reply,
+        409,
+        'Not pending',
+        'This account is not awaiting approval.',
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: target.id },
+        data: { role: body.data.role, accountStatus: 'ACTIVE' },
+      });
+
+      await appendAuditWithin(tx, {
+        at: new Date(),
+        actorId: actor.id,
+        actorRole: actor.role,
+        action: 'user.approved',
+        entityType: 'User',
+        entityId: target.id,
+        payload: { role: body.data.role },
+      });
+    });
+
+    return reply.status(200).send({ ok: true });
+  });
+
+  /**
+   * Deletes a still-PENDING registration — the one entity in this system that
+   * a hard delete is safe for, because nothing else can yet reference it (no
+   * role, no capability, no session ever issued). The audit entry snapshots
+   * every submitted field first, since after the delete it is the only
+   * surviving record of the submission.
+   */
+  app.patch<{ Params: { id: string } }>('/users/:id/reject', gate, async (request, reply) => {
+    const actor = request.authUser;
+    if (actor === undefined) {
+      return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
+    }
+
+    const target = await prisma.user.findUnique({ where: { id: request.params.id } });
+    if (target === null) {
+      return sendProblem(reply, 404, 'Not found', 'No user exists with that id.');
+    }
+    if (target.accountStatus !== 'PENDING') {
+      return sendProblem(
+        reply,
+        409,
+        'Not pending',
+        'This account is not awaiting approval.',
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await appendAuditWithin(tx, {
+        at: new Date(),
+        actorId: actor.id,
+        actorRole: actor.role,
+        action: 'user.registration.rejected',
+        entityType: 'User',
+        entityId: target.id,
+        payload: {
+          displayName: target.displayName,
+          email: target.email,
+          username: target.username,
+          staffId: target.staffId,
+        },
+      });
+
+      await tx.user.delete({ where: { id: target.id } });
+    });
+
+    return reply.status(200).send({ ok: true });
   });
 }

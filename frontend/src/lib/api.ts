@@ -52,6 +52,8 @@ export interface MeetingSummary {
   transferAcknowledged: boolean;
   shariahFlagCount: number;
   termSheetCount: number;
+  /** Sent by GET /meetings since the archive route shipped — who may archive this row. */
+  createdById: string;
 }
 
 /**
@@ -280,11 +282,16 @@ export interface ManagedUser {
   id: string;
   email: string;
   displayName: string;
-  role: Role;
+  /** Null until an admin approves a PENDING registration (PATCH /users/:id/approve). */
+  role: Role | null;
+  accountStatus: AccountStatus;
+  /** Collected at registration. Null for an admin-created account that predates it. */
+  username: string | null;
+  staffId: string | null;
   createdAt: string;
   /** Null means active. A deactivated account cannot sign in. */
   deactivatedAt: string | null;
-  /** What this role permits, so the UI need not restate the matrix. */
+  /** What this role permits, so the UI need not restate the matrix. Empty for a PENDING row, which holds none. */
   capabilities: Capability[];
 }
 

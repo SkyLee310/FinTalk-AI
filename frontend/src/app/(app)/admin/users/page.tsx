@@ -158,6 +158,11 @@ function UserRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const active = user.deactivatedAt === null;
+  // ManagedUser.role is Role | null because a PENDING registration has none
+  // yet (Task 11 of the UX redesign). This row only ever renders an ACTIVE
+  // account — Task 16 adds the PENDING queue as its own separate list — so
+  // the non-null assertion just states what is already true here.
+  const role = user.role!;
 
   async function run(action: () => Promise<unknown>, message: string): Promise<void> {
     setBusy(true);
@@ -184,7 +189,7 @@ function UserRow({
             <p className="mt-0.5 truncate text-caption text-faint">{user.email}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={active ? 'brand' : 'neutral'}>{user.role}</Badge>
+            <Badge tone={active ? 'brand' : 'neutral'}>{role}</Badge>
             {!active && (
               <Badge tone="danger" dot>
                 Deactivated
@@ -194,7 +199,7 @@ function UserRow({
         </div>
 
         <p className="mt-2 text-caption leading-relaxed text-muted">
-          {ROLE_MEANING[user.role]}
+          {ROLE_MEANING[role]}
         </p>
 
         {error !== null && (
@@ -212,7 +217,7 @@ function UserRow({
           <Field label="Change role" htmlFor={`role-${user.id}`}>
             <Select
               id={`role-${user.id}`}
-              value={user.role}
+              value={role}
               disabled={busy || isSelf}
               onChange={(event) => {
                 const next = event.target.value as Role;
@@ -254,7 +259,7 @@ function UserRow({
         </div>
 
         <div className="mt-4">
-          <Disclosure summary={`What ${user.role} may do`}>
+          <Disclosure summary={`What ${role} may do`}>
             <ul className="space-y-1">
               {user.capabilities.map((capability) => (
                 <li key={capability} className="font-mono text-caption text-muted">

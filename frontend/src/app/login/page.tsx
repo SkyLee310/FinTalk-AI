@@ -7,6 +7,7 @@ import { Logo } from '@/components/logo';
 import { Button, ErrorNote, Field, Input } from '@/components/ui';
 import { describeError } from '@/hooks/use-async';
 import { api } from '@/lib/api';
+import { landingFor } from '@/lib/nav';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,8 +21,20 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      await api.login(email, password);
-      router.push('/meetings');
+      /**
+       * Land on the first section this role's own navigation contains.
+       *
+       * `/meetings` for everyone was wrong in a way only visible on the live site:
+       * an ADMIN arrived there, saw the list because they hold `meeting:read`, and
+       * had no Review nav item to return by — Review is gated on `transcript:read`,
+       * which ADMIN deliberately lacks. `landingFor` reads the same list the nav
+       * renders, so the two cannot disagree.
+       *
+       * The session comes from login's own response rather than a second /auth/me
+       * round trip.
+       */
+      const session = await api.login(email, password);
+      router.push(landingFor(session));
     } catch (cause) {
       setError(describeError(cause));
     } finally {

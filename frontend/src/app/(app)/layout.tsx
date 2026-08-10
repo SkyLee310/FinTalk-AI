@@ -7,82 +7,16 @@ import { Badge } from '@/components/badge';
 import { Logo } from '@/components/logo';
 import { Button, ErrorNote, Spinner } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
-import { api, can, type Capability, type Session } from '@/lib/api';
+import { api, type Session } from '@/lib/api';
+import { isActive, visibleNav } from '@/lib/nav';
 
 /**
- * Navigation named after the work, not after the tables.
+ * The signed-in shell.
  *
- * The old nav read Meetings / Approvals / Audit — three nouns that told a tester
- * nothing about what to do or in what order, which is what "unclear direction"
- * meant. These five are the stages of the actual process: capture it, review it,
- * decide on it, look across all of it, administer who may do any of that.
- *
- * Each entry declares the capability it needs, and `can()` filters the list — so
- * a CHECKER never sees Capture and a MAKER never sees Administration. A nav item
- * that leads to a 403 is worse than an absent one: it invites a click and then
- * refuses it.
- *
- * `needs` is the capability that makes the *section* useful, not merely readable.
- * Decide asks for `termsheet:draft` OR `termsheet:approve`, which is why it takes
- * a list.
+ * The navigation itself lives in lib/nav.ts, because the post-login landing page is
+ * derived from the same list — sending someone to a page their nav does not contain
+ * strands them there.
  */
-interface NavItem {
-  readonly href: string;
-  readonly label: string;
-  readonly hint: string;
-  /** Visible when the session holds any one of these. */
-  readonly needs: readonly Capability[];
-  /**
-   * Extra path prefixes this section owns, for pages whose URL predates the
-   * grouping. /audit keeps its address — a section rename is no reason to break
-   * a bookmark or an audit link someone pasted into a ticket — but it belongs
-   * under Administration, so highlighting has to know that.
-   */
-  readonly owns?: readonly string[];
-}
-
-/** True when the current path belongs to this section. */
-function isActive(pathname: string, item: NavItem): boolean {
-  const prefixes = [item.href, ...(item.owns ?? [])];
-  return prefixes.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
-}
-
-const NAV: readonly NavItem[] = [
-  {
-    href: '/record',
-    label: 'Capture',
-    hint: 'Record or upload a meeting',
-    needs: ['meeting:create'],
-  },
-  {
-    href: '/meetings',
-    label: 'Review',
-    hint: 'Transcripts, redactions and Shariah findings',
-    needs: ['transcript:read'],
-  },
-  {
-    href: '/approvals',
-    label: 'Decide',
-    hint: 'Term sheets, approvals and settlement',
-    needs: ['termsheet:draft', 'termsheet:approve'],
-  },
-  {
-    href: '/knowledge',
-    label: 'Knowledge',
-    hint: 'Ask across every meeting, and see how they connect',
-    needs: ['transcript:read'],
-  },
-  {
-    href: '/admin',
-    label: 'Administration',
-    hint: 'Users, audit trail and system health',
-    needs: ['user:manage', 'audit:read'],
-    owns: ['/audit'],
-  },
-];
-
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -110,9 +44,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  const visible = NAV.filter((item) =>
-    item.needs.some((capability) => can(session, capability)),
-  );
+  const visible = visibleNav(session);
 
   return (
     <div className="flex min-h-screen flex-col">

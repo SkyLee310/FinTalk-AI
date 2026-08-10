@@ -79,13 +79,35 @@ enum SettlementRail {
   FPX
 }
 
+/// PENDING is reachable only through POST /auth/register and never receives a
+/// session (login checks this at the same point as deactivatedAt). It has no
+/// role and no capability, so nothing else in the system can reference it —
+/// which is what lets a rejected PENDING row be hard-deleted safely, unlike
+/// every other entity here.
+enum AccountStatus {
+  PENDING
+  ACTIVE
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
   displayName  String
-  role         Role
-  createdAt    DateTime @default(now())
+  /// Null only while accountStatus is PENDING — a self-registered applicant
+  /// has no role until an admin approves them (PATCH /users/:id/approve).
+  role          Role?
+  /// Existing rows default to ACTIVE: every one of them was admin-created with
+  /// a role already assigned, so no backfill judgment call is needed.
+  accountStatus AccountStatus @default(ACTIVE)
+  /// Collected at self-service sign-up for the approving admin to cross-check
+  /// manually. Not a login identifier — login stays email + password. Nullable
+  /// because admin-direct-created accounts (POST /users) never collect one.
+  username String? @unique
+  /// Same nullability reasoning as username. No uniqueness constraint: an
+  /// employer's staff ID scheme is not this app's to enforce.
+  staffId String?
+  createdAt DateTime @default(now())
   /// Set when an administrator revokes access. Deactivated, never deleted: a
   /// User is referenced by audit entries, approvals, settlements and confirmed
   /// segments, and removing the row would orphan attribution the record depends
@@ -128,6 +150,12 @@ model Meeting {
   transferAcknowledged Boolean  @default(false)
   createdById          String
   createdAt            DateTime @default(now())
+  /// Archive, never delete: TermSheet/Approval/Settlement/ShariahFlag/Transcript
+  /// all keep resolving meetingId after this is set. Only GET /meetings' own
+  /// query excludes an archived row — GET /meetings/:id still returns it in
+  /// full. Set only via PATCH /meetings/:id/archive, restricted to the MAKER
+  /// who created it.
+  archivedAt DateTime?
 
   createdBy    User                 @relation(fields: [createdById], references: [id])
   transcript   Transcript?

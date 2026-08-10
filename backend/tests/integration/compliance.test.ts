@@ -64,6 +64,7 @@ async function capturedMeeting(): Promise<string> {
     title: 'SME Loan Approval Meeting',
     occurredAt: '2026-08-07T02:30:00.000Z',
     consentConfirmed: 'true',
+    transferAcknowledged: 'true',
   };
 
   const chunks: Buffer[] = [];

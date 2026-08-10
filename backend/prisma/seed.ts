@@ -52,6 +52,7 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
       occurredAt: new Date('2026-08-07T02:30:00Z'),
       status: 'READY',
       consentConfirmed: true,
+      transferAcknowledged: true,
       createdById: maker.id,
     },
   });

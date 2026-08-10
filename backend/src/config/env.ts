@@ -6,7 +6,14 @@ const base = z.object({
   CORS_ORIGIN: z.string().url(),
   DATABASE_URL: z.string().min(1),
 
-  TRANSCRIPTION_PROVIDER: z.enum(['gemini', 'local', 'fake']).default('gemini'),
+  /**
+   * `local` was withdrawn on 2026-08-10 and is now a hard boot failure rather
+   * than a silently ignored value. An existing deployment still carrying it
+   * will refuse to start and name the variable — which is the outcome to want.
+   * Accepting it and falling through to another provider would transcribe
+   * meetings somewhere the operator did not choose.
+   */
+  TRANSCRIPTION_PROVIDER: z.enum(['gemini', 'fake']).default('gemini'),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL_TRANSCRIBE: z.string().optional(),
   GEMINI_MODEL_VISION: z.string().optional(),

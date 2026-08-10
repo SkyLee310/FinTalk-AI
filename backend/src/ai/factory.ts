@@ -1,7 +1,6 @@
 import type { Env } from '../config/env.js';
 import { FakeTranscriptionProvider } from './fake.provider.js';
 import { GeminiTranscriptionProvider } from './gemini.provider.js';
-import { LocalTranscriptionProvider } from './local.provider.js';
 import type { TranscriptionProvider } from './provider.js';
 
 /**
@@ -16,9 +15,6 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
   switch (env.TRANSCRIPTION_PROVIDER) {
     case 'fake':
       return new FakeTranscriptionProvider();
-
-    case 'local':
-      return new LocalTranscriptionProvider();
 
     case 'gemini': {
       const {

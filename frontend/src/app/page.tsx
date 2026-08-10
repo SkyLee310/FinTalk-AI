@@ -143,10 +143,17 @@ export default async function HomePage() {
               <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-ok" />
               <span>Hash-chained audit log, verified on every read of the trail.</span>
             </li>
+            {/*
+              Kept deliberately on the landing page rather than buried in a
+              policy link. Transcription sends audio to Google before anything is
+              redacted, and a limitation a visitor has to go looking for is one
+              the product is hiding.
+            */}
             <li className="flex gap-2.5">
-              <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-faint" />
-              <span className="text-faint">
-                On-device audio pre-screening is not built.
+              <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-warn" />
+              <span className="text-muted">
+                Audio is transcribed by Google Gemini, so it leaves Malaysia before
+                redaction. Every recording requires an explicit acknowledgement first.
               </span>
             </li>
           </ul>

@@ -98,6 +98,26 @@ export function registerMeetingRoutes(
         );
       }
 
+      /**
+       * Cross-border transfer gate — a separate refusal, not a second reading of
+       * the same one.
+       *
+       * Consenting to be recorded is not the same act as accepting that the
+       * recording leaves Malaysia for Google and is redacted only after it
+       * arrives. Collapsing the two into one checkbox would leave the audit log
+       * unable to show which was actually agreed to (spec §12.3).
+       */
+      if (fields.get('transferAcknowledged') !== 'true') {
+        return sendProblem(
+          reply,
+          422,
+          'Transfer acknowledgement required',
+          'This recording is transcribed by Google Gemini, so the audio leaves '
+          + 'Malaysia before any personal data is removed from it. That transfer '
+          + 'must be acknowledged before the recording can be processed.',
+        );
+      }
+
       if (audioBytes === undefined || audioBytes.byteLength === 0) {
         return sendProblem(
           reply,
@@ -126,6 +146,7 @@ export function registerMeetingRoutes(
             occurredAt: new Date(metadata.data.occurredAt),
             status: 'CAPTURED',
             consentConfirmed: true,
+            transferAcknowledged: true,
             createdById: actor.id,
           },
         });
@@ -139,6 +160,10 @@ export function registerMeetingRoutes(
           entityId: created.id,
           payload: {
             consentConfirmed: true,
+            // Recorded separately so the log shows which of the two acts was
+            // agreed to, rather than one flag standing in for both.
+            transferAcknowledged: true,
+            transferProcessor: 'google-gemini',
             occurredAt: created.occurredAt.toISOString(),
             audioBytes: audioBytes.byteLength,
             audioMimeType,
@@ -198,6 +223,7 @@ export function registerMeetingRoutes(
           occurredAt: true,
           status: true,
           consentConfirmed: true,
+          transferAcknowledged: true,
           _count: { select: { shariahFlags: true, termSheets: true } },
         },
       });
@@ -209,6 +235,7 @@ export function registerMeetingRoutes(
           occurredAt: meeting.occurredAt.toISOString(),
           status: meeting.status,
           consentConfirmed: meeting.consentConfirmed,
+          transferAcknowledged: meeting.transferAcknowledged,
           shariahFlagCount: meeting._count.shariahFlags,
           termSheetCount: meeting._count.termSheets,
         })),
@@ -256,6 +283,7 @@ export function registerMeetingRoutes(
         status: meeting.status,
         failureReason: meeting.failureReason,
         consentConfirmed: meeting.consentConfirmed,
+        transferAcknowledged: meeting.transferAcknowledged,
         transcript:
           meeting.transcript === null
             ? null

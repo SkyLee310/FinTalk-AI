@@ -45,6 +45,7 @@ export interface MeetingSummary {
   occurredAt: string;
   status: MeetingStatus;
   consentConfirmed: boolean;
+  transferAcknowledged: boolean;
   shariahFlagCount: number;
   termSheetCount: number;
 }
@@ -95,6 +96,7 @@ export interface MeetingDetail {
   status: MeetingStatus;
   failureReason: string | null;
   consentConfirmed: boolean;
+  transferAcknowledged: boolean;
   transcript: {
     id: string;
     rawRedacted: string;

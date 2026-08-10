@@ -5,12 +5,14 @@
  * deliberate: model output is untrusted personal data, and the type system will
  * not let it reach storeTranscript without passing through redact() first.
  *
- * Keeping this an interface is also what makes the cross-border transfer in
- * RISK-001 reversible. Swapping `gemini` for a host-local implementation is a
- * configuration change, not a rewrite.
+ * Keeping this an interface is what would make the cross-border transfer in
+ * RISK-001 reversible: a host-local implementation would be a configuration
+ * change here rather than a rewrite. No such implementation exists. A `local`
+ * variant was carried as a stub and withdrawn on 2026-08-10 — it named a
+ * capability the product did not have, which is worse than an honest gap.
  */
 
-export type ProviderName = 'gemini' | 'local' | 'fake';
+export type ProviderName = 'gemini' | 'fake';
 
 export interface AudioInput {
   readonly bytes: Uint8Array;

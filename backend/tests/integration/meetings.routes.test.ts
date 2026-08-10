@@ -92,6 +92,7 @@ const METADATA = {
   title: 'SME Loan Approval Meeting',
   occurredAt: '2026-08-07T02:30:00.000Z',
   consentConfirmed: 'true',
+  transferAcknowledged: 'true',
 };
 
 function upload(cookie: string, fields: Record<string, string>, withAudio = true) {
@@ -173,6 +174,36 @@ describe('POST /meetings — consent gate', () => {
     const cookie = await sessionFor('MAKER');
     const { title, occurredAt } = METADATA;
     const response = await upload(cookie, { title, occurredAt });
+
+    expect(response.statusCode).toBe(422);
+    expect(await prisma.meeting.count()).toBe(0);
+  });
+
+  /**
+   * The transfer acknowledgement is a second, independent refusal.
+   *
+   * Consenting to be recorded is not the same act as accepting that the audio
+   * leaves Malaysia for Google before anything is redacted. If one field could
+   * satisfy both gates, the audit log would be unable to show which was actually
+   * agreed to — so this asserts that consent alone is not enough.
+   */
+  it('refuses to process when only consent is given, without the transfer acknowledgement', async () => {
+    const cookie = await sessionFor('MAKER');
+    const response = await upload(cookie, {
+      ...METADATA,
+      transferAcknowledged: 'false',
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json<{ detail: string }>().detail).toMatch(/google|transfer/i);
+    expect(await prisma.meeting.count()).toBe(0);
+    expect(await prisma.transcript.count()).toBe(0);
+  });
+
+  it('refuses when the transfer field is absent entirely', async () => {
+    const cookie = await sessionFor('MAKER');
+    const { title, occurredAt, consentConfirmed } = METADATA;
+    const response = await upload(cookie, { title, occurredAt, consentConfirmed });
 
     expect(response.statusCode).toBe(422);
     expect(await prisma.meeting.count()).toBe(0);
@@ -294,6 +325,11 @@ describe('POST /meetings — the capture round trip', () => {
     expect(entry.actorRole).toBe('MAKER');
     expect(entry.payload).toMatchObject({
       consentConfirmed: true,
+      // Recorded separately from consent, and naming the processor, so the log
+      // shows what was actually agreed to rather than one flag standing in for
+      // two different acts (spec §12.3).
+      transferAcknowledged: true,
+      transferProcessor: 'google-gemini',
       audioBytes: AUDIO.body.byteLength,
       audioMimeType: 'audio/wav',
     });

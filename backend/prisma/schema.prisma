@@ -88,14 +88,22 @@ model User {
 }
 
 model Meeting {
-  id               String        @id @default(cuid())
-  title            String
-  occurredAt       DateTime
-  status           MeetingStatus @default(CAPTURED)
-  failureReason    String?
-  consentConfirmed Boolean       @default(false)
-  createdById      String
-  createdAt        DateTime      @default(now())
+  id            String        @id @default(cuid())
+  title         String
+  occurredAt    DateTime
+  status        MeetingStatus @default(CAPTURED)
+  failureReason String?
+  /// Participants consented to being recorded.
+  consentConfirmed Boolean @default(false)
+  /// The operator acknowledged that audio crosses the border to Google before
+  /// redaction. Deliberately separate from consentConfirmed: consenting to a
+  /// recording and accepting a cross-border transfer are two different things,
+  /// and one checkbox covering both would evidence neither (spec §12.3).
+  /// Existing rows default to false, which is accurate — those uploads were
+  /// never shown the disclosure.
+  transferAcknowledged Boolean  @default(false)
+  createdById          String
+  createdAt            DateTime @default(now())
 
   createdBy    User          @relation(fields: [createdById], references: [id])
   transcript   Transcript?

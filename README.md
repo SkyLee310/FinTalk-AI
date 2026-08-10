@@ -14,7 +14,7 @@ A credit committee meets, argues in three languages at once, and reaches a decis
 | **Redact** | NRIC, bank account, card, phone and email are replaced with stable placeholders and sealed into an encrypted vault **before** anything reaches the database. |
 | **Screen** | Six Shariah rules run over the redacted transcript and raise findings — riba, gharar, maysir, prohibited sector, contract mismatch, late-payment penalty. |
 | **Decide** | A maker drafts a term sheet; a different person approves it. Every step is written to a hash-chained audit log. |
-| **Export** | An approved facility produces an ISO 20022 `pain.001` payload for a human to submit through their own banking channel. |
+| **Export** | An approved facility produces a CSV handoff of the approved figures, for a human to complete in their own banking channel. Never a payment instruction. |
 
 ### Four guarantees, and how each is enforced
 
@@ -32,7 +32,7 @@ These are not conventions. Each one fails loudly if broken.
 
 Read these before showing the app to a bank.
 
-- **Audio reaches Google.** Transcription uses the Gemini API, so speech — including a spoken NRIC — leaves the host before it is redacted. Raw audio is never *stored*, and personal data is redacted before *persistence*, but the transfer itself is real. Tracked as RISK-001 in the design spec. Local, on-premise transcription is designed for and stubbed, not built.
+- **Audio reaches Google.** Transcription uses the Gemini API, so speech — including a spoken NRIC — leaves the host before it is redacted. Raw audio is never *stored*, and personal data is redacted before *persistence*, but the transfer itself is real. Tracked as RISK-001 in the design spec. The app states this in plain words and requires an explicit acknowledgement before it will accept a recording. **There is no on-premise option.** A `local` provider was carried as a stub and withdrawn on 2026-08-10: it named a capability the product did not have.
 - **Not a compliance certification.** Every regulatory reference in the code is marked *requires legal confirmation*. Shariah findings are advisory input for a qualified reviewer.
 - **No payment is ever submitted.** The export module contains no function that transmits anything, and a test asserts that absence.
 - **Names and addresses are not detected.** Regex handles the deterministic identifiers listed above. Person names and addresses need a model pass, which is not built — a regex guessing at names would put false confidence into a log an auditor is meant to trust.
@@ -50,12 +50,12 @@ FinTalk-AI/
 │   │   ├── config/env.ts       the only reader of process.env; fails at boot on a bad value
 │   │   ├── auth/               argon2, split-audience JWTs, capability matrix
 │   │   ├── pdpa/               detectors · AES-256-GCM vault · redactor · transcript store
-│   │   ├── ai/                 provider seam: gemini | local | fake
+│   │   ├── ai/                 provider seam: gemini | fake
 │   │   ├── pipeline/           transcribe → redact → summarise → persist → screen
 │   │   ├── shariah/            six rules and the engine
 │   │   ├── compliance/         Shariah review · term sheet · maker–checker
 │   │   ├── audit/              hash-chained append-only log
-│   │   ├── export/             ISO 20022 pain.001 and CSV
+│   │   ├── export/             CSV handoff of an approved facility
 │   │   └── routes/
 │   ├── prisma/                 schema · migrations · sql/constraints.sql · seed
 │   └── tests/                  unit and integration
@@ -216,8 +216,10 @@ Root directory `frontend`. Set `NEXT_PUBLIC_API_BASE_URL` to the Railway backend
 
 ## Project status
 
-Built and tested: capture, PDPA redaction, Shariah screening, maker–checker approval, hash-chained audit, ISO 20022 export, and the screens for all of it.
+Built and tested: audio capture, whiteboard capture with the diagram drawn, PDPA redaction, Shariah screening, maker–checker approval, hash-chained audit, CSV handoff, and the screens for all of it.
 
-Not built: whiteboard capture, on-device audio pre-screening, name and address detection, historical meeting search, and the full BNM rule library — this ships a starter set of six rules.
+Not built: name and address detection, historical meeting search, and the full BNM rule library — this ships a starter set of six rules.
+
+Withdrawn: on-device transcription and on-device audio pre-screening, both removed on 2026-08-10. They were interfaces without implementations.
 
 The design specification, including the contradictions found in the original pitch deck and how each was resolved, is in `docs/superpowers/specs/`.

@@ -13,6 +13,12 @@ import {
   Spinner,
   SuccessNote,
 } from '@/components/ui';
+import {
+  isFullyAcknowledged,
+  NO_ACKNOWLEDGEMENT,
+  type TransferAcknowledgement,
+  TransferNotice,
+} from '@/components/transfer-notice';
 import { describeError, useAsync } from '@/hooks/use-async';
 import { api, can, type MeetingStatus, type Session } from '@/lib/api';
 
@@ -30,7 +36,7 @@ export default function MeetingsPage() {
   const [title, setTitle] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [board, setBoard] = useState<File | null>(null);
-  const [consent, setConsent] = useState(false);
+  const [ack, setAck] = useState<TransferAcknowledgement>(NO_ACKNOWLEDGEMENT);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -48,14 +54,17 @@ export default function MeetingsPage() {
     const form = new FormData();
     form.set('title', title);
     form.set('occurredAt', new Date().toISOString());
-    form.set('consentConfirmed', String(consent));
+    form.set('consentConfirmed', String(ack.consentConfirmed));
+    form.set('transferAcknowledged', String(ack.transferAcknowledged));
     form.set('audio', file);
 
     try {
       const { meetingId } = await api.uploadMeeting(form);
       setTitle('');
       setFile(null);
-      setConsent(false);
+      // Reset both, so the next upload records its own acknowledgement rather
+      // than inheriting one given for a different recording.
+      setAck(NO_ACKNOWLEDGEMENT);
       meetings.reload();
 
       /**
@@ -199,25 +208,15 @@ export default function MeetingsPage() {
             </Field>
 
             {/*
-              The consent gate. The backend refuses to process without it, before
-              looking at the audio — this checkbox is the operator's record of
-              having asked, not a formality the UI can skip.
+              Consent and the cross-border transfer, as two separate agreements.
+              The route refuses either one missing, before it looks at the audio.
             */}
-            <div className="flex gap-2.5 rounded-lg border border-line bg-raised px-4 py-3">
-              <input
-                id="consent"
-                type="checkbox"
-                checked={consent}
-                onChange={(event) => setConsent(event.target.checked)}
-                className="mt-0.5 size-4 shrink-0 accent-brand"
-              />
-              <label htmlFor="consent" className="text-sm text-muted">
-                Every participant was informed the meeting is recorded and processed, and
-                consented. Processing is refused without this.
-              </label>
-            </div>
+            <TransferNotice value={ack} onChange={setAck} idPrefix="upload" />
 
-            <Button type="submit" disabled={busy || !consent || file === null}>
+            <Button
+              type="submit"
+              disabled={busy || !isFullyAcknowledged(ack) || file === null}
+            >
               {busy ? 'Processing…' : 'Upload and process'}
             </Button>
           </form>

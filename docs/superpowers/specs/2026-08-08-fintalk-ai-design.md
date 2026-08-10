@@ -554,3 +554,58 @@ Reason for deferral: the digit pre-screen needs local STT model weights, which
 were not obtainable in the build environment. §11.4's four binding constraints
 remain in force for whenever it is built; nothing in the current pipeline
 contradicts them, because the pipeline does not yet include that stage.
+
+---
+
+## 12. Amendment, 2026-08-10 — local transcription withdrawn
+
+**By the product owner's decision: all speech-to-text and vision extraction runs
+on Google Gemini. There is no on-device path, and the one that was stubbed has
+been deleted.**
+
+This supersedes §6.2's three-way provider seam, §11.4's Option B, and §11.5's
+deferral. It does not supersede §7.1 RISK-001, which it makes permanent rather
+than mitigable.
+
+### 12.1 What was removed
+
+- `backend/src/ai/local.provider.ts` and `backend/scripts/try-local-transcribe.ts`.
+- The `@huggingface/transformers` dependency.
+- `local` from `ProviderName` and from the `TRANSCRIPTION_PROVIDER` enum. The
+  value is now a **boot failure**, not an unrecognised default: an operator who
+  had configured against a cross-border transfer must be stopped, not quietly
+  given Gemini.
+
+### 12.2 Why the stub was worse than the gap
+
+§6.2 argued the seam kept RISK-001 reversible. That argument only holds while a
+second implementation is genuinely reachable, and measurement showed it was not.
+A Whisper `large-v3` trial on this project's own Bahasa Rojak fixture ran at
+roughly 5× realtime on CPU and logged "defaulting to English" 21 times across
+114 segments — degrading precisely the three-way code-switching that §11.4
+identifies as the product's differentiator. The credible path (a Malaysian
+fine-tune on a GPU host) needs infrastructure this deployment does not have.
+
+An interface named `local` with nothing behind it read, to anyone scanning the
+tree, as an on-premise option. Deleting it removes a claim the product could not
+honour. The `TranscriptionProvider` interface itself stays — `fake` depends on
+it, and the test suite runs entirely through it.
+
+### 12.3 What replaces the mitigation
+
+RISK-001's residual risk is no longer "reversible via the provider seam". It is
+disclosed instead, in three places:
+
+1. **Before capture.** The upload and record flows require two distinct
+   confirmations: participant consent, and acknowledgement that audio and
+   whiteboard images are transmitted to Google outside Malaysia and are
+   redacted **after** that transfer, not before. `Meeting.transferAcknowledged`
+   records the second; both appear in the `meeting.uploaded` audit payload.
+2. **On the record.** The meeting detail page states it for every meeting, so
+   the disclosure is part of the artifact and not only of the moment.
+3. **In the README and on the landing page**, as a limitation a visitor meets
+   rather than one they must go looking for.
+
+Vertex AI pinned to `asia-southeast1` remains the real mitigation and remains
+unbuilt. Nothing in this amendment may be described as reducing RISK-001's
+severity.

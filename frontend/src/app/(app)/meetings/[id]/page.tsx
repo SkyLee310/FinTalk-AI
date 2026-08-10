@@ -5,6 +5,7 @@ import { type FormEvent, useState } from 'react';
 import { Badge, type Tone } from '@/components/badge';
 import { Card, CardHeader, DataRow } from '@/components/card';
 import { MermaidDiagram } from '@/components/mermaid-diagram';
+import { TransferRecord } from '@/components/transfer-notice';
 import {
   Button,
   EmptyState,
@@ -352,10 +353,24 @@ export default function MeetingDetailPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {data.consentConfirmed && <Badge tone="ok">Consent confirmed</Badge>}
+          {data.transferAcknowledged && <Badge tone="ok">Transfer acknowledged</Badge>}
           <Badge tone={data.status === 'READY' ? 'ok' : 'warn'} dot>
             {data.status}
           </Badge>
         </div>
+      </div>
+
+      {/*
+        The cross-border transfer, stated on the record rather than only at the
+        moment it was agreed to. A meeting captured before this gate existed says
+        so plainly — its audio still went to Google, and an empty space here would
+        imply it had not.
+      */}
+      <div className="rounded-lg border border-line bg-raised px-4 py-3">
+        <TransferRecord
+          consentConfirmed={data.consentConfirmed}
+          transferAcknowledged={data.transferAcknowledged}
+        />
       </div>
 
       {data.failureReason !== null && (

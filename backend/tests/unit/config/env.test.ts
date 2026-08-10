@@ -47,6 +47,33 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...valid, TRANSCRIPTION_PROVIDER: 'fake' })).not.toThrow();
   });
 
+  /**
+   * The withdrawn `local` provider must fail loudly, not fall through.
+   *
+   * A deployment still carrying TRANSCRIPTION_PROVIDER=local has to stop and say
+   * so. Were the value merely unrecognised and defaulted away, that operator
+   * would get Gemini — a cross-border transfer they had explicitly configured
+   * against. This asserts the refusal, and that the message names the variable.
+   */
+  it('rejects the withdrawn local provider by name', () => {
+    expect(() => parseEnv({ ...valid, TRANSCRIPTION_PROVIDER: 'local' }))
+      .toThrow(/TRANSCRIPTION_PROVIDER/);
+  });
+
+  it('accepts only gemini and fake as providers', () => {
+    for (const provider of ['gemini', 'fake']) {
+      const raw = {
+        ...valid,
+        TRANSCRIPTION_PROVIDER: provider,
+        GEMINI_API_KEY: 'key',
+        GEMINI_MODEL_TRANSCRIBE: 'model-id',
+        GEMINI_MODEL_VISION: 'model-id',
+        GEMINI_MODEL_TEXT: 'model-id',
+      };
+      expect(parseEnv(raw).TRANSCRIPTION_PROVIDER).toBe(provider);
+    }
+  });
+
   it('requires the three model IDs when the provider is gemini', () => {
     expect(() => parseEnv({
       ...valid,

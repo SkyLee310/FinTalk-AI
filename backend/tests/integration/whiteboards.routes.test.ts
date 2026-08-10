@@ -75,6 +75,7 @@ async function meetingForMaker(): Promise<string> {
       title: 'Whiteboard meeting',
       occurredAt: new Date('2026-08-09T02:00:00Z'),
       consentConfirmed: true,
+      transferAcknowledged: true,
       createdById: user.id,
     },
   });

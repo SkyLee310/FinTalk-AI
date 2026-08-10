@@ -16,7 +16,12 @@ export type ComplianceErrorCode =
   | 'unresolved-shariah-flags'
   | 'self-approval'
   | 'invalid-state'
-  | 'invalid-facility';
+  | 'invalid-facility'
+  // Transcript segment review (Phase 2).
+  | 'already-confirmed'
+  | 'correction-empty'
+  | 'correction-identical'
+  | 'correction-contains-personal-data';
 
 export class ComplianceError extends Error {
   readonly code: ComplianceErrorCode;

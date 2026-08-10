@@ -10,6 +10,9 @@ import { useAsync } from '@/hooks/use-async';
 import { api, can, type Capability, type Session } from '@/lib/api';
 
 const NAV: { href: string; label: string; needs: Capability }[] = [
+  // Recording is the primary way in, so it leads. Phase 4 groups these into
+  // task-named sections; until then it simply needs to be reachable.
+  { href: '/record', label: 'Record', needs: 'meeting:create' },
   { href: '/meetings', label: 'Meetings', needs: 'meeting:read' },
   { href: '/approvals', label: 'Approvals', needs: 'meeting:read' },
   { href: '/audit', label: 'Audit', needs: 'audit:read' },

@@ -80,17 +80,28 @@ model User {
   role         Role
   createdAt    DateTime @default(now())
 
-  meetings         Meeting[]
-  shariahReviews   ShariahFlag[] @relation("ShariahReviewer")
-  approvalsMade    Approval[]    @relation("Maker")
-  approvalsChecked Approval[]    @relation("Checker")
-  humanEdits       HumanEdit[]
+  meetings          Meeting[]
+  shariahReviews    ShariahFlag[]       @relation("ShariahReviewer")
+  approvalsMade     Approval[]          @relation("Maker")
+  approvalsChecked  Approval[]          @relation("Checker")
+  humanEdits        HumanEdit[]
+  segmentsConfirmed TranscriptSegment[] @relation("SegmentConfirmer")
 }
 
 model Meeting {
-  id            String        @id @default(cuid())
-  title         String
-  occurredAt    DateTime
+  id    String @id @default(cuid())
+  title String
+  /// Operator-typed free text, stored as entered — exactly like `title`, and
+  /// carrying exactly the same accepted risk: it can name a person and nothing
+  /// redacts it. Redacting it is not currently possible without a fourth
+  /// Redaction parent, and storing a placeholder whose vault entry no row could
+  /// point at would be worse than storing the text.
+  ///
+  /// What it does get is the title's discipline: excluded from every audit
+  /// payload, so the free text lives in one column rather than being copied into
+  /// an append-only log no retention sweep can reach.
+  description String?
+  occurredAt  DateTime
   status        MeetingStatus @default(CAPTURED)
   failureReason String?
   /// Participants consented to being recorded.
@@ -105,13 +116,38 @@ model Meeting {
   createdById          String
   createdAt            DateTime @default(now())
 
-  createdBy    User          @relation(fields: [createdById], references: [id])
+  createdBy    User                 @relation(fields: [createdById], references: [id])
   transcript   Transcript?
   whiteboards  Whiteboard[]
   shariahFlags ShariahFlag[]
   termSheets   TermSheet[]
+  participants MeetingParticipant[]
 
   @@index([createdById])
+}
+
+/// Who was in the room, as the operator recorded it.
+///
+/// `name` is a person's name typed by hand — the single most obviously personal
+/// field in this schema — so it is redacted on write and stored as a placeholder
+/// with its value sealed in the vault, exactly like an NRIC spoken aloud. The
+/// regex detectors cannot find names in free-flowing speech, which the README
+/// states plainly; here the operator has told us the field *is* a name, so no
+/// detection is needed and none is guessed at.
+model MeetingParticipant {
+  id        String @id @default(cuid())
+  meetingId String
+  /// Redacted. Holds a placeholder such as [PERSON_NAME_1], never the name.
+  nameRedacted String
+  /// Their role in the meeting, e.g. "Credit Manager". Not personal data.
+  role String?
+  /// Preserves the order the operator entered, so the list reads as they wrote it.
+  ordinal Int
+
+  meeting    Meeting     @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  redactions Redaction[]
+
+  @@index([meetingId, ordinal])
 }
 
 /// rawRedacted and summaryEn are only ever written with redacted content.
@@ -138,32 +174,59 @@ model TranscriptSegment {
   endMs        Int
   speakerLabel String
   textRedacted String
+  /// The model's self-reported certainty about this segment, 0–1.
+  ///
+  /// Nullable, and null means "not scored" rather than "scored zero" or
+  /// "scored one". Segments captured before scoring existed, and providers that
+  /// report nothing, both land here honestly. Defaulting to 1.0 would mark
+  /// every unscored segment as maximally trustworthy — the opposite of true.
+  ///
+  /// Not a calibrated probability. See SegmentDraft.confidence in
+  /// src/ai/provider.ts for why, and for what the UI is required to call it.
+  confidence Float?
+  /// Set when a human read this segment and said the text was right. Distinct
+  /// from a high confidence score: one is a person's assertion, the other is a
+  /// model's. Null means nobody has looked.
+  confirmedById String?
+  confirmedAt   DateTime?
 
-  transcript Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  transcript  Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  confirmedBy User?      @relation("SegmentConfirmer", fields: [confirmedById], references: [id])
 
   @@index([transcriptId, startMs])
 }
 
-/// Exactly one of transcriptId or whiteboardId is set — see
+/// Exactly one of transcriptId, whiteboardId or participantId is set — see
 /// prisma/sql/constraints.sql, constraint redaction_single_parent.
+///
+/// The third parent exists because a participant's name is the most plainly
+/// personal field in this schema, and it gets the same treatment as an NRIC
+/// spoken aloud: sealed in the vault, replaced by a placeholder, logged here.
+/// Offsets into a one-field parent are degenerate (0 to length) but the row
+/// still ties a vault entry to exactly one thing, which is what this table is
+/// for. A vault entry with no redaction row pointing at it would be an
+/// identifier nobody could account for.
 model Redaction {
-  id           String  @id @default(cuid())
-  transcriptId String?
-  whiteboardId String?
-  piiType      PiiType
-  placeholder  String
-  startOffset  Int
-  endOffset    Int
-  detectedBy   String
-  confidence   Float
-  vaultId      String? @unique
+  id            String  @id @default(cuid())
+  transcriptId  String?
+  whiteboardId  String?
+  participantId String?
+  piiType       PiiType
+  placeholder   String
+  startOffset   Int
+  endOffset     Int
+  detectedBy    String
+  confidence    Float
+  vaultId       String? @unique
 
-  transcript Transcript? @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
-  whiteboard Whiteboard? @relation(fields: [whiteboardId], references: [id], onDelete: Cascade)
-  vault      PiiVault?   @relation(fields: [vaultId], references: [id])
+  transcript  Transcript?         @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  whiteboard  Whiteboard?         @relation(fields: [whiteboardId], references: [id], onDelete: Cascade)
+  participant MeetingParticipant? @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  vault       PiiVault?           @relation(fields: [vaultId], references: [id])
 
   @@index([transcriptId])
   @@index([whiteboardId])
+  @@index([participantId])
 }
 
 /// AES-256-GCM only. There is deliberately no plaintext column.

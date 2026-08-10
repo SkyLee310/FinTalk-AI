@@ -5,6 +5,7 @@ import { type FormEvent, useState } from 'react';
 import { Badge, type Tone } from '@/components/badge';
 import { Card, CardHeader, DataRow } from '@/components/card';
 import { MermaidDiagram } from '@/components/mermaid-diagram';
+import { SegmentReview, TranscriptConfidence } from '@/components/segment-review';
 import { TransferRecord } from '@/components/transfer-notice';
 import {
   Button,
@@ -333,6 +334,15 @@ export default function MeetingDetailPage() {
 
   const maySubmit = can(session.data, 'termsheet:submit');
   const mayReview = can(session.data, 'shariah:review');
+  /**
+   * Segment review, not Shariah review — a different capability entirely.
+   *
+   * Gated on `transcript:read` to match the route: correcting a transcription
+   * discloses nothing the reader could not already see. Naming it separately so
+   * it cannot be confused with `mayReview` above, which guards the one action
+   * only a Shariah officer may take.
+   */
+  const mayReviewTranscript = can(session.data, 'transcript:read');
 
   if (meeting.loading) return <Spinner label="Loading meeting" />;
   if (meeting.error !== null) return <ErrorNote>{meeting.error}</ErrorNote>;
@@ -366,6 +376,38 @@ export default function MeetingDetailPage() {
         so plainly — its audio still went to Google, and an empty space here would
         imply it had not.
       */}
+      {data.description !== null && data.description !== '' && (
+        <p className="max-w-2xl text-sm leading-relaxed text-muted">{data.description}</p>
+      )}
+
+      {data.participants.length > 0 && (
+        <div>
+          <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-faint">
+            Who was there
+          </h2>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {data.participants.map((participant) => (
+              <li
+                key={participant.id}
+                className="rounded-lg border border-line bg-surface px-3 py-1.5 text-sm"
+              >
+                {/*
+                  A placeholder, never a name. The name is sealed in the vault,
+                  and reading it back is a separate, separately-audited action
+                  this page deliberately does not offer.
+                */}
+                <span className="font-mono text-xs text-brand">
+                  {participant.nameRedacted}
+                </span>
+                {participant.role !== null && participant.role !== '' && (
+                  <span className="ml-2 text-muted">{participant.role}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="rounded-lg border border-line bg-raised px-4 py-3">
         <TransferRecord
           consentConfirmed={data.consentConfirmed}
@@ -400,12 +442,14 @@ export default function MeetingDetailPage() {
                 title="Transcript"
                 description="Mixed-language, with personal data replaced before storage."
               />
+
+              <div className="border-b border-line px-5 py-3">
+                <TranscriptConfidence segments={data.transcript.segments} />
+              </div>
+
               <ol className="divide-y divide-line">
                 {data.transcript.segments.map((segment) => (
-                  <li
-                    key={`${String(segment.startMs)}-${segment.speakerLabel}`}
-                    className="px-5 py-3"
-                  >
+                  <li key={segment.id} className="px-5 py-3">
                     <div className="flex items-baseline gap-2.5">
                       <span className="shrink-0 font-mono text-xs text-faint">
                         {timecode(segment.startMs)}
@@ -417,6 +461,11 @@ export default function MeetingDetailPage() {
                     <p className="mt-1 text-sm leading-relaxed">
                       <RedactedText text={segment.textRedacted} />
                     </p>
+                    <SegmentReview
+                      segment={segment}
+                      mayReview={mayReviewTranscript}
+                      onChanged={meeting.reload}
+                    />
                   </li>
                 ))}
               </ol>

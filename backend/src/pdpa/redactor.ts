@@ -115,6 +115,65 @@ export function redactDerived(
   return redactCore(source, vaultKey, context);
 }
 
+/**
+ * Redacts an entire field the caller has *declared* to be an identifier.
+ *
+ * Detection is the wrong tool for a labelled field. The regex detectors cannot
+ * find person names in free text — the README says so plainly — so a participant
+ * name passed through `redact()` comes back untouched and would be stored in the
+ * clear. But when an operator types into a field labelled "participant name",
+ * there is nothing to detect: they have already told us what it is.
+ *
+ * This is therefore a *stronger* guarantee than `redact()`, not a weaker one.
+ * `redact()` masks what a pattern can recognise; this masks the whole value
+ * unconditionally, with nothing left to a pattern's judgement.
+ *
+ * Offsets run 0 to the placeholder's length, because the placeholder is the
+ * entire stored field. Degenerate, and correct: the row still ties one vault
+ * entry to one thing, which is what makes it reconcilable.
+ *
+ * `detectedBy` is 'declared' rather than a detector's name, so an auditor reading
+ * the log can tell which rows were recognised and which were asserted.
+ * Confidence is 1 because there is no inference here to be uncertain about.
+ */
+export function redactDeclaredValue(
+  value: string,
+  piiType: PiiType,
+  vaultKey: Buffer,
+  context: RedactionContext = createRedactionContext(),
+): RedactionResult {
+  assertVaultKey(vaultKey);
+
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    // Deliberately does not quote the input, like the guard in redact().
+    throw new Error('redactDeclaredValue() received a blank value.');
+  }
+
+  const { placeholderByValue, countByType } = context;
+
+  let placeholder = placeholderByValue.get(trimmed);
+  if (placeholder === undefined) {
+    const ordinal = (countByType.get(piiType) ?? 0) + 1;
+    countByType.set(piiType, ordinal);
+    placeholder = `[${piiType}_${String(ordinal)}]`;
+    placeholderByValue.set(trimmed, placeholder);
+  }
+
+  return {
+    text: placeholder as unknown as RedactedText,
+    records: [{
+      piiType,
+      placeholder,
+      startOffset: 0,
+      endOffset: placeholder.length,
+      detectedBy: 'declared',
+      confidence: 1,
+      sealed: seal(trimmed, vaultKey),
+    }],
+  };
+}
+
 function redactCore(
   source: string,
   vaultKey: Buffer,

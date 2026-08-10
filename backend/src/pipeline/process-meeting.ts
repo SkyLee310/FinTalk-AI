@@ -114,6 +114,9 @@ function redactTranscript(
       endMs: segment.endMs,
       speakerLabel: segment.speakerLabel,
       textRedacted: text,
+      // Carried through redaction unchanged. Redaction rewrites the text but
+      // says nothing about how well the audio was heard, so the score stands.
+      confidence: segment.confidence,
     });
 
     for (const record of segmentRecords) {

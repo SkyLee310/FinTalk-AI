@@ -23,44 +23,67 @@ import {
 export const FAKE_MODEL_ID = 'fake-transcriber-v1';
 export const FAKE_PROMPT_VERSION = 'fake-v1';
 
+/**
+ * Confidences are spread on purpose, and two sit below the 0.6 review floor.
+ *
+ * A fixture where every segment scored 0.95 would let the low-confidence review
+ * path pass its tests while never running — the same vacuity trap as a redaction
+ * test whose input holds no identifier. The two low scores sit where a real
+ * transcriber genuinely struggles: the segment reading out a digit string, and
+ * the one carrying the Shariah objection in three languages at once.
+ */
 const FIXTURE = [
   {
     startMs: 0,
     endMs: 6_000,
     speakerLabel: 'Credit Officer',
     text: 'Okay boss, we nak discuss the SME working capital facility for Tech Solutions.',
+    confidence: 0.94,
   },
   {
     startMs: 6_000,
     endMs: 14_000,
     speakerLabel: 'Credit Manager',
     text: 'Amount berapa? I think RM 50,000 cukup for their expansion, tenure five years.',
+    confidence: 0.88,
   },
   {
     startMs: 14_000,
     endMs: 22_000,
     speakerLabel: 'Credit Officer',
     text: 'Betul. Director punya IC is 880101-14-5678, account 1234 5678 90 at Maybank.',
+    confidence: 0.42,
   },
   {
     startMs: 22_000,
     endMs: 31_000,
     speakerLabel: 'Credit Manager',
     text: 'For the pricing, we quote fixed interest rate of 8% per annum lah.',
+    confidence: 0.91,
   },
   {
     startMs: 31_000,
     endMs: 40_000,
     speakerLabel: 'Shariah Officer',
     text: 'Wait — kalau Islamic facility, cannot pakai interest. Kena guna Murabahah profit rate.',
+    confidence: 0.57,
   },
   {
     startMs: 40_000,
     endMs: 47_000,
     speakerLabel: 'Credit Officer',
     text: 'Noted. Same director, IC 880101-14-5678, card 4111 1111 1111 1111 for the fee.',
+    confidence: 0.83,
   },
 ] as const;
+
+/**
+ * How many fixture segments fall below the review floor.
+ *
+ * Exported so a test asserts the fixture still exercises the low-confidence path
+ * rather than silently drifting above the threshold and passing vacuously.
+ */
+export const LOW_CONFIDENCE_FIXTURE_COUNT = 2;
 
 export class FakeTranscriptionProvider implements TranscriptionProvider {
   readonly name = 'fake' as const;

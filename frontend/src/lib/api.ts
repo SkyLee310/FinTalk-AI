@@ -50,11 +50,57 @@ export interface MeetingSummary {
   termSheetCount: number;
 }
 
+/**
+ * Mirrors LOW_CONFIDENCE_THRESHOLD in backend/src/ai/provider.ts.
+ *
+ * Duplicated rather than fetched, because the client needs it to render before
+ * any request completes. Two values that drifted apart would mark a segment for
+ * review on the server and not in the UI, so the backend constant carries a
+ * pointer back to this one.
+ */
+export const LOW_CONFIDENCE_THRESHOLD = 0.6;
+
+export interface SegmentCorrection {
+  id: string;
+  editorId: string;
+  /** What the reviewer says was actually said. Never replaces the AI's text. */
+  humanValue: string;
+  editedAt: string;
+}
+
 export interface TranscriptSegment {
+  id: string;
   startMs: number;
   endMs: number;
   speakerLabel: string;
   textRedacted: string;
+  /**
+   * The model's self-reported certainty, 0–1, or null for "not scored".
+   *
+   * Null is not zero and not one. A segment transcribed before scoring existed
+   * has no opinion attached, and rendering it as either extreme would invent
+   * one. Not a calibrated probability — never label it "accuracy".
+   */
+  confidence: number | null;
+  confirmedById: string | null;
+  confirmedAt: string | null;
+  corrections: SegmentCorrection[];
+}
+
+export interface ParticipantRow {
+  id: string;
+  /** A placeholder such as [PERSON_NAME_1]. Never the name itself. */
+  nameRedacted: string;
+  role: string | null;
+}
+
+/** True when a human should be asked to check this segment. */
+export function needsReview(segment: TranscriptSegment): boolean {
+  return (
+    segment.confirmedAt === null
+    && segment.confidence !== null
+    && segment.confidence < LOW_CONFIDENCE_THRESHOLD
+  );
 }
 
 export interface RedactionRow {
@@ -92,6 +138,8 @@ export interface ShariahFlagRow {
 export interface MeetingDetail {
   id: string;
   title: string;
+  description: string | null;
+  participants: ParticipantRow[];
   occurredAt: string;
   status: MeetingStatus;
   failureReason: string | null;
@@ -213,6 +261,25 @@ export const api = {
 
   whiteboards: (meetingId: string) =>
     apiFetch<{ whiteboards: WhiteboardRow[] }>(`/meetings/${meetingId}/whiteboards`),
+
+  /**
+   * Records that a human read a low-confidence segment and found it correct.
+   * Distinct from a correction: this asserts the model was right.
+   */
+  confirmSegment: (segmentId: string) =>
+    apiFetch<TranscriptSegment>(`/transcript-segments/${segmentId}/confirm`, {
+      method: 'POST',
+    }),
+
+  /**
+   * Records a correction beside the model's text. The AI's version is never
+   * overwritten — the redaction log's offsets index into it.
+   */
+  correctSegment: (segmentId: string, correctedText: string) =>
+    apiFetch<TranscriptSegment>(
+      `/transcript-segments/${segmentId}/correct`,
+      json({ correctedText }),
+    ),
 
   reviewFlag: (flagId: string, status: ShariahStatus, note: string) =>
     apiFetch<ShariahFlagRow>(`/shariah-flags/${flagId}/review`, json({ status, note })),

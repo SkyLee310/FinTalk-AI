@@ -48,12 +48,36 @@ ALTER TABLE "ShariahFlag" ADD CONSTRAINT shariah_flag_resolution_attributed CHEC
   OR ("reviewedById" IS NOT NULL AND "reviewedAt" IS NOT NULL)
 );
 
--- A redaction accounts for personal data found in exactly one document. Both
--- parents set would double-count it; neither would leave the claim orphaned,
--- with nothing to reconcile it against. `<>` on two booleans is exclusive or.
+-- A redaction accounts for personal data found in exactly one place. Two
+-- parents set would double-count it; none would leave the claim orphaned, with
+-- nothing to reconcile it against.
+--
+-- Three parents now, so the boolean `<>` trick no longer works: `a <> b <> c`
+-- is also true when all three are set. Counting is unambiguous where chained
+-- XOR is quietly wrong.
 ALTER TABLE "Redaction" DROP CONSTRAINT IF EXISTS redaction_single_parent;
 ALTER TABLE "Redaction" ADD CONSTRAINT redaction_single_parent CHECK (
-  ("transcriptId" IS NOT NULL) <> ("whiteboardId" IS NOT NULL)
+  (("transcriptId" IS NOT NULL)::int
+   + ("whiteboardId" IS NOT NULL)::int
+   + ("participantId" IS NOT NULL)::int) = 1
+);
+
+-- A segment's confidence is the model's self-reported certainty, on the same
+-- 0–1 scale as the others. NULL is permitted and means "not scored" — a segment
+-- captured before scoring existed, or a provider that reported nothing. NULL
+-- satisfies a CHECK in Postgres, which is the behaviour wanted here: absent is
+-- legitimate, out-of-range is not.
+ALTER TABLE "TranscriptSegment" DROP CONSTRAINT IF EXISTS segment_confidence_range;
+ALTER TABLE "TranscriptSegment" ADD CONSTRAINT segment_confidence_range CHECK (
+  confidence IS NULL OR (confidence >= 0 AND confidence <= 1)
+);
+
+-- A confirmed segment records who confirmed it and when, or neither. Half an
+-- attribution is not an attribution: "someone checked this at some point" is
+-- nothing an auditor can act on.
+ALTER TABLE "TranscriptSegment" DROP CONSTRAINT IF EXISTS segment_confirmation_attributed;
+ALTER TABLE "TranscriptSegment" ADD CONSTRAINT segment_confirmation_attributed CHECK (
+  ("confirmedById" IS NULL) = ("confirmedAt" IS NULL)
 );
 
 -- Spec §5.6 — audit log is append-only. Triggers raise so tests can assert.

@@ -23,7 +23,10 @@ import {
  * a credit record.
  */
 
-const PROMPT_VERSION = 'gemini-transcribe-v1';
+// v2 adds the per-segment confidence request. Bumped because promptVersion is
+// stored on every transcript as provenance — a version that no longer
+// identifies the prompt that produced the output makes the column a lie.
+const PROMPT_VERSION = 'gemini-transcribe-v2';
 const SUMMARY_PROMPT_VERSION = 'gemini-summary-v1';
 
 const TRANSCRIBE_PROMPT = `You are transcribing a recorded credit committee meeting at a Malaysian bank.
@@ -34,9 +37,10 @@ Rules:
 - Write spoken numbers as digits.
 - Where a passage is unclear, emit the token [inaudible]. Never guess at it.
 - Attribute each segment to a speaker label such as "Speaker 1", or a role if one is stated.
+- Give each segment a "confidence" between 0 and 1: how certain you are that you transcribed those exact words correctly. Base it on audio clarity, overlapping speech, and unfamiliar terms. Score a segment you partly guessed at below 0.6. Do not inflate it — a low score sends a human to check, and a wrong high score sends nobody.
 
 Return JSON only, in exactly this shape:
-{"languages":["en","ms"],"segments":[{"startMs":0,"endMs":6000,"speaker":"Speaker 1","text":"..."}]}`;
+{"languages":["en","ms"],"segments":[{"startMs":0,"endMs":6000,"speaker":"Speaker 1","text":"...","confidence":0.94}]}`;
 
 const SUMMARY_PROMPT = `Summarise this credit committee transcript in English, in under 120 words.
 
@@ -55,6 +59,14 @@ const ResponseSchema = z.object({
         endMs: z.number().int().nonnegative(),
         speaker: z.string().min(1),
         text: z.string(),
+        /**
+         * Optional, and out-of-range values are dropped rather than clamped.
+         *
+         * A model that answers 1.4 or -0.2 has not understood the scale, and
+         * clamping to 1.0 would turn that misunderstanding into a maximally
+         * confident score. Absent is honest; invented is not.
+         */
+        confidence: z.number().min(0).max(1).optional().catch(undefined),
       }),
     )
     .min(1),
@@ -172,6 +184,10 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
         endMs: segment.endMs,
         speakerLabel: segment.speaker,
         text: segment.text,
+        // Passed through as reported, or left absent. Substituting a value for a
+        // model that declined to give one would fabricate the very signal a
+        // reviewer is meant to act on.
+        confidence: segment.confidence,
       })),
       languages: parsed.data.languages,
       modelId: this.config.transcribeModel,

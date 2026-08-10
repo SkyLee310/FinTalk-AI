@@ -14,6 +14,21 @@
 
 export type ProviderName = 'gemini' | 'fake';
 
+/**
+ * Below this, a segment is surfaced for a human to confirm or correct.
+ *
+ * 0.6 is a judgement, not a calibrated cutoff — it cannot be one, because the
+ * scores it compares against are self-reported rather than measured. It is set
+ * where it is because the cost of asking a reviewer to glance at a correct
+ * segment is a few seconds, and the cost of a wrong figure reaching a credit
+ * decision unchallenged is the thing this product exists to prevent.
+ *
+ * Defined once here, and mirrored by LOW_CONFIDENCE_THRESHOLD in the frontend's
+ * lib/api.ts. Two thresholds that drifted apart would mark a segment for review
+ * in one place and not the other.
+ */
+export const LOW_CONFIDENCE_THRESHOLD = 0.6;
+
 export interface AudioInput {
   readonly bytes: Uint8Array;
   readonly mimeType: string;
@@ -44,6 +59,28 @@ export interface SegmentDraft {
   readonly speakerLabel: string;
   /** Raw model output. Unredacted by construction — see the note above. */
   readonly text: string;
+  /**
+   * How sure the model says it is about this segment, 0–1.
+   *
+   * **Self-reported, not measured.** No calibrated probability is available:
+   * Gemini returns no token logprobs for audio, so this is the model's own
+   * opinion of its output, obtained by asking for it. It correlates with
+   * correctness loosely at best, and a segment at 0.95 can still be wrong.
+   *
+   * It is therefore useful for *directing attention* and useless as assurance.
+   * Anything rendering this value must say "model self-reported confidence"
+   * and never "accuracy" — a made-up number presented as a measurement is
+   * worse than no number, because it invites trust it cannot support.
+   *
+   * `undefined` when the provider does not report one. Deliberately not
+   * defaulted to 1: a missing score is not a high score.
+   *
+   * Explicitly `| undefined` because this project runs with
+   * `exactOptionalPropertyTypes`, which otherwise distinguishes an absent key
+   * from a present-but-undefined one. Both mean "not scored" here, and a
+   * provider mapping a field that may be missing should not have to care.
+   */
+  readonly confidence?: number | undefined;
 }
 
 export interface TranscriptionResult {

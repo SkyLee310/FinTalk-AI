@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { appendAuditWithin } from '../audit/chain.js';
 import { requireAuth, requireCapability } from '../auth/middleware.js';
 import { sendProblem } from '../http/problem.js';
+import { createRedactionContext, redactDeclaredValue } from '../pdpa/redactor.js';
+import { sealedToRow } from '../pdpa/vault.js';
 import type { BackgroundJobs } from '../pipeline/background-jobs.js';
 import {
   PipelineError,
@@ -22,7 +24,35 @@ import {
 const MetadataSchema = z.object({
   title: z.string().min(1).max(200),
   occurredAt: z.string().datetime(),
+  description: z.string().max(2_000).optional(),
 });
+
+/**
+ * Participants arrive as one JSON field rather than indexed form fields.
+ *
+ * `participants[0][name]` style keys would need parsing and ordering logic in a
+ * multipart loop that is already doing two other jobs. One JSON string is
+ * validated in one place.
+ */
+const ParticipantsSchema = z.array(
+  z.object({
+    name: z.string().min(1).max(120),
+    role: z.string().max(120).optional(),
+  }),
+).max(40);
+
+function parseParticipants(raw: string | undefined): z.infer<typeof ParticipantsSchema> {
+  if (raw === undefined || raw.trim() === '') return [];
+  try {
+    const parsed = ParticipantsSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : [];
+  } catch {
+    // A malformed list loses the participants, not the recording. The audio is
+    // the irreplaceable half; refusing the whole upload over a bad side field
+    // would throw away the thing that cannot be re-recorded.
+    return [];
+  }
+}
 
 export interface MeetingRouteDeps extends PipelineDeps {
   readonly prisma: PrismaClient;
@@ -74,6 +104,7 @@ export function registerMeetingRoutes(
       const metadata = MetadataSchema.safeParse({
         title: fields.get('title'),
         occurredAt: fields.get('occurredAt'),
+        description: fields.get('description'),
       });
       if (!metadata.success) {
         return sendProblem(
@@ -139,10 +170,38 @@ export function registerMeetingRoutes(
        * operator typed, it can name a person, and nothing redacts it. It stays
        * in Meeting.title, which entityId points at.
        */
+      /**
+       * Participant names are redacted before the row exists, not after.
+       *
+       * They go through redactDeclaredValue rather than redact: the detectors
+       * cannot find a person's name in free text, so detection would return the
+       * name untouched and store it in the clear. The operator typed it into a
+       * field labelled "name", so there is nothing to detect — the whole value is
+       * sealed and replaced with a placeholder.
+       *
+       * One shared context, so the same person entered twice keeps one
+       * placeholder. The context is deliberately NOT shared with the transcript's:
+       * that runs in a later request over different text, and a placeholder
+       * numbered here would collide with one numbered there.
+       */
+      const participantInputs = parseParticipants(fields.get('participants'));
+      const nameContext = createRedactionContext();
+      const redactedParticipants = participantInputs.map((participant, index) => ({
+        redaction: redactDeclaredValue(
+          participant.name,
+          'PERSON_NAME',
+          deps.vaultKey,
+          nameContext,
+        ),
+        role: participant.role ?? null,
+        ordinal: index,
+      }));
+
       const meeting = await prisma.$transaction(async (tx) => {
         const created = await tx.meeting.create({
           data: {
             title: metadata.data.title,
+            description: metadata.data.description ?? null,
             occurredAt: new Date(metadata.data.occurredAt),
             status: 'CAPTURED',
             consentConfirmed: true,
@@ -150,6 +209,39 @@ export function registerMeetingRoutes(
             createdById: actor.id,
           },
         });
+
+        /**
+         * Each participant's row, vault entry and redaction row commit together
+         * with the meeting. A name stored beside a missing vault entry would be
+         * a placeholder nothing could resolve; a vault entry with no redaction
+         * row would be an identifier nobody could account for.
+         */
+        for (const participant of redactedParticipants) {
+          const row = await tx.meetingParticipant.create({
+            data: {
+              meetingId: created.id,
+              nameRedacted: participant.redaction.text,
+              role: participant.role,
+              ordinal: participant.ordinal,
+            },
+          });
+
+          for (const record of participant.redaction.records) {
+            const vault = await tx.piiVault.create({ data: sealedToRow(record.sealed) });
+            await tx.redaction.create({
+              data: {
+                participantId: row.id,
+                piiType: record.piiType,
+                placeholder: record.placeholder,
+                startOffset: record.startOffset,
+                endOffset: record.endOffset,
+                detectedBy: record.detectedBy,
+                confidence: record.confidence,
+                vaultId: vault.id,
+              },
+            });
+          }
+        }
 
         await appendAuditWithin(tx, {
           at: new Date(),
@@ -167,6 +259,14 @@ export function registerMeetingRoutes(
             occurredAt: created.occurredAt.toISOString(),
             audioBytes: audioBytes.byteLength,
             audioMimeType,
+            /**
+             * A count, never the names — and the description is omitted
+             * entirely, for the same reason the title is: both are free text an
+             * operator typed, both can name a person, and the audit log has no
+             * redaction offsets able to describe them. They stay in the columns
+             * entityId points at.
+             */
+            participantCount: redactedParticipants.length,
           },
         });
 
@@ -269,6 +369,7 @@ export function registerMeetingRoutes(
             },
           },
           shariahFlags: { orderBy: { createdAt: 'asc' } },
+          participants: { orderBy: { ordinal: 'asc' } },
         },
       });
 
@@ -276,9 +377,43 @@ export function registerMeetingRoutes(
         return sendProblem(reply, 404, 'Not found', 'No meeting exists with that id.');
       }
 
+      /**
+       * Human corrections, fetched alongside rather than joined.
+       *
+       * HumanEdit is a generic (entityType, entityId) table with no relation to
+       * TranscriptSegment, so Prisma cannot include it. One query keyed on the
+       * segment ids beats one per segment.
+       */
+      const segmentIds = meeting.transcript?.segments.map((s) => s.id) ?? [];
+      const edits = segmentIds.length === 0
+        ? []
+        : await prisma.humanEdit.findMany({
+            where: { entityType: 'TranscriptSegment', entityId: { in: segmentIds } },
+            orderBy: { editedAt: 'asc' },
+          });
+
+      const editsBySegment = new Map<string, typeof edits>();
+      for (const edit of edits) {
+        const existing = editsBySegment.get(edit.entityId);
+        if (existing === undefined) editsBySegment.set(edit.entityId, [edit]);
+        else existing.push(edit);
+      }
+
       return reply.send({
         id: meeting.id,
         title: meeting.title,
+        description: meeting.description,
+        /**
+         * Participants carry placeholders, never names. The vault relation is
+         * deliberately not joined here for the same reason the transcript's is
+         * not: reading a stored identifier is a separate, separately-audited
+         * action, and this endpoint is the one every reader hits.
+         */
+        participants: meeting.participants.map((participant) => ({
+          id: participant.id,
+          nameRedacted: participant.nameRedacted,
+          role: participant.role,
+        })),
         occurredAt: meeting.occurredAt.toISOString(),
         status: meeting.status,
         failureReason: meeting.failureReason,
@@ -295,10 +430,27 @@ export function registerMeetingRoutes(
                 modelId: meeting.transcript.modelId,
                 promptVersion: meeting.transcript.promptVersion,
                 segments: meeting.transcript.segments.map((segment) => ({
+                  id: segment.id,
                   startMs: segment.startMs,
                   endMs: segment.endMs,
                   speakerLabel: segment.speakerLabel,
                   textRedacted: segment.textRedacted,
+                  // Null means not scored, and the client renders that
+                  // differently from a low score. See the schema comment.
+                  confidence: segment.confidence,
+                  confirmedById: segment.confirmedById,
+                  confirmedAt: segment.confirmedAt?.toISOString() ?? null,
+                  /**
+                   * Every correction, not just the latest. A reviewer who
+                   * corrected a segment twice made two judgements, and showing
+                   * only the last would hide that the first was reconsidered.
+                   */
+                  corrections: (editsBySegment.get(segment.id) ?? []).map((edit) => ({
+                    id: edit.id,
+                    editorId: edit.editorId,
+                    humanValue: edit.humanValue,
+                    editedAt: edit.editedAt.toISOString(),
+                  })),
                 })),
                 redactions: meeting.transcript.redactions,
               },

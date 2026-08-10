@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { appendAudit, verifyChain } from '../audit/chain.js';
 import { requireAuth, requireCapability } from '../auth/middleware.js';
 import { ComplianceError } from '../compliance/errors.js';
+import { confirmSegment, correctSegment } from '../compliance/segment-review.js';
 import { reviewShariahFlag } from '../compliance/shariah-review.js';
 import {
   decideApproval,
@@ -47,6 +48,10 @@ const DecideBody = z.object({
   note: z.string().max(4_000),
 });
 
+const CorrectBody = z.object({
+  correctedText: z.string().min(1).max(4_000),
+});
+
 function handleComplianceError(reply: FastifyReply, error: unknown): FastifyReply {
   if (error instanceof ComplianceError) {
     return sendProblem(reply, error.status, error.code, error.message);
@@ -88,6 +93,84 @@ export function registerComplianceRoutes(
   app: FastifyInstance,
   prisma: PrismaClient,
 ): void {
+  /**
+   * Segment review, gated on `transcript:read`.
+   *
+   * Deliberately not a new capability. Correcting a transcription discloses
+   * nothing the reader could not already see, and inventing `transcript:review`
+   * would leave every existing role unable to use the feature until the matrix
+   * was edited — a migration cost with no safety benefit. The four-eyes
+   * capabilities are the ones that stay narrow.
+   */
+  const segmentReviewGate = {
+    preHandler: [requireAuth, requireCapability('transcript:read')],
+  };
+
+  const serialiseSegment = (segment: {
+    id: string;
+    confidence: number | null;
+    confirmedById: string | null;
+    confirmedAt: Date | null;
+  }) => ({
+    id: segment.id,
+    confidence: segment.confidence,
+    confirmedById: segment.confirmedById,
+    confirmedAt: segment.confirmedAt?.toISOString() ?? null,
+  });
+
+  app.post<{ Params: { id: string } }>(
+    '/transcript-segments/:id/confirm',
+    segmentReviewGate,
+    async (request, reply) => {
+      const actor = request.authUser;
+      if (actor === undefined) {
+        return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
+      }
+
+      try {
+        const segment = await confirmSegment(prisma, {
+          segmentId: request.params.id,
+          actor: { id: actor.id, role: actor.role },
+        });
+        return reply.send(serialiseSegment(segment));
+      } catch (error) {
+        return handleComplianceError(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { id: string } }>(
+    '/transcript-segments/:id/correct',
+    segmentReviewGate,
+    async (request, reply) => {
+      const actor = request.authUser;
+      if (actor === undefined) {
+        return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
+      }
+
+      const body = CorrectBody.safeParse(request.body);
+      if (!body.success) {
+        return sendProblem(
+          reply,
+          400,
+          'Invalid request',
+          'A non-empty correctedText of at most 4000 characters is required.',
+        );
+      }
+
+      try {
+        const segment = await correctSegment(prisma, {
+          segmentId: request.params.id,
+          actor: { id: actor.id, role: actor.role },
+          correctedText: body.data.correctedText,
+        });
+        return reply.send(serialiseSegment(segment));
+      } catch (error) {
+        return handleComplianceError(reply, error);
+      }
+    },
+  );
+
   app.post<{ Params: { id: string } }>(
     '/shariah-flags/:id/review',
     { preHandler: [requireAuth, requireCapability('shariah:review')] },

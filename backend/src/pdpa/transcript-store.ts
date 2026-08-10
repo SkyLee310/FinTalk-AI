@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { LOW_CONFIDENCE_THRESHOLD } from '../ai/provider.js';
 import { appendAuditWithin, type AuditActor } from '../audit/chain.js';
 import type { RedactedText } from './redacted-text.js';
 import type { RedactionRecord } from './redactor.js';
@@ -9,6 +10,14 @@ export interface TranscriptSegmentInput {
   readonly endMs: number;
   readonly speakerLabel: string;
   readonly textRedacted: RedactedText;
+  /**
+   * The provider's self-reported certainty, 0–1, or undefined if it gave none.
+   *
+   * Passed through untouched and never defaulted: a missing score is not a high
+   * one. See SegmentDraft.confidence in src/ai/provider.ts, including why the
+   * `| undefined` is written out under exactOptionalPropertyTypes.
+   */
+  readonly confidence?: number | undefined;
 }
 
 export interface StoreTranscriptInput {
@@ -56,6 +65,10 @@ export async function storeTranscript(
             endMs: segment.endMs,
             speakerLabel: segment.speakerLabel,
             textRedacted: segment.textRedacted,
+            // `?? null` rather than omitted: Prisma treats undefined as "leave
+            // unset", which is the same outcome here, but writing null makes
+            // "not scored" an explicit value rather than an accident of absence.
+            confidence: segment.confidence ?? null,
           })),
         },
       },
@@ -101,6 +114,17 @@ export async function storeTranscript(
         languages: [...input.languages],
         modelId: input.modelId,
         promptVersion: input.promptVersion,
+        /**
+         * How much of this transcript the model was unsure of, and how much it
+         * did not score at all. Counts only — a reviewer needs to know the
+         * transcript arrived with weak passages, and an auditor needs to see
+         * that the record said so from the start rather than after someone
+         * complained. The text stays in the segment rows.
+         */
+        lowConfidenceCount: input.segments.filter(
+          (s) => s.confidence !== undefined && s.confidence < LOW_CONFIDENCE_THRESHOLD,
+        ).length,
+        unscoredCount: input.segments.filter((s) => s.confidence === undefined).length,
       },
     });
 

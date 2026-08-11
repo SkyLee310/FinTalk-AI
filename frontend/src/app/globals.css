@@ -219,6 +219,242 @@
   }
 }
 
+/*
+ * Motion.
+ *
+ * Two curves and two durations, and every component references them by name
+ * rather than inventing its own — the same reasoning as the colour tokens
+ * above. A page where each panel eases slightly differently reads as
+ * carelessness even when nobody can say why.
+ *
+ * `--ease-out` decelerates into rest, which is what almost everything here
+ * wants: content arriving and settling. `--ease-spring` overshoots slightly
+ * and is reserved for motion that follows a deliberate press — overshoot on
+ * something that merely appeared looks like a glitch rather than physics.
+ */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-fast: 140ms;
+  --dur-base: 240ms;
+}
+
+/* Content arriving: up a little, and barely up in scale. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * Glass surfaces materialize rather than fade.
+ *
+ * Blur and scale animate together so the surface reads as a real material
+ * arriving in front of the content, instead of a rectangle whose opacity went
+ * up. 3% of scale is the whole effect — any more and it becomes something the
+ * user watches rather than something that simply appeared.
+ */
+@keyframes materialize {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+    backdrop-filter: blur(0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    backdrop-filter: blur(24px);
+  }
+}
+
+/* Panels enter and leave along the same edge they are anchored to. */
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes slide-out-right {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * A popover grows from the control that opened it.
+ *
+ * The transform origin is set on the element rather than here, because only
+ * the element knows which corner it hangs from — see profile-menu.tsx.
+ */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pop-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(-4px);
+  }
+}
+
+/*
+ * Page content rises in, staggered.
+ *
+ * Every page renders one wrapper inside <main id="main">, whose children are
+ * the PageHeader and Section blocks — so this single rule animates every
+ * screen in the app without any page importing anything. A page that does not
+ * follow that shape simply animates its blocks together, which is fine.
+ *
+ * The delay stops at 160ms deliberately. An uncapped cascade down a long page
+ * stops reading as polish and starts reading as the page being slow.
+ *
+ * Gated on no-preference, like the theme fade above: the reduced-motion block
+ * in @layer base zeroes animations with !important, and these rules must not
+ * out-specify it.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  #main > * > * {
+    animation: rise var(--dur-base) var(--ease-out) both;
+  }
+
+  #main > * > *:nth-child(2) {
+    animation-delay: 40ms;
+  }
+
+  #main > * > *:nth-child(3) {
+    animation-delay: 80ms;
+  }
+
+  #main > * > *:nth-child(4) {
+    animation-delay: 120ms;
+  }
+
+  #main > * > *:nth-child(n + 5) {
+    animation-delay: 160ms;
+  }
+}
+
+/*
+ * Section-to-section navigation.
+ *
+ * The five sections are a sequence — capture it, review it, decide on it — so
+ * moving between them slides rather than cross-fades, and moving back slides
+ * the other way. Direction comes from the nav order and arrives as
+ * html[data-nav], set in (app)/layout.tsx just before the transition starts.
+ *
+ * The shell header is named separately so it stays put while the content
+ * moves. Without that it would be captured as part of the same snapshot and
+ * the whole page would appear to flash, which is the thing this replaces.
+ *
+ * Named by id, not by tag: PageHeader in components/ui.tsx is also a <header>,
+ * so `header { view-transition-name: … }` would assign one name to two
+ * elements on every page — and a duplicate name makes the browser abandon the
+ * transition altogether.
+ */
+@keyframes nav-exit-left {
+  to {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+
+@keyframes nav-enter-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@keyframes nav-exit-right {
+  to {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@keyframes nav-enter-left {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  #app-header {
+    view-transition-name: app-header;
+  }
+
+  #main {
+    view-transition-name: app-main;
+  }
+
+  ::view-transition-old(app-main),
+  ::view-transition-new(app-main) {
+    animation-duration: var(--dur-base);
+    animation-timing-function: var(--ease-out);
+  }
+
+  html[data-nav='forward']::view-transition-old(app-main) {
+    animation-name: nav-exit-left;
+  }
+
+  html[data-nav='forward']::view-transition-new(app-main) {
+    animation-name: nav-enter-right;
+  }
+
+  html[data-nav='back']::view-transition-old(app-main) {
+    animation-name: nav-exit-right;
+  }
+
+  html[data-nav='back']::view-transition-new(app-main) {
+    animation-name: nav-enter-left;
+  }
+}
+
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;

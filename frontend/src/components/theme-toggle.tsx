@@ -1,12 +1,23 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { readStoredTheme, resolveTheme, setTheme as persistTheme, type Theme } from '@/lib/theme';
+import {
+  currentSystemPrefersDark,
+  readStoredPreference,
+  resolveTheme,
+  setTheme as persistTheme,
+  type Theme,
+} from '@/lib/theme';
 import { Button } from './ui';
 
 /**
- * Icon button used on the landing page and in the authenticated header.
- * No icon dependency — both glyphs are inline SVG.
+ * Icon button for the public pages, where there is no Settings page to hold
+ * the preference. No icon dependency — both glyphs are inline SVG.
+ *
+ * Deliberately binary: it writes an explicit 'light' or 'dark', which leaves
+ * the 'system' preference behind. That is the honest behaviour for a
+ * two-state control, and the three-way choice lives in /settings — the place
+ * a signed-in user can get back to following the OS.
  */
 export function ThemeToggle() {
   const [theme, setThemeState] = useState<Theme>('light');
@@ -22,8 +33,7 @@ export function ThemeToggle() {
     }
     // No attribute found (only possible if the pre-paint script did not
     // run) — fall back to the same resolution it uses.
-    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    setThemeState(resolveTheme(readStoredTheme(), systemPrefersDark));
+    setThemeState(resolveTheme(readStoredPreference(), currentSystemPrefersDark()));
   }, []);
 
   function toggle() {

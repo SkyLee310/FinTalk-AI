@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { SiteFooter } from '@/components/site-footer';
+import { ThemeWatcher } from '@/components/theme-watcher';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -44,6 +45,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         />
       </head>
       <body className="min-h-screen antialiased">
+        {/*
+          Renders nothing; it keeps a 'system' theme preference tracking the OS
+          after load, which the pre-paint script above cannot do — that runs
+          once and then the page is static.
+        */}
+        <ThemeWatcher />
+
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-surface focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:shadow"

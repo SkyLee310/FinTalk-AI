@@ -1,4 +1,15 @@
+/** What actually gets painted — the value `data-theme` carries. */
 export type Theme = 'light' | 'dark';
+
+/**
+ * What the user chose. `'system'` defers to the OS and is the default.
+ *
+ * Kept separate from `Theme` because the two answer different questions:
+ * this is the preference to persist, that is the result to paint.
+ * Conflating them is what made following the OS unreachable — see
+ * `resolveTheme`.
+ */
+export type ThemePreference = 'light' | 'dark' | 'system';
 
 /**
  * Single source of truth for the storage key. `app/layout.tsx`'s pre-paint
@@ -9,26 +20,54 @@ export type Theme = 'light' | 'dark';
 export const THEME_STORAGE_KEY = 'fintalk-theme';
 
 /**
- * Pure resolution: a stored choice always wins over the system preference,
- * and only its absence falls through to `systemPrefersDark`. No DOM access,
- * so this is the part covered by a unit test; `readStoredTheme`/
- * `applyTheme`/`setTheme` below are the DOM-touching shell around it.
+ * Pure resolution: an explicit choice always wins, and only `'system'`
+ * falls through to `systemPrefersDark`.
+ *
+ * This used to take `Theme | null`, where `null` meant "nothing stored".
+ * That made following the OS a state you could leave but never return to —
+ * one toggle wrote a concrete value and the app stopped tracking the system
+ * for good. Settings offers `'system'` as a choice, so it has to be
+ * representable rather than inferred from an absence.
+ *
+ * No DOM access, so this is the part covered by a unit test;
+ * `readStoredPreference`/`applyTheme`/`setTheme` below are the DOM-touching
+ * shell around it.
  */
-export function resolveTheme(stored: Theme | null, systemPrefersDark: boolean): Theme {
-  if (stored !== null) return stored;
+export function resolveTheme(preference: ThemePreference, systemPrefersDark: boolean): Theme {
+  if (preference !== 'system') return preference;
   return systemPrefersDark ? 'dark' : 'light';
 }
 
-/** Reads the stored choice, or `null` if absent, invalid, or storage is blocked. */
-export function readStoredTheme(): Theme | null {
-  if (typeof window === 'undefined') return null;
+/**
+ * Reads the stored preference, defaulting to `'system'`.
+ *
+ * Absent, invalid and storage-blocked all return `'system'` — a first-time
+ * visitor and someone who explicitly chose to follow the OS should behave
+ * identically, and collapsing them here means no caller has to decide what
+ * a missing value means.
+ */
+export function readStoredPreference(): ThemePreference {
+  if (typeof window === 'undefined') return 'system';
   try {
     const value = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return value === 'light' || value === 'dark' ? value : null;
+    return value === 'light' || value === 'dark' || value === 'system' ? value : 'system';
   } catch {
-    // Private browsing / storage disabled: treat as "nothing stored".
-    return null;
+    // Private browsing / storage disabled: follow the OS.
+    return 'system';
   }
+}
+
+/**
+ * The OS preference, right now.
+ *
+ * The DOM-reading counterpart to `resolveTheme`'s pure `systemPrefersDark`
+ * argument. Returns `false` during SSR, where there is no OS to ask and
+ * `app/layout.tsx`'s pre-paint script settles the question before paint
+ * anyway.
+ */
+export function currentSystemPrefersDark(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
 /** Stamps `data-theme` on the root element so `globals.css`'s selectors apply. */
@@ -64,7 +103,7 @@ let transitionTimer: ReturnType<typeof setTimeout> | null = null;
  * pre-paint script path uses, where there is no previous state to fade from
  * and a transition would only delay first paint.
  */
-export function setTheme(theme: Theme): void {
+export function setTheme(preference: ThemePreference): void {
   const root = typeof document === 'undefined' ? null : document.documentElement;
 
   if (root !== null) {
@@ -76,9 +115,12 @@ export function setTheme(theme: Theme): void {
     }, TRANSITION_MS);
   }
 
-  applyTheme(theme);
+  // Resolved for painting, stored unresolved: writing the resolved value
+  // would silently convert a 'system' choice into a fixed one, which is the
+  // trap this type split exists to close.
+  applyTheme(resolveTheme(preference, currentSystemPrefersDark()));
   try {
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, preference);
   } catch {
     // Choice still applies for this page load via applyTheme above; it
     // simply will not survive a reload.

@@ -47,4 +47,44 @@ describe('apiFetch', () => {
     expect(err).toBeInstanceOf(ApiError);
     expect((err as ApiError).status).toBe(504);
   });
+
+  /**
+   * Fastify rejects a JSON content-type with an empty body outright
+   * (FST_ERR_CTP_EMPTY_JSON_BODY, 400). Sending the header on a bodyless
+   * request broke five mutations in production at once — logout, archive,
+   * submit, reject and confirm — so the absence of the header here is the
+   * behaviour under test, not an incidental detail.
+   */
+  it('sends no content-type on a bodyless request', async () => {
+    const spy = stubFetch(new Response(JSON.stringify({ ok: true }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
+    await apiFetch('/meetings/abc/archive', { method: 'PATCH' });
+    const init = spy.mock.calls[0]?.[1] as RequestInit;
+    expect(init.headers).not.toHaveProperty('content-type');
+  });
+
+  it('still sends content-type when there is a JSON body', async () => {
+    const spy = stubFetch(new Response(JSON.stringify({ ok: true }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
+    await apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ email: 'a@b.c' }) });
+    const init = spy.mock.calls[0]?.[1] as RequestInit;
+    expect(init.headers).toMatchObject({ 'content-type': 'application/json' });
+  });
+
+  /**
+   * `detail` is sendProblem's shape; Fastify's own errors carry `message`.
+   * Without this fallback a framework-level failure surfaced as a bare
+   * "Bad Request", which is what kept the bug above invisible.
+   */
+  it('falls back to message when the error body has no detail', async () => {
+    stubFetch(new Response(
+      JSON.stringify({ statusCode: 400, error: 'Bad Request', message: 'Body cannot be empty' }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    ));
+    await expect(apiFetch('/auth/logout', { method: 'POST' })).rejects.toMatchObject({
+      status: 400, detail: 'Body cannot be empty',
+    });
+  });
 });

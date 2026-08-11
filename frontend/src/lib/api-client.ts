@@ -48,10 +48,23 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
    */
   const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData;
 
+  /**
+   * A JSON content-type is only honest when a JSON body follows it.
+   *
+   * Fastify refuses the combination outright — FST_ERR_CTP_EMPTY_JSON_BODY,
+   * "Body cannot be empty when content-type is set to 'application/json'" —
+   * and answers 400 before the route ever runs. Sending the header
+   * unconditionally therefore broke every bodyless mutation at once:
+   * logout, meeting archive, term-sheet submit, registration reject and
+   * segment confirm. Most of them failed silently, because nothing on the
+   * screen was waiting on the response.
+   */
+  const hasBody = init?.body !== undefined && init.body !== null;
+
   const response = await fetch(`${baseUrl()}${path}`, {
     ...init,
     credentials: 'include',
-    headers: isFormData
+    headers: isFormData || !hasBody
       ? { ...init?.headers }
       : { 'content-type': 'application/json', ...init?.headers },
   });
@@ -60,8 +73,18 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     let detail = response.statusText;
     try {
       const body: unknown = await response.json();
-      if (body && typeof body === 'object' && 'detail' in body) {
-        detail = String((body as { detail: unknown }).detail);
+      if (body && typeof body === 'object') {
+        /**
+         * `detail` is what sendProblem emits, so it wins. Fastify's own
+         * errors carry `message` instead, and falling through to a bare
+         * "Bad Request" is what kept the empty-body bug above invisible on
+         * screen for as long as it lasted.
+         */
+        if ('detail' in body) {
+          detail = String((body as { detail: unknown }).detail);
+        } else if ('message' in body) {
+          detail = String((body as { message: unknown }).message);
+        }
       }
     } catch {
       // Non-JSON error body: keep statusText. Nothing to recover here.

@@ -474,6 +474,22 @@ export const api = {
       body: JSON.stringify({ active }),
     }),
 
+  /** Grants a role to a PENDING registration and flips it to ACTIVE — it can sign in immediately after. */
+  approveUser: (id: string, role: Role) =>
+    apiFetch<ManagedUser>(`/users/${id}/approve`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    }),
+
+  /**
+   * Deletes the PENDING row outright — the one real delete in this app, safe
+   * only because nothing may yet reference an unapproved registration. The
+   * audit trail keeps the submitted details; the row itself does not survive.
+   */
+  rejectUser: async (id: string): Promise<void> => {
+    await apiFetch<{ ok: boolean }>(`/users/${id}/reject`, { method: 'PATCH' });
+  },
+
   audit: () => apiFetch<{ integrity: AuditIntegrity; entries: AuditRow[] }>('/audit'),
 };
 

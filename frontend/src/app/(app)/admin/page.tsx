@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { Badge } from '@/components/badge';
 import { Card } from '@/components/card';
 import { ErrorNote, PageHeader, Spinner } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
@@ -44,6 +45,20 @@ const AREAS: readonly {
 
 export default function AdminPage() {
   const session = useAsync<Session>(() => api.me(), 'session');
+  const mayManageUsers = can(session.data, 'user:manage');
+  /**
+   * Gated on the loader, not just the key: a SUPERVISOR reaches this page via
+   * audit:read but not user:manage, and an ungated GET /users would 403 for
+   * them. A second, independent fetch of /users lives in (app)/layout.tsx for
+   * the nav badge — two is the honest trade at this scale.
+   */
+  const pendingUsers = useAsync(
+    () => (mayManageUsers ? api.users() : Promise.resolve({ users: [] })),
+    mayManageUsers ? 'admin-pending-users' : 'admin-pending-users-none',
+  );
+  const pendingCount = pendingUsers.data?.users.filter(
+    (user) => user.accountStatus === 'PENDING',
+  ).length ?? 0;
 
   if (session.loading) return <Spinner label="Checking your session" />;
   if (session.error !== null) return <ErrorNote>{session.error}</ErrorNote>;
@@ -74,7 +89,14 @@ export default function AdminPage() {
         {areas.map((area) => (
           <Link key={area.href} href={area.href} className="rounded-xl">
             <Card className="h-full p-5 transition hover:border-line-strong">
-              <h2 className="text-base font-semibold tracking-tight">{area.title}</h2>
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="text-base font-semibold tracking-tight">{area.title}</h2>
+                {area.href === '/admin/users' && pendingCount > 0 && (
+                  <Badge tone="warn" dot>
+                    {pendingCount} pending
+                  </Badge>
+                )}
+              </div>
               <p className="mt-2 text-caption leading-relaxed text-muted">{area.body}</p>
             </Card>
           </Link>

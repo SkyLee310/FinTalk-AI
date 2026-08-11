@@ -31,6 +31,21 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
+  const mayManageUsers = can(session, 'user:manage');
+  /**
+   * A second, independent fetch of /users — admin/page.tsx has its own for
+   * the same reason. Gated on the loader, not just the key: a SUPERVISOR
+   * sees this nav item via audit:read but not user:manage, and an ungated
+   * GET /users would 403 for them.
+   */
+  const pendingUsers = useAsync(
+    () => (mayManageUsers ? api.users() : Promise.resolve({ users: [] })),
+    mayManageUsers ? 'nav-pending-users' : 'nav-pending-users-none',
+  );
+  const pendingUserCount = pendingUsers.data?.users.filter(
+    (user) => user.accountStatus === 'PENDING',
+  ).length ?? 0;
+
   // An expired or absent session sends the user to sign in rather than leaving
   // them on a shell full of empty panels.
   useEffect(() => {
@@ -82,7 +97,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                       : 'text-muted hover:bg-raised hover:text-text'
                   }`}
                 >
-                  {item.label}
+                  <span className="inline-flex items-center gap-1.5">
+                    {item.label}
+                    {item.href === '/admin' && pendingUserCount > 0 && (
+                      <Badge tone="warn" dot>
+                        {pendingUserCount}
+                      </Badge>
+                    )}
+                  </span>
                 </Link>
               );
             })}

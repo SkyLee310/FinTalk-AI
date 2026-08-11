@@ -6,6 +6,7 @@ import { Card, CardHeader } from '@/components/card';
 import {
   Button,
   Disclosure,
+  EmptyState,
   ErrorNote,
   Field,
   Input,
@@ -143,6 +144,118 @@ function InviteForm({ onDone }: { onDone: (user: ManagedUser) => void }) {
         </Button>
       </form>
     </Card>
+  );
+}
+
+/**
+ * A self-registered account with no role and no access yet. Approve grants
+ * one of the same roles InviteForm can grant — this path is not restricted
+ * to a smaller set — and immediately lets the account sign in. Reject is a
+ * real delete: nothing may yet reference an unapproved registration, which
+ * is exactly what makes deleting it safe here and nowhere else in this app.
+ */
+function PendingUserRow({
+  user,
+  onChanged,
+}: {
+  user: ManagedUser;
+  onChanged: (message: string) => void;
+}) {
+  const [role, setRole] = useState<Role | ''>('');
+  const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function approve(): Promise<void> {
+    if (role === '') return;
+    setBusy('approve');
+    setError(null);
+    try {
+      await api.approveUser(user.id, role);
+      onChanged(`${user.displayName} was approved as ${role}.`);
+    } catch (cause) {
+      setError(describeError(cause));
+      setBusy(null);
+    }
+  }
+
+  async function reject(): Promise<void> {
+    setBusy('reject');
+    setError(null);
+    try {
+      await api.rejectUser(user.id);
+      onChanged(`${user.displayName}'s registration was rejected.`);
+    } catch (cause) {
+      setError(describeError(cause));
+      setBusy(null);
+    }
+  }
+
+  return (
+    <li>
+      <Card className="p-5">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{user.displayName}</p>
+          <p className="mt-0.5 truncate text-caption text-faint">{user.email}</p>
+        </div>
+
+        <dl className="mt-3 grid gap-1.5 text-caption text-muted sm:grid-cols-2">
+          <div className="flex gap-1.5">
+            <dt className="font-medium text-text">Username</dt>
+            <dd>{user.username}</dd>
+          </div>
+          <div className="flex gap-1.5">
+            <dt className="font-medium text-text">Staff ID</dt>
+            <dd>{user.staffId}</dd>
+          </div>
+        </dl>
+
+        {error !== null && (
+          <div className="mt-3">
+            <ErrorNote>{error}</ErrorNote>
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-line pt-4">
+          <Field
+            label="Grant role"
+            htmlFor={`grant-role-${user.id}`}
+            hint={role === '' ? 'Choose a role to enable Approve.' : ROLE_MEANING[role]}
+          >
+            <Select
+              id={`grant-role-${user.id}`}
+              value={role}
+              disabled={busy !== null}
+              onChange={(event) => setRole(event.target.value as Role | '')}
+            >
+              <option value="">Choose a role…</option>
+              {ROLES.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Button
+            disabled={busy !== null || role === ''}
+            onClick={() => {
+              void approve();
+            }}
+          >
+            {busy === 'approve' ? 'Approving…' : 'Approve'}
+          </Button>
+          <Button
+            variant="danger"
+            disabled={busy !== null}
+            onClick={() => {
+              void reject();
+            }}
+          >
+            {busy === 'reject' ? 'Rejecting…' : 'Reject'}
+          </Button>
+        </div>
+      </Card>
+    </li>
   );
 }
 
@@ -290,6 +403,9 @@ export default function AdminUsersPage() {
     );
   }
 
+  const pendingUsers = users.data?.users.filter((user) => user.accountStatus === 'PENDING') ?? [];
+  const activeUsers = users.data?.users.filter((user) => user.accountStatus === 'ACTIVE') ?? [];
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -303,6 +419,8 @@ export default function AdminUsersPage() {
       />
 
       {done !== null && <SuccessNote>{done}</SuccessNote>}
+      {users.loading && <Spinner label="Loading users" />}
+      {users.error !== null && <ErrorNote>{users.error}</ErrorNote>}
 
       <InviteForm
         onDone={(user) => {
@@ -312,14 +430,38 @@ export default function AdminUsersPage() {
       />
 
       <Section
+        title="Pending approval"
+        description="A self-registered account waits here with no role and no access until you approve it."
+      >
+        {!users.loading && pendingUsers.length === 0 && (
+          <EmptyState
+            title="No pending registrations"
+            body="Anyone who signs up from the public site appears here for you to approve or reject."
+          />
+        )}
+
+        {pendingUsers.length > 0 && (
+          <ul className="space-y-4">
+            {pendingUsers.map((user) => (
+              <PendingUserRow
+                key={user.id}
+                user={user}
+                onChanged={(message) => {
+                  setDone(message);
+                  users.reload();
+                }}
+              />
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      <Section
         title="Accounts"
         description="Deactivated accounts are kept, not deleted — their approvals and audit entries name them."
       >
-        {users.loading && <Spinner label="Loading users" />}
-        {users.error !== null && <ErrorNote>{users.error}</ErrorNote>}
-
         <ul className="space-y-4">
-          {users.data?.users.map((user) => (
+          {activeUsers.map((user) => (
             <UserRow
               key={user.id}
               user={user}

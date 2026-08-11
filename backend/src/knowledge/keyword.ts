@@ -71,6 +71,31 @@ export function queryTerms(query: string): readonly string[] {
 }
 
 /**
+ * The text keyword retrieval should actually search on.
+ *
+ * `withHistory` builds a composite for a language model: it carries the
+ * assistant's prior answers and framing like "Earlier in this conversation".
+ * That is right for generation and wrong here — term overlap has no way to
+ * discount any of it, so a long chat would rank meetings by how much they
+ * echo the assistant's own prose, and every extra turn dilutes the terms the
+ * person actually typed.
+ *
+ * Earlier *questions* stay, because they carry the topic a follow-up depends
+ * on: "what about the penalties?" is unanswerable alone but retrievable after
+ * "which meetings discussed Murabahah pricing?".
+ */
+export function keywordQuery(
+  question: string,
+  history: readonly { readonly role: 'user' | 'assistant'; readonly content: string }[] | undefined,
+): string {
+  const asked = (history ?? [])
+    .filter((turn) => turn.role === 'user')
+    .map((turn) => turn.content);
+
+  return [...asked, question].join(' ');
+}
+
+/**
  * Ranks candidates by the share of query terms their text contains.
  *
  * Returns the same `{ meetingId, score }` shape as `rankBySimilarity` in

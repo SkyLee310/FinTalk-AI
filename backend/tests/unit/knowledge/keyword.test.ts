@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rankByKeyword } from '../../../src/knowledge/keyword.js';
+import { keywordQuery, rankByKeyword } from '../../../src/knowledge/keyword.js';
 
 /**
  * Keyword retrieval is the fallback that keeps Ask FinTalk AI usable when no
@@ -71,5 +71,48 @@ describe('rankByKeyword', () => {
 
   it('scores a single-term query that matches one meeting as a full hit', () => {
     expect(rankByKeyword('renovation', CORPUS, 5)).toEqual([{ meetingId: 'm3', score: 1 }]);
+  });
+});
+
+describe('keywordQuery', () => {
+  it('returns the question unchanged when there is no history', () => {
+    expect(keywordQuery('Murabahah pricing', undefined)).toBe('Murabahah pricing');
+    expect(keywordQuery('Murabahah pricing', [])).toBe('Murabahah pricing');
+  });
+
+  it('keeps earlier questions, so a follow-up inherits their topic', () => {
+    const query = keywordQuery('What about the penalties?', [
+      { role: 'user', content: 'Which meetings discussed Murabahah pricing?' },
+      { role: 'assistant', content: 'The committee reviewed the markup.' },
+    ]);
+
+    expect(query).toContain('Murabahah');
+    expect(query).toContain('penalties');
+  });
+
+  it('drops the assistant turns', () => {
+    /**
+     * The composite `withHistory` builds is written for a language model and
+     * carries the assistant's own prose. Term overlap cannot discount that, so
+     * including it would rank meetings by how much they echo the previous
+     * answer rather than by what was just asked — and the effect compounds
+     * with every turn.
+     */
+    const query = keywordQuery('What about the penalties?', [
+      { role: 'assistant', content: 'Ta widh is compensation for actual loss.' },
+    ]);
+
+    expect(query).not.toContain('compensation');
+    expect(query).toBe('What about the penalties?');
+  });
+
+  it('adds no framing words of its own', () => {
+    // "Earlier in this conversation" and friends are terms too, and every one
+    // of them dilutes the score of the terms that actually came from a person.
+    const query = keywordQuery('penalties', [{ role: 'user', content: 'Murabahah' }]);
+
+    expect(query.toLowerCase()).not.toContain('conversation');
+    expect(query.toLowerCase()).not.toContain('assistant');
+    expect(query).toBe('Murabahah penalties');
   });
 });

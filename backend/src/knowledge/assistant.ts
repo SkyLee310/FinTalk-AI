@@ -4,7 +4,7 @@ import { appendAudit, type AuditActor } from '../audit/chain.js';
 import { ComplianceError } from '../compliance/errors.js';
 import { detectPii } from '../pdpa/detectors.js';
 import { rankBySimilarity } from './graph.js';
-import { rankByKeyword } from './keyword.js';
+import { keywordQuery, rankByKeyword } from './keyword.js';
 
 /**
  * Ask FinTalk AI — questions answered from this corpus, and from nothing else.
@@ -249,8 +249,10 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
 
   if (ranked.length === 0) {
     retrieval = 'keyword';
+    // Not `composite` — see keywordQuery. The model's own prior prose would
+    // otherwise outweigh the question in a term-overlap score.
     ranked = rankByKeyword(
-      composite,
+      keywordQuery(question, input.history),
       transcripts.map((t) => ({ meetingId: t.meetingId, text: t.rawRedacted })),
       RETRIEVAL_LIMIT,
     );

@@ -7,6 +7,7 @@
     "buildCommand": "npm run db:generate && npm run build"
   },
   "deploy": {
+    "//deploy": "NOTE, 2026-08-11: the dashboard's pre-deploy command is now `npm run db:deploy && npm run db:constraints && npm run backfill:embeddings`. The backfill gives meetings captured before GEMINI_MODEL_EMBEDDING was configured the embedding process-meeting.ts only ever writes at capture time; without it they stay outside similarity permanently. It is idempotent — one query and no API calls once every transcript has a vector — and it always exits 0, because per the note above a data-population step must never gate a deploy.",
     "startCommand": "npm run db:deploy && npm run db:constraints && npm start",
     "healthcheckPath": "/health",
     "restartPolicyType": "ON_FAILURE"

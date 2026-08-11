@@ -371,9 +371,22 @@ export default function RecordPage() {
 
           <TransferNotice value={ack} onChange={setAck} idPrefix="record" />
 
-          <Button disabled={!step2Complete} onClick={() => requestOpenStep(3)}>
+          {/*
+            Gated on `armed`, which is what requestOpenStep(3) actually
+            enforces — not on step2Complete alone. Those two disagreeing is
+            what made this button appear enabled and do nothing: both boxes
+            ticked with no title left it clickable and inert. A control's
+            disabled state and its precondition have to be the same
+            condition, or the button lies about what it will do.
+          */}
+          <Button disabled={!armed} onClick={() => requestOpenStep(3)}>
             Continue
           </Button>
+          {step2Complete && !step1Complete && (
+            <p className="text-xs text-faint">
+              Give the meeting a title in step 1 first.
+            </p>
+          )}
         </div>
       </Disclosure>
 

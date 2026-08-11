@@ -37,13 +37,18 @@ export const EXAMPLES = [
 const MAX_HISTORY_TURNS = 10;
 
 /**
- * Header icon button that opens the panel. A small chat-bubble glyph next
- * to ThemeToggle's sun/moon — both read as "controls for this session," not
+ * Header button that opens the panel. A chat-bubble glyph next to
+ * ThemeToggle's sun/moon — both read as "controls for this session," not
  * navigation, which is why neither lives in the nav list in lib/nav.ts.
+ *
+ * Named in visible text, not only in an aria-label. A lone speech bubble
+ * asks everyone to guess, and the one feature people are told to look for
+ * by name is the last thing that should be a rebus. That text is now the
+ * accessible name too, so there is no second string to drift out of sync.
  */
 export function AskFinTalkAITrigger({ onClick }: { onClick: () => void }) {
   return (
-    <Button type="button" variant="secondary" onClick={onClick} aria-label="Ask FinTalk AI">
+    <Button type="button" variant="secondary" onClick={onClick}>
       <svg
         viewBox="0 0 24 24"
         width="18"
@@ -57,6 +62,7 @@ export function AskFinTalkAITrigger({ onClick }: { onClick: () => void }) {
       >
         <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
       </svg>
+      Ask FinTalk AI
     </Button>
   );
 }

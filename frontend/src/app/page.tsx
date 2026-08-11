@@ -141,8 +141,14 @@ export default async function HomePage() {
               >
                 Sign in
               </Link>
+              {/*
+                The mode is carried in the query string rather than assumed.
+                Both buttons used to land on the same bare /login, whose
+                segmented control always opened Sign in — so this one sent
+                people to the wrong form and left them to find the toggle.
+              */}
               <Link
-                href="/login"
+                href="/login?mode=signup"
                 className="inline-flex items-center justify-center rounded-full border border-line-strong bg-surface px-6 py-3 text-sm font-medium text-text transition active:scale-[0.98] hover:bg-raised"
               >
                 Sign up

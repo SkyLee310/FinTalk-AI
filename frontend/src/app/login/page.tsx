@@ -1,10 +1,10 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { type FormEvent, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { type FormEvent, Suspense, useState } from 'react';
 import { GlassPanel } from '@/components/glass-panel';
 import { Logo } from '@/components/logo';
-import { Button, ErrorNote, Field, Input, SuccessNote } from '@/components/ui';
+import { Button, ErrorNote, Field, Input, Spinner, SuccessNote } from '@/components/ui';
 import { describeError } from '@/hooks/use-async';
 import { api } from '@/lib/api';
 import { ApiError } from '@/lib/api-client';
@@ -13,13 +13,45 @@ import { navigateWithTransition } from '@/lib/view-transition';
 type Mode = 'signin' | 'signup';
 
 /**
+ * `useSearchParams` opts a statically-prerendered client page into
+ * client-side rendering up to the nearest Suspense boundary, and `next build`
+ * fails outright without one. So the page is that boundary, and the work
+ * lives in LoginPageContent below.
+ */
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main
+          id="main"
+          className="mx-auto flex min-h-[80vh] max-w-md items-center justify-center px-5"
+        >
+          <Spinner label="Loading" />
+        </main>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
+  );
+}
+
+/**
  * One page, two doors. A segmented control rather than two routes because
  * both forms are asking the same question — "let me in" versus "let me
  * ask to be let in" — and switching between them should feel like flipping
  * a toggle, not navigating away.
+ *
+ * Which door opens comes from `?mode=`, so that the landing page's Sign up
+ * button can actually mean Sign up. It seeds the initial state only, rather
+ * than staying bound to the URL: the segmented control is the authority once
+ * the page is up, and rewriting the query string on every toggle would put a
+ * history entry behind switching a tab.
  */
-export default function LoginPage() {
-  const [mode, setMode] = useState<Mode>('signin');
+function LoginPageContent() {
+  const params = useSearchParams();
+  const [mode, setMode] = useState<Mode>(
+    params.get('mode') === 'signup' ? 'signup' : 'signin',
+  );
   const [registered, setRegistered] = useState(false);
 
   if (registered) {

@@ -1,6 +1,7 @@
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
+  MouseEvent as ReactMouseEvent,
   ReactNode,
   SelectHTMLAttributes,
   SyntheticEvent,
@@ -127,20 +128,54 @@ export function Disclosure({
   children: ReactNode;
   /** Omit for the existing uncontrolled behavior — the native <details> manages its own state. */
   open?: boolean;
-  /** Fires on every open AND close. Task 13's accordion only acts on the open case. */
+  /** Receives the requested new state. Task 13's accordion only acts on the open case. */
   onToggle?: (open: boolean) => void;
 }) {
+  const controlled = open !== undefined;
+
   return (
     <details
       open={open}
+      /**
+       * Native toggle events are for uncontrolled use only. In controlled
+       * mode the click handler below is the single entry point, and keeping
+       * this wired as well would report the same interaction twice.
+       */
       onToggle={
-        onToggle === undefined
+        controlled || onToggle === undefined
           ? undefined
           : (event: SyntheticEvent<HTMLDetailsElement>) => onToggle(event.currentTarget.open)
       }
       className="group rounded-lg border border-line bg-raised"
     >
       <summary
+        /**
+         * `open` alone does not actually control a <details>.
+         *
+         * Clicking a <summary> flips the parent's `open` attribute as a
+         * browser default action. React never observes that, so the DOM and
+         * the prop diverge — and because React skips writing an attribute
+         * whose prop has not changed, a later render will not put it back.
+         * A step the controller believed shut could therefore be opened by
+         * clicking it, and every guard downstream then refused to act on a
+         * panel the user could plainly see.
+         *
+         * Cancelling the default makes React the only thing that opens or
+         * closes a controlled Disclosure. Enter and Space both fire click on
+         * a summary, so this covers the keyboard too.
+         *
+         * Uncontrolled callers get `undefined` here, which also keeps this
+         * component renderable from a server component (app/page.tsx) — an
+         * event handler on a DOM node there is not serializable.
+         */
+        onClick={
+          controlled
+            ? (event: ReactMouseEvent<HTMLElement>) => {
+              event.preventDefault();
+              onToggle?.(!open);
+            }
+            : undefined
+        }
         className={`cursor-pointer list-none rounded-lg px-4 py-2.5 text-caption font-medium text-muted hover:text-text ${FOCUS}`}
       >
         <span className="inline-block transition group-open:rotate-90" aria-hidden="true">

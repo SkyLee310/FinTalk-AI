@@ -37,8 +37,45 @@ export function applyTheme(theme: Theme): void {
   document.documentElement.setAttribute('data-theme', theme);
 }
 
-/** Applies the theme and persists the choice. Storage failure does not block applying it. */
+/**
+ * How long the colour cross-fade runs. Must match the transition duration in
+ * globals.css's `.theme-transition` rule — the class has to outlive the
+ * animation it enables, or the fade is cut off partway.
+ */
+const TRANSITION_MS = 260;
+
+/** Class that opts the document into the cross-fade. Defined in globals.css. */
+const TRANSITION_CLASS = 'theme-transition';
+
+/**
+ * Held so a second toggle mid-fade restarts the timer rather than letting the
+ * first one strip the class out from under it — which would leave the rest of
+ * the second fade running with no transition at all.
+ */
+let transitionTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Applies the theme and persists the choice. Storage failure does not block
+ * applying it.
+ *
+ * Unlike `applyTheme`, this one fades: it is the deliberate act of switching,
+ * and an instant repaint of every colour on the page reads as a glitch rather
+ * than a change. `applyTheme` stays abrupt on purpose — it is also what the
+ * pre-paint script path uses, where there is no previous state to fade from
+ * and a transition would only delay first paint.
+ */
 export function setTheme(theme: Theme): void {
+  const root = typeof document === 'undefined' ? null : document.documentElement;
+
+  if (root !== null) {
+    root.classList.add(TRANSITION_CLASS);
+    if (transitionTimer !== null) clearTimeout(transitionTimer);
+    transitionTimer = setTimeout(() => {
+      root.classList.remove(TRANSITION_CLASS);
+      transitionTimer = null;
+    }, TRANSITION_MS);
+  }
+
   applyTheme(theme);
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);

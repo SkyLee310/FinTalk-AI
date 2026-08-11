@@ -194,6 +194,31 @@
   --glass-highlight: rgb(255 255 255 / 6%);
 }
 
+/*
+ * Eases the theme change, and only the theme change.
+ *
+ * The tokens above flip the instant `data-theme` lands, so switching was a
+ * hard repaint with nothing animating it. The class is added by setTheme in
+ * lib/theme.ts for the duration of the fade and then removed: a permanent
+ * global colour transition would fight every hover state and every
+ * Tailwind `transition` utility on the page, and would lag the pre-paint
+ * script's very first render too.
+ *
+ * Wrapped in no-preference deliberately. The reduced-motion block below
+ * zeroes transitions with !important, and so does this rule — but this one
+ * has the higher specificity, so it would win. Gating it on the media query
+ * is what keeps reduced motion authoritative rather than merely earlier.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  :root.theme-transition,
+  :root.theme-transition *,
+  :root.theme-transition *::before,
+  :root.theme-transition *::after {
+    transition: background-color 260ms ease, border-color 260ms ease,
+      color 260ms ease, fill 260ms ease, stroke 260ms ease !important;
+  }
+}
+
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;

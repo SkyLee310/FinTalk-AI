@@ -347,6 +347,16 @@ export const api = {
   meeting: (id: string) => apiFetch<MeetingDetail>(`/meetings/${id}`),
 
   /**
+   * Archive, never delete — hides it from meetings() while every row that
+   * references it (term sheet, approval, settlement, Shariah flag,
+   * transcript) keeps resolving it normally. The server also enforces
+   * creator-only; this is not the only gate.
+   */
+  archiveMeeting: async (id: string): Promise<void> => {
+    await apiFetch<{ ok: boolean }>(`/meetings/${id}/archive`, { method: 'PATCH' });
+  },
+
+  /**
    * Returns as soon as the recording is accepted, not when it is processed.
    * Transcription takes minutes and the platform closes a request at 300
    * seconds, so the caller polls `meeting(meetingId)` until status leaves

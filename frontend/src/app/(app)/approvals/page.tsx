@@ -10,6 +10,7 @@ import {
   ErrorNote,
   Field,
   PageHeader,
+  Section,
   Select,
   Spinner,
   SuccessNote,
@@ -195,6 +196,115 @@ function SettleForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
   );
 }
 
+/**
+ * One facility. Reused across both sections below unchanged — DecideForm
+ * only ever shows for a PENDING_CHECKER row and SettleForm already branches
+ * on whether it is settled, so the same card is correct whichever section
+ * (or sub-list) renders it.
+ */
+function ApprovalCard({
+  approval,
+  mayDecide,
+  maySettle,
+  mayDownload,
+  onDecided,
+  onSettled,
+}: {
+  approval: ApprovalRow;
+  mayDecide: boolean;
+  maySettle: boolean;
+  mayDownload: boolean;
+  onDecided: () => void;
+  onSettled: () => void;
+}) {
+  const sheet = approval.termSheet;
+  const pending = approval.decision === 'PENDING_CHECKER';
+  const rateBps = sheet.profitRateBps ?? sheet.interestRateBps ?? 0;
+
+  return (
+    <li>
+      <Card>
+        <CardHeader
+          title={sheet.applicantName}
+          description={`Submitted by ${approval.makerName} on ${new Date(
+            approval.submittedAt,
+          ).toLocaleString()}`}
+          action={
+            <Badge tone={DECISION_TONE[approval.decision]} dot>
+              {approval.decision}
+            </Badge>
+          }
+        />
+
+        <dl className="divide-y divide-line px-5 py-2">
+          <DataRow label="Facility">
+            <Badge tone={sheet.facilityKind === 'ISLAMIC' ? 'brand' : 'neutral'}>
+              {sheet.facilityKind}
+              {sheet.islamicContract === null ? '' : ` · ${sheet.islamicContract}`}
+            </Badge>
+          </DataRow>
+          <DataRow label="Principal">
+            <span className="font-mono">
+              {sheet.currency} {sheet.principalFormatted}
+            </span>
+          </DataRow>
+          <DataRow label="Tenure">{sheet.tenureMonths} months</DataRow>
+          <DataRow label={sheet.facilityKind === 'ISLAMIC' ? 'Profit rate' : 'Interest rate'}>
+            <span className="font-mono">{(rateBps / 100).toFixed(2)}%</span>
+          </DataRow>
+          <DataRow label="Meeting">
+            <Link
+              href={`/meetings/${sheet.meetingId}`}
+              className="rounded text-brand underline underline-offset-2"
+            >
+              View transcript
+            </Link>
+          </DataRow>
+        </dl>
+
+        {approval.note !== null && approval.note !== '' && (
+          <p className="border-t border-line px-5 py-3 text-sm text-muted">
+            <span className="font-medium text-text">Note. </span>
+            {approval.note}
+          </p>
+        )}
+
+        <div className="px-5 pb-5">
+          {mayDecide && pending && <DecideForm approval={approval} onDone={onDecided} />}
+
+          {maySettle && approval.decision === 'APPROVED' && (
+            <SettleForm approval={approval} onDone={onSettled} />
+          )}
+
+          {mayDownload && approval.decision === 'APPROVED' && (
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
+              {/*
+                CSV only. The ISO 20022 pain.001 XML was removed: it is a
+                payment instruction, and an approved term sheet is a credit
+                decision. For a Murabahah facility the money moves
+                bank-to-vendor for an asset purchase, so a transfer crediting
+                the applicant described a cash advance with a markup — the
+                structure this product exists to flag.
+              */}
+              <a
+                href={`${API_BASE}/term-sheets/${sheet.id}/payment-payload`}
+                className="inline-flex items-center rounded-lg border border-line-strong bg-surface px-3.5 py-2 text-sm font-medium hover:bg-raised"
+              >
+                Download CSV handoff
+              </a>
+              <p className="w-full pt-1 text-xs text-faint">
+                The approved figures, for you to complete with account details in
+                your own banking channel. Not a payment instruction: this system
+                never submits one, and makes no claim about when money moves.
+              </p>
+            </div>
+          )}
+        </div>
+      </Card>
+    </li>
+  );
+}
+
 export default function ApprovalsPage() {
   const session = useAsync<Session>(() => api.me(), 'session');
   const approvals = useAsync(() => api.approvals(), 'approvals');
@@ -209,8 +319,31 @@ export default function ApprovalsPage() {
    */
   const maySettle = can(session.data, 'payment:settle');
 
+  const onDecided = () => {
+    setDone('Decision recorded and written to the audit log.');
+    approvals.reload();
+  };
+  const onSettled = () => {
+    setDone('Simulated settlement recorded and written to the audit log. No funds moved.');
+    approvals.reload();
+  };
+
+  /**
+   * Three groups, not five: a decided-and-rejected, withdrawn, or still-draft
+   * term sheet is finished, and this page is about what still needs doing.
+   * All three read the same /approvals payload — no new endpoint.
+   */
+  const all = approvals.data?.approvals ?? [];
+  const pendingApprovals = all.filter((approval) => approval.decision === 'PENDING_CHECKER');
+  const awaitingSettlement = all.filter(
+    (approval) => approval.decision === 'APPROVED' && approval.settlement === null,
+  );
+  const recentlySettled = all.filter(
+    (approval) => approval.decision === 'APPROVED' && approval.settlement !== null,
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
         eyebrow="Decide"
         title="Approvals and settlement"
@@ -221,122 +354,91 @@ export default function ApprovalsPage() {
       {approvals.loading && <Spinner label="Loading approvals" />}
       {approvals.error !== null && <ErrorNote>{approvals.error}</ErrorNote>}
 
-      {approvals.data?.approvals.length === 0 && (
-        <EmptyState
-          title="Nothing awaiting a decision"
-          body="A maker submits a term sheet from a meeting once its Shariah findings are cleared."
-        />
-      )}
+      <Section
+        title="Approvals"
+        description="Submitted term sheets waiting for a decision."
+        action={
+          <Badge tone={pendingApprovals.length > 0 ? 'warn' : 'neutral'}>
+            {pendingApprovals.length}
+          </Badge>
+        }
+      >
+        {!approvals.loading && pendingApprovals.length === 0 && (
+          <EmptyState
+            title="Nothing awaiting a decision"
+            body="A maker submits a term sheet from a meeting once its Shariah findings are cleared."
+          />
+        )}
+        {pendingApprovals.length > 0 && (
+          <ul className="space-y-4">
+            {pendingApprovals.map((approval) => (
+              <ApprovalCard
+                key={approval.id}
+                approval={approval}
+                mayDecide={mayDecide}
+                maySettle={maySettle}
+                mayDownload={mayDownload}
+                onDecided={onDecided}
+                onSettled={onSettled}
+              />
+            ))}
+          </ul>
+        )}
+      </Section>
 
-      <ul className="space-y-4">
-        {approvals.data?.approvals.map((approval) => {
-          const sheet = approval.termSheet;
-          const pending = approval.decision === 'PENDING_CHECKER';
-          const rateBps = sheet.profitRateBps ?? sheet.interestRateBps ?? 0;
+      <Section
+        title="Settlement"
+        description="Once approved, record how the transfer was completed elsewhere. Every settlement here is simulated."
+        action={
+          <Badge tone={awaitingSettlement.length > 0 ? 'warn' : 'neutral'}>
+            {awaitingSettlement.length}
+          </Badge>
+        }
+      >
+        {!approvals.loading && awaitingSettlement.length === 0 && recentlySettled.length === 0 && (
+          <EmptyState
+            title="Nothing to settle yet"
+            body="Once you approve a facility above, record its settlement here."
+          />
+        )}
 
-          return (
-            <li key={approval.id}>
-              <Card>
-                <CardHeader
-                  title={sheet.applicantName}
-                  description={`Submitted by ${approval.makerName} on ${new Date(
-                    approval.submittedAt,
-                  ).toLocaleString()}`}
-                  action={
-                    <Badge tone={DECISION_TONE[approval.decision]} dot>
-                      {approval.decision}
-                    </Badge>
-                  }
+        {awaitingSettlement.length > 0 && (
+          <ul className="space-y-4">
+            {awaitingSettlement.map((approval) => (
+              <ApprovalCard
+                key={approval.id}
+                approval={approval}
+                mayDecide={mayDecide}
+                maySettle={maySettle}
+                mayDownload={mayDownload}
+                onDecided={onDecided}
+                onSettled={onSettled}
+              />
+            ))}
+          </ul>
+        )}
+
+        {recentlySettled.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
+              Recently settled
+            </h3>
+            <ul className="space-y-4">
+              {recentlySettled.map((approval) => (
+                <ApprovalCard
+                  key={approval.id}
+                  approval={approval}
+                  mayDecide={mayDecide}
+                  maySettle={maySettle}
+                  mayDownload={mayDownload}
+                  onDecided={onDecided}
+                  onSettled={onSettled}
                 />
-
-                <dl className="divide-y divide-line px-5 py-2">
-                  <DataRow label="Facility">
-                    <Badge tone={sheet.facilityKind === 'ISLAMIC' ? 'brand' : 'neutral'}>
-                      {sheet.facilityKind}
-                      {sheet.islamicContract === null ? '' : ` · ${sheet.islamicContract}`}
-                    </Badge>
-                  </DataRow>
-                  <DataRow label="Principal">
-                    <span className="font-mono">
-                      {sheet.currency} {sheet.principalFormatted}
-                    </span>
-                  </DataRow>
-                  <DataRow label="Tenure">{sheet.tenureMonths} months</DataRow>
-                  <DataRow
-                    label={sheet.facilityKind === 'ISLAMIC' ? 'Profit rate' : 'Interest rate'}
-                  >
-                    <span className="font-mono">{(rateBps / 100).toFixed(2)}%</span>
-                  </DataRow>
-                  <DataRow label="Meeting">
-                    <Link
-                      href={`/meetings/${sheet.meetingId}`}
-                      className="rounded text-brand underline underline-offset-2"
-                    >
-                      View transcript
-                    </Link>
-                  </DataRow>
-                </dl>
-
-                {approval.note !== null && approval.note !== '' && (
-                  <p className="border-t border-line px-5 py-3 text-sm text-muted">
-                    <span className="font-medium text-text">Note. </span>
-                    {approval.note}
-                  </p>
-                )}
-
-                <div className="px-5 pb-5">
-                  {mayDecide && pending && (
-                    <DecideForm
-                      approval={approval}
-                      onDone={() => {
-                        setDone('Decision recorded and written to the audit log.');
-                        approvals.reload();
-                      }}
-                    />
-                  )}
-
-                  {maySettle && approval.decision === 'APPROVED' && (
-                    <SettleForm
-                      approval={approval}
-                      onDone={() => {
-                        setDone(
-                          'Simulated settlement recorded and written to the audit log. '
-                          + 'No funds moved.',
-                        );
-                        approvals.reload();
-                      }}
-                    />
-                  )}
-
-                  {mayDownload && approval.decision === 'APPROVED' && (
-                    <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
-                      {/*
-                        CSV only. The ISO 20022 pain.001 XML was removed: it is a
-                        payment instruction, and an approved term sheet is a credit
-                        decision. For a Murabahah facility the money moves
-                        bank-to-vendor for an asset purchase, so a transfer crediting
-                        the applicant described a cash advance with a markup — the
-                        structure this product exists to flag.
-                      */}
-                      <a
-                        href={`${API_BASE}/term-sheets/${sheet.id}/payment-payload`}
-                        className="inline-flex items-center rounded-lg border border-line-strong bg-surface px-3.5 py-2 text-sm font-medium hover:bg-raised"
-                      >
-                        Download CSV handoff
-                      </a>
-                      <p className="w-full pt-1 text-xs text-faint">
-                        The approved figures, for you to complete with account details in
-                        your own banking channel. Not a payment instruction: this system
-                        never submits one, and makes no claim about when money moves.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </Card>
-            </li>
-          );
-        })}
-      </ul>
+              ))}
+            </ul>
+          </div>
+        )}
+      </Section>
     </div>
   );
 }

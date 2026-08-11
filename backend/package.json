@@ -20,7 +20,8 @@
     "db:constraints": "node scripts/apply-constraints.mjs",
     "db:reset": "prisma migrate reset --force && npm run db:constraints",
     "db:seed": "tsx --env-file=.env prisma/seed.ts",
-    "db:seed:deploy": "tsx prisma/seed.ts"
+    "db:seed:deploy": "tsx prisma/seed.ts",
+    "backfill:embeddings": "node dist/scripts/backfill-embeddings.js"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

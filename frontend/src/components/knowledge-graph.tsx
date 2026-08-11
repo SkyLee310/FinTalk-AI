@@ -156,11 +156,23 @@ export function KnowledgeGraphView({
 
   return (
     <div className="space-y-3">
+      {/*
+        The notice below states what the flag actually reports.
+
+        The server computes similarityUnavailable from stored embeddings — every
+        meeting's summaryEmbedding is empty — not from whether a model is
+        configured. Those were the same fact until a model was configured with
+        meetings already captured, and then the old wording began asserting a
+        cause it could not know. Saying "no model" while one is running sends
+        whoever reads it to check the wrong thing.
+      */}
       {graph.similarityUnavailable && (
         <p className="rounded-lg border border-warn/40 bg-warn-soft/60 px-4 py-2.5 text-caption text-muted">
-          Connections here come from shared topics only. No embedding model is
-          configured, so similarity of wording is not being compared — some genuine
-          relationships will be missing rather than wrong.
+          Connections here come from shared topics only. None of these meetings has a
+          stored embedding — one is written at capture, so meetings captured before an
+          embedding model was configured keep none until they are backfilled. Similarity
+          of wording is not being compared, and some genuine relationships will be
+          missing rather than wrong.
         </p>
       )}
 

@@ -12,14 +12,20 @@ import { Button, ErrorNote, Spinner, Textarea } from './ui';
  * ask-form Card knowledge/page.tsx used to carry (Task 12 removes that Card
  * once this is the only place it can be reached from).
  *
- * One turn is `{ role, content, citations? }`. `citations` only ever
- * appears on an assistant turn — the user's own words never carry a
+ * One turn is `{ role, content, citations?, retrieval? }`. The last two only
+ * ever appear on an assistant turn — the user's own words never carry a
  * provenance chip.
+ *
+ * `retrieval` is stored per turn rather than per panel because it is a fact
+ * about how *that* answer was found. A deployment can gain an embedding model
+ * mid-conversation, and an earlier turn's disclosure must not be rewritten by
+ * a later turn's better luck.
  */
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   citations?: AskCitation[];
+  retrieval?: 'semantic' | 'keyword';
 }
 
 /**
@@ -92,6 +98,21 @@ function Bubble({ message }: { message: ChatMessage }) {
             ))}
           </ul>
         )}
+
+        {/*
+          Said plainly, once, under the answer it applies to.
+          Keyword matching finds meetings that share words with the question
+          rather than meaning, so it can miss a relevant meeting that phrases
+          things differently. Presenting that result identically to a semantic
+          one would overstate how thoroughly the corpus was searched — the same
+          reason the knowledge graph discloses `similarityUnavailable`.
+        */}
+        {message.retrieval === 'keyword' && (
+          <p className="mt-2 text-caption text-faint">
+            Matched on words rather than meaning — a relevant meeting phrased
+            differently may have been missed.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -138,7 +159,12 @@ export function AskFinTalkAI({
       const result = await api.ask(text, history);
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: result.answer, citations: result.citations },
+        {
+          role: 'assistant',
+          content: result.answer,
+          citations: result.citations,
+          retrieval: result.retrieval,
+        },
       ]);
     } catch (cause) {
       setError(describeError(cause));

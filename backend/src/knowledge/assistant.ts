@@ -4,6 +4,7 @@ import { appendAudit, type AuditActor } from '../audit/chain.js';
 import { ComplianceError } from '../compliance/errors.js';
 import { detectPii } from '../pdpa/detectors.js';
 import { rankBySimilarity } from './graph.js';
+import { rankByKeyword } from './keyword.js';
 
 /**
  * Ask FinTalk AI — questions answered from this corpus, and from nothing else.
@@ -87,7 +88,12 @@ export interface Citation {
   readonly meetingId: string;
   readonly title: string;
   readonly occurredAt: string;
-  /** Cosine similarity that put this meeting in the retrieval set. */
+  /**
+   * What put this meeting in the retrieval set: cosine similarity under
+   * semantic retrieval, the share of query terms matched under keyword
+   * retrieval. Read it against `AskResult.retrieval` — the two scales are not
+   * comparable, and 0.5 means something different in each.
+   */
   readonly score: number;
 }
 
@@ -98,11 +104,47 @@ export interface AskResult {
   readonly unanswerable: boolean;
   readonly modelId: string;
   readonly promptVersion: string;
+  /**
+   * Which retrieval produced these citations.
+   *
+   * `keyword` means semantic retrieval was unavailable or matched nothing, so
+   * these meetings share words with the question rather than meaning. Carried
+   * to the caller because passing term overlap off as semantic search would
+   * overstate how the answer was found.
+   */
+  readonly retrieval: 'semantic' | 'keyword';
 }
 
 export interface AssistantDeps {
   readonly prisma: PrismaClient;
   readonly provider: TranscriptionProvider;
+}
+
+/**
+ * Cosine ranking, or an empty list.
+ *
+ * Every way this can fail — no embedding model bound, the model refusing, no
+ * stored embedding close enough — reduces to one fact for the caller: semantic
+ * retrieval produced no candidates, so try the other path. Returning empty
+ * rather than throwing is what lets that decision live in one place.
+ */
+async function rankSemantically(
+  embed: ((text: string) => Promise<readonly number[]>) | undefined,
+  composite: string,
+  transcripts: readonly { readonly meetingId: string; readonly summaryEmbedding: number[] }[],
+): Promise<readonly { readonly meetingId: string; readonly score: number }[]> {
+  if (embed === undefined) return [];
+
+  try {
+    const queryVector = await embed(composite);
+    return rankBySimilarity(
+      queryVector,
+      transcripts.map((t) => ({ meetingId: t.meetingId, embedding: t.summaryEmbedding })),
+      RETRIEVAL_LIMIT,
+    );
+  } catch {
+    return [];
+  }
 }
 
 export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResult> {
@@ -142,7 +184,16 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
   const embed = provider.embed?.bind(provider);
   const answerFromContext = provider.answerFromContext?.bind(provider);
 
-  if (embed === undefined || answerFromContext === undefined) {
+  /**
+   * Only the text model is required.
+   *
+   * Without it there is nothing that can compose an answer, and saying so is
+   * the honest response. A missing embedding model is a different situation:
+   * retrieval degrades to keyword matching below and the question still gets
+   * answered, so refusing on that alone disabled a working feature over one
+   * absent environment variable.
+   */
+  if (answerFromContext === undefined) {
     throw new ComplianceError(
       'assistant-unavailable',
       501,
@@ -167,50 +218,54 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
       unanswerable: true,
       modelId: 'none',
       promptVersion: 'none',
+      retrieval: 'semantic',
     };
   }
 
-  /**
-   * An embedding failure is reported as unavailable, not as a broken request.
-   *
-   * It covers two cases — no embedding model configured, and the model refusing —
-   * and from the asker's side they are the same fact: the corpus cannot be searched
-   * right now, and nothing they type will change that. Conflating them here is
-   * deliberate; the distinction is in the server log, where an operator will look.
-   */
   // Retrieval and generation see the history-folded composite, so a
   // follow-up resolves against prior turns; the length check above, the PII
   // refusal above, and the audit payload below all use the raw `question` —
   // a reformulated string is a retrieval device, not what the user asked.
   const composite = withHistory(question, input.history);
 
-  let queryVector: readonly number[];
-  try {
-    queryVector = await embed(composite);
-  } catch {
-    throw new ComplianceError(
-      'assistant-unavailable',
-      503,
-      'The assistant cannot search the corpus at the moment. If this persists, the '
-      + 'deployment may have no embedding model configured.',
+  /**
+   * Semantic retrieval first, keyword retrieval when it comes back empty.
+   *
+   * Two situations used to end the request here, and neither was the asker's
+   * fault. A deployment with no embedding model configured refused every
+   * question outright — one absent variable disabling the whole feature. And a
+   * meeting captured before embeddings were configured has an empty
+   * `summaryEmbedding`, which `rankBySimilarity` scores at zero and drops, so
+   * it stayed permanently unreachable even once a model *was* configured.
+   *
+   * Falling back keeps the corpus answerable in both. The two paths are not
+   * equivalent, so `retrieval` travels with the result rather than letting term
+   * overlap read as semantic search — and it is recorded in the audit entry
+   * below, which is where an operator can see that a deployment has been
+   * quietly serving the weaker path.
+   */
+  let retrieval: 'semantic' | 'keyword' = 'semantic';
+  let ranked = await rankSemantically(embed, composite, transcripts);
+
+  if (ranked.length === 0) {
+    retrieval = 'keyword';
+    ranked = rankByKeyword(
+      composite,
+      transcripts.map((t) => ({ meetingId: t.meetingId, text: t.rawRedacted })),
+      RETRIEVAL_LIMIT,
     );
   }
-
-  const ranked = rankBySimilarity(
-    queryVector,
-    transcripts.map((t) => ({ meetingId: t.meetingId, embedding: t.summaryEmbedding })),
-    RETRIEVAL_LIMIT,
-  );
 
   if (ranked.length === 0) {
     return {
       answer:
-        'None of the stored meetings are close enough to this question to answer it. '
-        + 'Meetings captured before topic indexing was added are not searchable.',
+        'No stored meeting matches this question. Try naming the facility, the '
+        + 'contract type, or a term you would expect to hear in the discussion.',
       citations: [],
       unanswerable: true,
       modelId: 'none',
       promptVersion: 'none',
+      retrieval,
     };
   }
 
@@ -304,6 +359,10 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
       retrievedMeetingIds: ranked.map((r) => r.meetingId),
       citedMeetingIds: citations.map((c) => c.meetingId),
       unanswerable,
+      // How those meetings were found, not just which. An auditor rereading
+      // this entry cannot otherwise tell whether the answer rested on meaning
+      // or on shared words.
+      retrieval,
       modelId: answer.modelId,
       promptVersion: answer.promptVersion,
     },
@@ -318,5 +377,6 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
     unanswerable,
     modelId: answer.modelId,
     promptVersion: answer.promptVersion,
+    retrieval,
   };
 }

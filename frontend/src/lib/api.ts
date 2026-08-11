@@ -276,6 +276,12 @@ export interface AskAnswer {
   unanswerable: boolean;
   modelId: string;
   promptVersion: string;
+  /**
+   * How the cited meetings were found. `keyword` means the deployment could
+   * not search by meaning and fell back to matching words, which the panel
+   * says out loud rather than letting the two look alike.
+   */
+  retrieval: 'semantic' | 'keyword';
 }
 
 export interface ManagedUser {

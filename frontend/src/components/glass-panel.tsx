@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { HTMLAttributes, ReactNode } from 'react';
 
 /**
  * Frosted glass surface: backdrop-blur over the --glass-* tokens from
@@ -14,12 +14,14 @@ import type { ReactNode } from 'react';
 export function GlassPanel({
   children,
   className = '',
-}: {
+  ...props
+}: HTMLAttributes<HTMLDivElement> & {
   children: ReactNode;
   className?: string;
 }) {
   return (
     <div
+      {...props}
       className={`rounded-2xl border border-glass-border bg-glass-bg shadow-[inset_0_1px_0_0_var(--glass-highlight)] backdrop-blur-xl ${className}`}
     >
       {children}

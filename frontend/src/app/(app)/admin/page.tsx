@@ -94,7 +94,7 @@ export default function AdminPage() {
       <div className="grid gap-4 sm:grid-cols-2">
         {areas.map((area) => (
           <Link key={area.href} href={area.href} className="rounded-xl">
-            <Card className="h-full p-5 transition hover:border-line-strong">
+            <Card className="h-full p-5 transition hover:-translate-y-px hover:border-line-strong">
               <div className="flex items-start justify-between gap-3">
                 <h2 className="text-base font-semibold tracking-tight">{area.title}</h2>
                 {area.href === '/admin/users' && pendingCount > 0 && (

@@ -221,7 +221,7 @@ export default function HomePage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((item) => (
           <Link key={item.href} href={item.href} className="block">
-            <Card className="h-full p-5 transition hover:border-line-strong">
+            <Card className="h-full p-5 transition hover:-translate-y-px hover:border-line-strong">
               <h2 className="text-base font-semibold tracking-tight">{item.label}</h2>
               <p className="mt-1.5 text-sm text-muted">{item.hint}</p>
             </Card>

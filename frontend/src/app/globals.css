@@ -314,6 +314,39 @@
 }
 
 /*
+ * The Ask FinTalk AI panel fuses the two rules above rather than stacking
+ * them: it needs slide-in-right's horizontal path and materialize's
+ * blur+scale on the same element, and two simultaneous `animation-name`s that
+ * both touch `transform` do not combine predictably across browsers. Writing
+ * one keyframe pair says exactly what happens instead of relying on that.
+ */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px) scale(0.97);
+    backdrop-filter: blur(0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    backdrop-filter: blur(24px);
+  }
+}
+
+@keyframes panel-out {
+  from {
+    opacity: 1;
+    transform: none;
+    backdrop-filter: blur(24px);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(24px) scale(0.97);
+    backdrop-filter: blur(0);
+  }
+}
+
+/*
  * A popover grows from the control that opened it.
  *
  * The transform origin is set on the element rather than here, because only
@@ -452,6 +485,34 @@
 
   html[data-nav='back']::view-transition-new(app-main) {
     animation-name: nav-enter-left;
+  }
+}
+
+/*
+ * <details> height, animated rather than switched to a JS-measured panel.
+ *
+ * ::details-content and interpolate-size are what let `height` transition to
+ * and from the `auto` keyword instead of only between fixed pixel values.
+ * Support is Chrome 129+ and Safari 18.2+; everywhere else this rule matches
+ * nothing and the native instant open/close keeps working exactly as before
+ * — which is why Disclosure (components/ui.tsx) still renders a real
+ * <details> rather than reimplementing one to get this animation.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  :root {
+    interpolate-size: allow-keywords;
+  }
+
+  ::details-content {
+    height: 0;
+    overflow: clip;
+    transition:
+      height var(--dur-base) var(--ease-out),
+      content-visibility var(--dur-base) var(--ease-out) allow-discrete;
+  }
+
+  details[open]::details-content {
+    height: auto;
   }
 }
 

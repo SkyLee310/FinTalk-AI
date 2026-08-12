@@ -1,7 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { type Dispatch, type FormEvent, type SetStateAction, useState } from 'react';
+import {
+  type Dispatch,
+  type FormEvent,
+  type SetStateAction,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { describeError } from '@/hooks/use-async';
 import { api, type AskCitation } from '@/lib/api';
 import { GlassPanel } from './glass-panel';
@@ -139,6 +146,28 @@ export function AskFinTalkAI({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Stays mounted through its exit instead of `if (!open) return null`
+   * vanishing it, so the panel can leave the way it arrived (§7).
+   *
+   * `open` is a prop the parent owns, so this can't just toggle its own
+   * state on click the way profile-menu.tsx's `close()` does — it has to
+   * notice `open` going false and start the exit animation itself, but reset
+   * immediately if `open` goes true again mid-exit so a fast reopen shows
+   * the panel opening rather than finishing a close it no longer means.
+   */
+  const [closing, setClosing] = useState(false);
+  const wasOpen = useRef(open);
+
+  useEffect(() => {
+    if (open) {
+      setClosing(false);
+    } else if (wasOpen.current) {
+      setClosing(true);
+    }
+    wasOpen.current = open;
+  }, [open]);
+
   async function send(raw: string): Promise<void> {
     const text = raw.trim();
     if (text.length < 3 || busy) return;
@@ -178,7 +207,7 @@ export function AskFinTalkAI({
     void send(question);
   }
 
-  if (!open) return null;
+  if (!open && !closing) return null;
 
   return (
     <div className="fixed inset-0 z-30 flex justify-end">
@@ -186,10 +215,23 @@ export function AskFinTalkAI({
         type="button"
         aria-label="Close Ask FinTalk AI"
         onClick={onClose}
-        className="absolute inset-0 bg-text/20 backdrop-blur-[1px]"
+        className={`absolute inset-0 bg-text/20 backdrop-blur-[1px] ${
+          closing
+            ? 'animate-[fade-out_var(--dur-base)_var(--ease-out)_both]'
+            : 'animate-[fade-in_var(--dur-base)_var(--ease-out)_both]'
+        }`}
       />
 
-      <GlassPanel className="relative z-10 flex h-full w-full max-w-md flex-col rounded-none p-0 sm:m-4 sm:h-[calc(100%-2rem)] sm:rounded-2xl">
+      <GlassPanel
+        className={`relative z-10 flex h-full w-full max-w-md flex-col rounded-none p-0 sm:m-4 sm:h-[calc(100%-2rem)] sm:rounded-2xl ${
+          closing
+            ? 'animate-[panel-out_var(--dur-base)_var(--ease-out)_both]'
+            : 'animate-[panel-in_var(--dur-base)_var(--ease-out)_both]'
+        }`}
+        onAnimationEnd={() => {
+          if (closing) setClosing(false);
+        }}
+      >
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <div>
             <h2 className="text-base font-semibold tracking-tight">Ask FinTalk AI</h2>

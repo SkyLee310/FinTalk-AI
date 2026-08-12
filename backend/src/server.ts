@@ -10,6 +10,7 @@ import { vaultKeyFromBase64 } from './pdpa/vault.js';
 import { BackgroundJobs } from './pipeline/background-jobs.js';
 import { registerAuthRoutes } from './routes/auth.routes.js';
 import { registerComplianceRoutes } from './routes/compliance.routes.js';
+import { registerFeedbackRoutes } from './routes/feedback.routes.js';
 import { registerKnowledgeRoutes } from './routes/knowledge.routes.js';
 import { registerMeetingRoutes } from './routes/meetings.routes.js';
 import { registerUserRoutes } from './routes/users.routes.js';
@@ -70,6 +71,7 @@ export function buildServer(deps?: Partial<ServerDeps>) {
   registerComplianceRoutes(app, prisma);
   registerUserRoutes(app, prisma);
   registerKnowledgeRoutes(app, { prisma, provider });
+  registerFeedbackRoutes(app, prisma);
 
   /**
    * A restart kills in-flight capture, and the code that would have marked the

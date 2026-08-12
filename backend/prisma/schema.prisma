@@ -89,6 +89,14 @@ enum AccountStatus {
   ACTIVE
 }
 
+/// Three buckets, not a taxonomy. A longer list would make the submitter stop
+/// and classify rather than write, and nothing downstream routes on the value.
+enum FeedbackCategory {
+  BUG
+  IDEA
+  OTHER
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -121,6 +129,7 @@ model User {
   humanEdits        HumanEdit[]
   segmentsConfirmed TranscriptSegment[] @relation("SegmentConfirmer")
   settlements       Settlement[]        @relation("Settler")
+  feedback          Feedback[]
 }
 
 model Meeting {
@@ -469,4 +478,25 @@ model AuditEntry {
 
   @@index([entityType, entityId])
   @@index([at])
+}
+
+/// Free-text feedback from a signed-in user.
+///
+/// Not RedactedText: that write path exists for text derived from AI, audio or
+/// images, where the author never saw what was captured. This is typed by the
+/// person submitting it. The route refuses a submission containing personal
+/// data instead, the same way ask() refuses a query carrying one — see
+/// feedback.routes.ts.
+model Feedback {
+  id        String           @id @default(cuid())
+  authorId  String
+  category  FeedbackCategory
+  message   String
+  createdAt DateTime         @default(now())
+
+  /// No onDelete: Cascade. Accounts are deactivated, never deleted, and
+  /// feedback outliving its author is the correct outcome anyway.
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([createdAt])
 }

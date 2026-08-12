@@ -3,9 +3,9 @@
 import Link from 'next/link';
 import { Badge } from '@/components/badge';
 import { Card } from '@/components/card';
-import { ErrorNote, PageHeader, Spinner } from '@/components/ui';
+import { EmptyState, ErrorNote, PageHeader, Section, Spinner } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
-import { api, can, type Capability, type Session } from '@/lib/api';
+import { api, can, type Capability, type FeedbackRow, type Session } from '@/lib/api';
 
 /**
  * The Administration section index.
@@ -59,6 +59,12 @@ export default function AdminPage() {
   const pendingCount = pendingUsers.data?.users.filter(
     (user) => user.accountStatus === 'PENDING',
   ).length ?? 0;
+
+  /** Same gating reasoning as pendingUsers above: GET /feedback 403s without user:manage. */
+  const feedback = useAsync(
+    () => (mayManageUsers ? api.feedback() : Promise.resolve({ feedback: [] })),
+    mayManageUsers ? 'admin-feedback' : 'admin-feedback-none',
+  );
 
   if (session.loading) return <Spinner label="Checking your session" />;
   if (session.error !== null) return <ErrorNote>{session.error}</ErrorNote>;
@@ -155,6 +161,58 @@ export default function AdminPage() {
           </li>
         </ul>
       </Card>
+
+      {mayManageUsers && (
+        <Section
+          title="Feedback"
+          description="Submitted from Settings. Not anonymous — each entry names its author."
+        >
+          {feedback.loading && <Spinner label="Loading feedback" />}
+          {feedback.error !== null && <ErrorNote>{feedback.error}</ErrorNote>}
+          {feedback.data !== null && <FeedbackList rows={feedback.data.feedback} />}
+        </Section>
+      )}
     </div>
+  );
+}
+
+const CATEGORY_TONE = {
+  BUG: 'danger',
+  IDEA: 'brand',
+  OTHER: 'neutral',
+} as const;
+
+function FeedbackList({ rows }: { rows: FeedbackRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        title="No feedback yet"
+        body="Submissions from Settings → Feedback appear here, newest first."
+      />
+    );
+  }
+
+  return (
+    <ul className="space-y-3">
+      {rows.map((row) => (
+        <li key={row.id}>
+          <Card className="p-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <div className="flex items-baseline gap-2">
+                <Badge tone={CATEGORY_TONE[row.category]}>{row.category}</Badge>
+                <span className="text-sm font-medium">{row.author.displayName}</span>
+                <span className="text-caption text-faint">{row.author.role}</span>
+              </div>
+              <time dateTime={row.createdAt} className="text-caption text-faint">
+                {new Date(row.createdAt).toLocaleString()}
+              </time>
+            </div>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted">
+              {row.message}
+            </p>
+          </Card>
+        </li>
+      ))}
+    </ul>
   );
 }

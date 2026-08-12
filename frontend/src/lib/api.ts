@@ -301,6 +301,29 @@ export interface ManagedUser {
   capabilities: Capability[];
 }
 
+export type FeedbackCategory = 'BUG' | 'IDEA' | 'OTHER';
+
+/** What POST /feedback echoes back — never the message, which the submitter already has. */
+export interface FeedbackReceipt {
+  id: string;
+  category: FeedbackCategory;
+  createdAt: string;
+}
+
+/** One submission, as GET /feedback returns it to an administrator. */
+export interface FeedbackRow {
+  id: string;
+  category: FeedbackCategory;
+  message: string;
+  createdAt: string;
+  author: {
+    displayName: string;
+    email: string;
+    /** Never null in practice: a PENDING account has no role and never receives a session. */
+    role: Role;
+  };
+}
+
 export interface AuditIntegrity {
   ok: boolean;
   length: number;
@@ -497,6 +520,13 @@ export const api = {
   },
 
   audit: () => apiFetch<{ integrity: AuditIntegrity; entries: AuditRow[] }>('/audit'),
+
+  /** Open to any signed-in role — gating this on a capability would silence the accounts most worth hearing from. */
+  submitFeedback: (category: FeedbackCategory, message: string) =>
+    apiFetch<FeedbackReceipt>('/feedback', json({ category, message })),
+
+  /** Gated server-side on user:manage. Newest first. */
+  feedback: () => apiFetch<{ feedback: FeedbackRow[] }>('/feedback'),
 };
 
 export function can(session: Session | null, capability: Capability): boolean {

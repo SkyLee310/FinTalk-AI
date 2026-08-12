@@ -1,11 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { Badge } from '@/components/badge';
 import { Card, DataRow } from '@/components/card';
-import { ErrorNote, PageHeader, Section, Spinner } from '@/components/ui';
-import { useAsync } from '@/hooks/use-async';
-import { api, type Session } from '@/lib/api';
+import {
+  Button,
+  ErrorNote,
+  Field,
+  PageHeader,
+  Section,
+  Select,
+  Spinner,
+  SuccessNote,
+  Textarea,
+} from '@/components/ui';
+import { describeError, useAsync } from '@/hooks/use-async';
+import { api, type FeedbackCategory, type Session } from '@/lib/api';
 import { readStoredPreference, setTheme, type ThemePreference } from '@/lib/theme';
 
 /**
@@ -53,7 +63,99 @@ export default function SettingsPage() {
         {session.error !== null && <ErrorNote>Could not load your account.</ErrorNote>}
         {session.data !== null && <Account session={session.data} />}
       </Section>
+
+      <Section
+        title="Feedback"
+        description="Read by an administrator. Not anonymous — your name goes with it."
+      >
+        <Feedback />
+      </Section>
     </div>
+  );
+}
+
+const CATEGORIES: readonly { readonly value: FeedbackCategory; readonly label: string }[] = [
+  { value: 'BUG', label: 'Bug' },
+  { value: 'IDEA', label: 'Idea' },
+  { value: 'OTHER', label: 'Other' },
+];
+
+function Feedback() {
+  const [category, setCategory] = useState<FeedbackCategory>('IDEA');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  async function submit(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.submitFeedback(category, message.trim());
+      setMessage('');
+      setCategory('IDEA');
+      setDone(true);
+    } catch (cause) {
+      setError(describeError(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-5">
+      <form
+        onSubmit={(event) => {
+          // A resubmission after success clears the earlier notice — it would
+          // otherwise sit above the form claiming success while a second
+          // attempt is still in flight.
+          setDone(false);
+          void submit(event);
+        }}
+        className="space-y-4"
+      >
+        {error !== null && <ErrorNote>{error}</ErrorNote>}
+        {done && <SuccessNote>Sent. Thank you.</SuccessNote>}
+
+        <Field label="Category" htmlFor="feedback-category">
+          <Select
+            id="feedback-category"
+            value={category}
+            disabled={busy}
+            onChange={(event) => setCategory(event.target.value as FeedbackCategory)}
+          >
+            {CATEGORIES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <Field
+          label="Message"
+          htmlFor="feedback-message"
+          hint="Describe the account or the meeting rather than naming an NRIC, phone number, or card — a message containing one is refused."
+        >
+          <Textarea
+            id="feedback-message"
+            required
+            minLength={10}
+            maxLength={2000}
+            rows={4}
+            value={message}
+            disabled={busy}
+            onChange={(event) => setMessage(event.target.value)}
+            placeholder="What happened, or what would help?"
+          />
+        </Field>
+
+        <Button type="submit" disabled={busy || message.trim().length < 10}>
+          {busy ? 'Sending…' : 'Send feedback'}
+        </Button>
+      </form>
+    </Card>
   );
 }
 

@@ -20,8 +20,20 @@ export function navigateWithTransition(fn: () => void): void {
     && typeof document !== 'undefined'
     && 'startViewTransition' in document
   ) {
-    (document as unknown as { startViewTransition: (callback: () => void) => void })
-      .startViewTransition(fn);
+    const transition = (
+      document as unknown as {
+        startViewTransition: (callback: () => void) => { ready: Promise<void> };
+      }
+    ).startViewTransition(fn);
+
+    // `fn` runs and the navigation completes no matter what this promise does.
+    // But startViewTransition returns before Next.js has actually mutated the
+    // route's DOM, and when the browser skips the animation for that — an
+    // interrupted transition, or a document it deems to be in an invalid state
+    // mid-navigation — `ready` rejects with InvalidStateError. Nothing awaits
+    // it, so it surfaces as an uncaught rejection on every nav. It is cosmetic,
+    // not a failure, so swallow it rather than let it redden the console.
+    transition.ready.catch(() => {});
     return;
   }
 

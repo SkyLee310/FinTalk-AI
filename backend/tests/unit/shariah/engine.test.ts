@@ -47,6 +47,48 @@ describe('riba detection', () => {
   });
 });
 
+describe('explanatory mentions of riba', () => {
+  it('does not flag someone asking what riba is', () => {
+    expect(kindsOf('What is riba?')).not.toContain('RIBA');
+  });
+
+  it('does not flag a definition given for the term', () => {
+    expect(kindsOf('Riba means an unjust, exploitative gain on a loan.'))
+      .not.toContain('RIBA');
+  });
+
+  it('does not flag the Malay question form', () => {
+    expect(kindsOf('Apa itu riba, boleh terangkan?')).not.toContain('RIBA');
+  });
+
+  it('does not flag someone asking what an interest rate is', () => {
+    expect(kindsOf('Can someone explain what an interest rate is?')).not.toContain('RIBA');
+  });
+
+  /**
+   * "riba is X" reads identically whether X is a definition or a claim about
+   * this deal. Only the definitional continuations should suppress.
+   */
+  it('still flags a claim that riba is present, as opposed to a definition', () => {
+    expect(kindsOf('riba is charged on this loan structure')).toContain('RIBA');
+  });
+
+  it('does not treat "the interest rate is high" as explanatory', () => {
+    expect(kindsOf('the interest rate is very high for this facility')).toContain('RIBA');
+  });
+
+  /**
+   * A definition earlier in the transcript must not blind the engine to a
+   * real figure quoted later — the two are different segments.
+   */
+  it('still flags a real rate quoted after an explanatory question in the same transcript', () => {
+    const kinds = kindsOf(
+      'What is riba? Anyway, we quote fixed interest rate of 8% per annum.',
+    );
+    expect(kinds).toContain('RIBA');
+  });
+});
+
 describe('other issue types', () => {
   it('flags a late payment charge for a reviewer to classify', () => {
     expect(kindsOf('kalau lambat bayar, we charge denda')).toContain('LATE_PAYMENT_PENALTY');

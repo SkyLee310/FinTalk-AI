@@ -25,6 +25,15 @@ export interface ShariahRule {
   readonly reference: string;
   /** Only fires when the facility is, or is proposed as, Islamic. */
   readonly islamicOnly: boolean;
+  /**
+   * Skip a match that is asking for, or giving, a definition of the term
+   * rather than describing this facility — "what is riba" costs a reviewer
+   * nothing to ignore and everything to keep re-clearing. See
+   * isExplanatoryMention in engine.ts. Only worth setting on a rule whose
+   * trigger is a bare term name; a rule that already requires a number or a
+   * transactional verb has nothing definitional to false-positive on.
+   */
+  readonly suppressWhenExplanatory?: boolean;
 }
 
 const REQUIRES_CONFIRMATION = 'requires legal confirmation';
@@ -38,6 +47,7 @@ export const SHARIAH_RULES: readonly ShariahRule[] = Object.freeze([
     confidence: 0.93,
     reference: `BNM Shariah Governance Policy — ${REQUIRES_CONFIRMATION}`,
     islamicOnly: true,
+    suppressWhenExplanatory: true,
   },
   {
     id: 'rule:riba.compounding',
@@ -46,6 +56,7 @@ export const SHARIAH_RULES: readonly ShariahRule[] = Object.freeze([
     confidence: 0.9,
     reference: `BNM Shariah Governance Policy — ${REQUIRES_CONFIRMATION}`,
     islamicOnly: true,
+    suppressWhenExplanatory: true,
   },
   {
     id: 'rule:late-payment.penalty-as-income',

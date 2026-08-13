@@ -49,6 +49,48 @@ function applies(rule: ShariahRule, context: FacilityContext): boolean {
   return context.isIslamic !== false;
 }
 
+/**
+ * Question or definition framing immediately around a match — "what is
+ * riba", "riba means an unjust gain" — as opposed to a claim about this
+ * facility's actual terms — "riba is charged on this loan", "the interest
+ * rate is 8%". The two read alike around the word "is"; what's checked here
+ * is not "is" but the words either side of it, which is the part that
+ * differs between teaching a term and using one.
+ *
+ * The window is one transcribed segment: scanning stops at the nearest
+ * sentence punctuation or '\n' (segments are joined with '\n' — see
+ * SEGMENT_SEPARATOR in process-meeting.ts), so a definition given in one
+ * utterance can never suppress a real figure quoted three sentences later.
+ */
+const EXPLANATORY_BEFORE =
+  /\b(?:what\s+(?:is|are|does|do)|explain|define|definition\s+of|meaning\s+of|apa\s+itu|apa\s+maksud)\b/i;
+const EXPLANATORY_AFTER =
+  /^[\s,]*(?:means|refers?\s+to|is\s+defined\s+as|is\s+basically|is\s+essentially|bermaksud|maksudnya)\b/i;
+const SENTENCE_BOUNDARY = /[.?!\n]/;
+
+function isExplanatoryMention(transcript: string, start: number, end: number): boolean {
+  let beforeFrom = 0;
+  for (let i = start - 1; i >= 0; i -= 1) {
+    if (SENTENCE_BOUNDARY.test(transcript[i]!)) {
+      beforeFrom = i + 1;
+      break;
+    }
+  }
+
+  let afterTo = transcript.length;
+  for (let i = end; i < transcript.length; i += 1) {
+    if (SENTENCE_BOUNDARY.test(transcript[i]!)) {
+      afterTo = i;
+      break;
+    }
+  }
+
+  return (
+    EXPLANATORY_BEFORE.test(transcript.slice(beforeFrom, start))
+    || EXPLANATORY_AFTER.test(transcript.slice(end, afterTo))
+  );
+}
+
 export function analyseTranscript(
   transcript: RedactedText,
   context: FacilityContext = {},
@@ -65,14 +107,21 @@ export function analyseTranscript(
     let seen = 0;
 
     while (match !== null && seen < MAX_FINDINGS_PER_RULE) {
-      findings.push({
-        issueType: rule.issueType,
-        excerpt: excerptAround(transcript, match.index, match.index + match[0].length),
-        detectedBy: rule.id,
-        confidence: rule.confidence,
-        reference: rule.reference,
-      });
-      seen += 1;
+      const matchEnd = match.index + match[0].length;
+      const suppressed = rule.suppressWhenExplanatory === true
+        && isExplanatoryMention(transcript, match.index, matchEnd);
+
+      if (!suppressed) {
+        findings.push({
+          issueType: rule.issueType,
+          excerpt: excerptAround(transcript, match.index, matchEnd),
+          detectedBy: rule.id,
+          confidence: rule.confidence,
+          reference: rule.reference,
+        });
+        seen += 1;
+      }
+
       match = pattern.exec(transcript);
     }
   }

@@ -39,7 +39,7 @@ const ROLES = ['MAKER', 'CHECKER', 'SHARIAH', 'ADMIN', 'OVERSIGHT'] as const;
 // role need not mention them; normalizeOversightFlags below zeroes them out
 // defensively regardless of what a caller sends for a non-OVERSIGHT role.
 const OversightFlags = z.object({
-  canViewMeetings: z.boolean().optional().default(false),
+  canViewMeetings: z.boolean().optional().default(true),
   canViewAuditTrail: z.boolean().optional().default(false),
 });
 

@@ -113,7 +113,7 @@ model User {
   /// Meaningful only when role is OVERSIGHT — grants meeting:read +
   /// transcript:read there. Ignored (and kept false) for every other role;
   /// see capabilitiesOf in src/auth/rbac.ts, the only reader of this column.
-  canViewMeetings Boolean @default(false)
+  canViewMeetings Boolean @default(true)
   /// Meaningful only when role is OVERSIGHT — grants audit:read there. Kept
   /// independent of canViewMeetings on purpose: the audit trail is the more
   /// sensitive of the two surfaces, and this is what lets an administrator

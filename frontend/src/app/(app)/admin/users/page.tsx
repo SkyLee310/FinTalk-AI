@@ -97,7 +97,7 @@ function InviteForm({ onDone }: { onDone: (user: ManagedUser) => void }) {
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [role, setRole] = useState<Role>('MAKER');
-  const [canViewMeetings, setCanViewMeetings] = useState(false);
+  const [canViewMeetings, setCanViewMeetings] = useState(true);
   const [canViewAuditTrail, setCanViewAuditTrail] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -226,7 +226,7 @@ function PendingUserRow({
   onChanged: (message: string) => void;
 }) {
   const [role, setRole] = useState<Role | ''>('');
-  const [canViewMeetings, setCanViewMeetings] = useState(false);
+  const [canViewMeetings, setCanViewMeetings] = useState(true);
   const [canViewAuditTrail, setCanViewAuditTrail] = useState(false);
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);

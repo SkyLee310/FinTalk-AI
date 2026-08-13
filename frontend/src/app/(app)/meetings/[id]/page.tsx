@@ -73,6 +73,41 @@ function RedactedText({ text }: { text: string }) {
   );
 }
 
+/** Safely formats structured whiteboard JSON values for display without raw [object Object]. */
+function renderStructuredValue(value: unknown) {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'string') {
+    if (value === '[object Object]') {
+      return <span className="text-faint italic font-normal">(Details extracted in diagram above)</span>;
+    }
+    try {
+      const parsed = JSON.parse(value);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return (
+          <pre className="overflow-x-auto rounded-lg border border-line bg-raised p-2 text-xs leading-relaxed font-mono">
+            <code>
+              <RedactedText text={JSON.stringify(parsed, null, 2)} />
+            </code>
+          </pre>
+        );
+      }
+    } catch {
+      // Plain text
+    }
+    return <RedactedText text={value} />;
+  }
+  if (typeof value === 'object') {
+    return (
+      <pre className="overflow-x-auto rounded-lg border border-line bg-raised p-2 text-xs leading-relaxed font-mono">
+        <code>
+          <RedactedText text={JSON.stringify(value, null, 2)} />
+        </code>
+      </pre>
+    );
+  }
+  return <RedactedText text={String(value)} />;
+}
+
 /**
  * Plain-language names for what each rule looked for.
  *
@@ -766,29 +801,12 @@ export default function MeetingDetailPage() {
 
               <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
                 {Object.entries(board.structuredJson as Record<string, unknown>).map(
-                  ([key, value]) => {
-                    // A nested object or array under String() prints the
-                    // literal text "[object Object]" — pretty-print it as
-                    // JSON instead, the same <pre><code> treatment the
-                    // stored source view above already gives board.mermaid.
-                    const isNested = typeof value === 'object' && value !== null;
-                    return (
-                      <div key={key} className="contents">
-                        <dt className="text-faint">{key}</dt>
-                        <dd className="font-medium">
-                          {isNested ? (
-                            <pre className="overflow-x-auto rounded-lg border border-line bg-raised p-2 text-xs leading-relaxed">
-                              <code>
-                                <RedactedText text={JSON.stringify(value, null, 2)} />
-                              </code>
-                            </pre>
-                          ) : (
-                            <RedactedText text={String(value)} />
-                          )}
-                        </dd>
-                      </div>
-                    );
-                  },
+                  ([key, value]) => (
+                    <div key={key} className="contents">
+                      <dt className="text-faint">{key}</dt>
+                      <dd className="font-medium">{renderStructuredValue(value)}</dd>
+                    </div>
+                  ),
                 )}
               </dl>
 

@@ -44,7 +44,9 @@ try {
   if (foundColumns.has('canViewMeetings') && foundColumns.has('canViewAuditTrail')) {
     await client.query(`
       UPDATE "User"
-      SET "canViewMeetings" = true, "canViewAuditTrail" = true
+      SET "canViewMeetings" = true,
+          "canViewAuditTrail" = true,
+          "displayName" = CASE WHEN "email" = 'oversight@fintalk.test' THEN 'Demo Oversight' ELSE "displayName" END
       WHERE "role"::text = 'OVERSIGHT';
     `);
   }

@@ -46,6 +46,10 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
       prisma.user.upsert({
         where: { email: `${role.toLowerCase()}@fintalk.test` },
         update: {
+          displayName:
+            role === 'OVERSIGHT'
+              ? 'Demo Oversight'
+              : `Demo ${role.charAt(0)}${role.slice(1).toLowerCase()}`,
           role,
           ...(role === 'OVERSIGHT'
             ? { canViewMeetings: true, canViewAuditTrail: true }
@@ -54,7 +58,10 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
         create: {
           email: `${role.toLowerCase()}@fintalk.test`,
           passwordHash,
-          displayName: `Demo ${role}`,
+          displayName:
+            role === 'OVERSIGHT'
+              ? 'Demo Oversight'
+              : `Demo ${role.charAt(0)}${role.slice(1).toLowerCase()}`,
           role,
           // Demonstrates the full OVERSIGHT surface — both grants — since
           // this is the only seed row for the role. See capabilitiesOf in

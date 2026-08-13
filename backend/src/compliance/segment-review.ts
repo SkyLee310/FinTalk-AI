@@ -38,6 +38,22 @@ export interface CorrectInput extends ConfirmInput {
   readonly correctedText: string;
 }
 
+/**
+ * VIEWER has transcript:read so they can see transcripts, but confirming or
+ * correcting a segment is a write action. The route's capability gate lets
+ * them through (transcript:read is required to see the page at all), so
+ * this service-level check is the one that enforces "can see, cannot do".
+ */
+function rejectViewer(actor: AuditActor): void {
+  if (actor.role === 'VIEWER') {
+    throw new ComplianceError(
+      'viewer-read-only',
+      403,
+      'A viewer may read transcripts but may not confirm or correct segments.',
+    );
+  }
+}
+
 async function loadSegment(
   tx: Pick<PrismaClient, 'transcriptSegment'>,
   segmentId: string,
@@ -60,6 +76,8 @@ export async function confirmSegment(
   prisma: PrismaClient,
   input: ConfirmInput,
 ): Promise<TranscriptSegment> {
+  rejectViewer(input.actor);
+
   return prisma.$transaction(async (tx) => {
     const segment = await loadSegment(tx, input.segmentId);
 
@@ -116,6 +134,8 @@ export async function correctSegment(
   prisma: PrismaClient,
   input: CorrectInput,
 ): Promise<TranscriptSegment> {
+  rejectViewer(input.actor);
+
   const corrected = input.correctedText.trim();
 
   if (corrected === '') {

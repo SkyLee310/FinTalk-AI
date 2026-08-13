@@ -22,6 +22,7 @@ export type ComplianceErrorCode =
   | 'correction-empty'
   | 'correction-identical'
   | 'correction-contains-personal-data'
+  | 'viewer-read-only'
   // Mock settlement (Phase 3).
   | 'already-settled'
   // Knowledge assistant (Phase 5).

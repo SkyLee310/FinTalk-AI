@@ -31,6 +31,7 @@ import {
   timecode,
 } from '@/lib/api';
 import { formatDuration } from '@/lib/duration';
+import { computeParticipation, participationNudge } from '@/lib/participation';
 import { guidanceFor } from '@/lib/shariah-guidance';
 
 const FLAG_TONE: Record<ShariahStatus, Tone> = {
@@ -407,12 +408,13 @@ export default function MeetingDetailPage() {
   /**
    * Segment review, not Shariah review — a different capability entirely.
    *
-   * Gated on `transcript:read` to match the route: correcting a transcription
-   * discloses nothing the reader could not already see. Naming it separately so
-   * it cannot be confused with `mayReview` above, which guards the one action
-   * only a Shariah officer may take.
+   * Gated on `transcript:read` but excluding VIEWER, which is read-only: a
+   * viewer sees transcripts (and corrections others made) but cannot confirm
+   * or correct segments. The backend rejects them too (segment-review.ts),
+   * so this hides controls that would 403 rather than work.
    */
-  const mayReviewTranscript = can(session.data, 'transcript:read');
+  const mayReviewTranscript =
+    can(session.data, 'transcript:read') && session.data?.role !== 'VIEWER';
 
   if (meeting.loading) return <Spinner label="Loading meeting" />;
   if (meeting.error !== null) return <ErrorNote>{meeting.error}</ErrorNote>;
@@ -672,6 +674,50 @@ export default function MeetingDetailPage() {
               )}
             </Card>
           </div>
+
+          {(() => {
+            const participation = computeParticipation(data.transcript.segments);
+            return participation.length === 0 ? null : (
+              <section className="space-y-3">
+                <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
+                  Participation
+                </h2>
+                <Card className="px-5 py-4">
+                  <p className="text-xs text-faint">
+                    Talk share by speaker label. Labels are per-transcript tags and may
+                    not map to named participants.
+                  </p>
+                  <ul className="mt-3 space-y-3">
+                    {participation.map((speaker) => {
+                      const nudge = participationNudge(speaker);
+                      const pct = Math.round(speaker.share * 100);
+                      return (
+                        <li key={speaker.speakerLabel}>
+                          <div className="flex items-center justify-between gap-2 text-sm">
+                            <span className="font-medium text-brand">
+                              {speaker.speakerLabel}
+                            </span>
+                            <span className="text-xs text-muted">
+                              {pct}% · {formatDuration(speaker.totalMs)}
+                            </span>
+                          </div>
+                          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-raised">
+                            <div
+                              className={`h-full rounded-full ${speaker.quiet ? 'bg-warn' : 'bg-brand'}`}
+                              style={{ width: `${String(pct)}%` }}
+                            />
+                          </div>
+                          {nudge !== null && (
+                            <p className="mt-1.5 text-xs text-warn">{nudge}</p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </Card>
+              </section>
+            );
+          })()}
         </>
       )}
 

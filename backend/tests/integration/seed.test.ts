@@ -9,7 +9,14 @@ describe('seedDatabase', () => {
   it('creates one user per role', async () => {
     await seedDatabase(prisma);
     const roles = (await prisma.user.findMany({ select: { role: true } })).map((u) => u.role).sort();
-    expect(roles).toEqual(['ADMIN', 'CHECKER', 'MAKER', 'SHARIAH', 'SUPERVISOR', 'VIEWER']);
+    expect(roles).toEqual(['ADMIN', 'CHECKER', 'MAKER', 'OVERSIGHT', 'SHARIAH']);
+  });
+
+  it('grants the demo OVERSIGHT account both flags', async () => {
+    await seedDatabase(prisma);
+    const oversight = await prisma.user.findFirstOrThrow({ where: { role: 'OVERSIGHT' } });
+    expect(oversight.canViewMeetings).toBe(true);
+    expect(oversight.canViewAuditTrail).toBe(true);
   });
 
   it('creates the demo SME loan meeting with a redacted transcript', async () => {
@@ -41,7 +48,7 @@ describe('seedDatabase', () => {
   it('is idempotent', async () => {
     await seedDatabase(prisma);
     await seedDatabase(prisma);
-    expect(await prisma.user.count()).toBe(6);
+    expect(await prisma.user.count()).toBe(5);
     expect(await prisma.meeting.count()).toBe(1);
   });
 });

@@ -23,7 +23,7 @@ beforeEach(async () => {
   sessions.clear();
   userIds.clear();
 
-  for (const role of ['MAKER', 'CHECKER', 'SHARIAH', 'ADMIN', 'VIEWER'] as const) {
+  for (const role of ['MAKER', 'CHECKER', 'SHARIAH', 'ADMIN', 'OVERSIGHT'] as const) {
     const email = `${role.toLowerCase()}@fintalk.test`;
     const user = await prisma.user.create({
       data: {
@@ -31,6 +31,7 @@ beforeEach(async () => {
         passwordHash: await hashPassword(PASSWORD),
         displayName: `Demo ${role}`,
         role,
+        ...(role === 'OVERSIGHT' ? { canViewMeetings: true, canViewAuditTrail: true } : {}),
       },
     });
     userIds.set(role, user.id);
@@ -296,12 +297,12 @@ describe('term sheet validation', () => {
     expect(body.principalFormatted).toBe('90071992547409.93');
   });
 
-  it('refuses a viewer', async () => {
+  it('refuses an oversight account, even with full read access', async () => {
     const meetingId = await capturedMeeting();
     const response = await app.inject({
       method: 'POST',
       url: `/meetings/${meetingId}/term-sheets`,
-      headers: { cookie: as('VIEWER') },
+      headers: { cookie: as('OVERSIGHT') },
       payload: {
         applicantName: 'X',
         principalMinor: '1',
@@ -524,16 +525,30 @@ describe('the audit log records the whole flow', () => {
     expect(actions).toContain('termsheet.approved');
   });
 
-  it('reports chain integrity to an administrator', async () => {
+  it('reports chain integrity to an oversight account with canViewAuditTrail', async () => {
     await capturedMeeting();
+    const response = await app.inject({
+      method: 'GET',
+      url: '/audit',
+      headers: { cookie: as('OVERSIGHT') },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ integrity: { ok: boolean } }>().integrity.ok).toBe(true);
+  });
+
+  /**
+   * The separation-of-duties property this session's role redesign turns on:
+   * an administrator manages permissions, so an administrator must not also
+   * be able to read the trail meant to catch abuse of them.
+   */
+  it('refuses the audit log to an administrator', async () => {
     const response = await app.inject({
       method: 'GET',
       url: '/audit',
       headers: { cookie: as('ADMIN') },
     });
-
-    expect(response.statusCode).toBe(200);
-    expect(response.json<{ integrity: { ok: boolean } }>().integrity.ok).toBe(true);
+    expect(response.statusCode).toBe(403);
   });
 
   it('refuses the audit log to a maker', async () => {

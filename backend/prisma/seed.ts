@@ -2,7 +2,11 @@ import { PrismaClient, type Role } from '@prisma/client';
 import argon2 from 'argon2';
 
 const DEMO_PASSWORD = 'Demo!2345';
-const ROLES: Role[] = ['VIEWER', 'MAKER', 'CHECKER', 'SHARIAH', 'SUPERVISOR', 'ADMIN'];
+// VIEWER and SUPERVISOR are superseded by OVERSIGHT (see auth/rbac.ts): no demo
+// account is seeded for either directly. The oversight_role_backfill migration
+// reassigns any real VIEWER/SUPERVISOR row onto OVERSIGHT with the equivalent
+// canViewMeetings/canViewAuditTrail flags.
+const ROLES: Role[] = ['MAKER', 'CHECKER', 'SHARIAH', 'OVERSIGHT', 'ADMIN'];
 
 /**
  * All content below is synthetic. The NRIC placeholder stands in for a value
@@ -35,6 +39,12 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
           passwordHash,
           displayName: `Demo ${role}`,
           role,
+          // Demonstrates the full OVERSIGHT surface — both grants — since
+          // this is the only seed row for the role. See capabilitiesOf in
+          // src/auth/rbac.ts: every other role ignores these two columns.
+          ...(role === 'OVERSIGHT'
+            ? { canViewMeetings: true, canViewAuditTrail: true }
+            : {}),
         },
       }),
     ),

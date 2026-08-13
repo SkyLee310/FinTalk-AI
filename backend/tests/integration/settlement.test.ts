@@ -30,7 +30,11 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-async function userWithSession(role: Role, suffix = ''): Promise<{
+async function userWithSession(
+  role: Role,
+  suffix = '',
+  oversight?: { canViewMeetings?: boolean; canViewAuditTrail?: boolean },
+): Promise<{
   id: string;
   cookie: string;
 }> {
@@ -41,6 +45,8 @@ async function userWithSession(role: Role, suffix = ''): Promise<{
       passwordHash: await hashPassword(PASSWORD),
       displayName: `Demo ${role}${suffix}`,
       role,
+      canViewMeetings: oversight?.canViewMeetings ?? false,
+      canViewAuditTrail: oversight?.canViewAuditTrail ?? false,
     },
   });
 
@@ -210,11 +216,15 @@ describe('POST /term-sheets/:id/settle', () => {
   it('refuses every role that does not hold payment:settle', async () => {
     const { termSheetId } = await facility('APPROVED');
 
-    for (const role of ['MAKER', 'SHARIAH', 'SUPERVISOR', 'ADMIN', 'VIEWER'] as const) {
-      const actor = await userWithSession(role, '-x');
+    for (const role of ['MAKER', 'SHARIAH', 'ADMIN', 'OVERSIGHT'] as const) {
+      const actor = await userWithSession(
+        role,
+        '-x',
+        role === 'OVERSIGHT' ? { canViewMeetings: true, canViewAuditTrail: true } : undefined,
+      );
       const response = await settle(actor.cookie, termSheetId);
       // ADMIN especially: it governs access and reads the record, and must never
-      // be able to move money.
+      // be able to move money. Same for OVERSIGHT even with every read flag on.
       expect(response.statusCode).toBe(403);
     }
 

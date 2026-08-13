@@ -47,10 +47,11 @@ export default function AdminPage() {
   const session = useAsync<Session>(() => api.me(), 'session');
   const mayManageUsers = can(session.data, 'user:manage');
   /**
-   * Gated on the loader, not just the key: a SUPERVISOR reaches this page via
-   * audit:read but not user:manage, and an ungated GET /users would 403 for
-   * them. A second, independent fetch of /users lives in (app)/layout.tsx for
-   * the nav badge — two is the honest trade at this scale.
+   * Gated on the loader, not just the key. Only ADMIN reaches this page today and
+   * it holds user:manage, but the guard stays defensive: any future role that could
+   * open this page without user:manage would 403 on an ungated GET /users. A second,
+   * independent fetch of /users lives in (app)/layout.tsx for the nav badge — two is
+   * the honest trade at this scale.
    */
   const pendingUsers = useAsync(
     () => (mayManageUsers ? api.users() : Promise.resolve({ users: [] })),

@@ -62,6 +62,17 @@ export const NAV: readonly NavItem[] = [
     needs: ['user:manage', 'audit:read'],
     owns: ['/audit'],
   },
+  /**
+   * Reference, not a stage of the process — positioned last for that reason.
+   * `meeting:read` is the one capability every active role holds, so Islamic
+   * Banking shows for everyone (and earns a /home chooser card automatically).
+   */
+  {
+    href: '/islamic-banking',
+    label: 'Islamic Banking',
+    hint: 'Shariah principles, and what can flag a facility',
+    needs: ['meeting:read'],
+  },
 ];
 
 /** True when the current path belongs to this section. */

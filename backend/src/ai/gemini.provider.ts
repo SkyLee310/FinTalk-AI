@@ -1,10 +1,13 @@
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import {
+  type ActionItemDraft,
   type AudioInput,
+  type DecisionDraft,
   type GroundedAnswer,
   type GroundingExcerpt,
   type ImageInput,
+  type ProjectDraft,
   type TopicDraft,
   TranscriptionError,
   type TranscriptionProvider,
@@ -76,6 +79,70 @@ const ResponseSchema = z.object({
 });
 
 const ANSWER_PROMPT_VERSION = 'gemini-answer-v1';
+
+const DECISIONS_PROMPT = `Read this redacted credit-committee transcript and identify each point that was debated. For each one, state the final decision the meeting reached — or say plainly that it was left unresolved.
+
+Rules:
+- One entry per distinct point debated. Skip small talk and procedural chatter.
+- "decision" states what was decided, or the exact words "Left unresolved." if it was not.
+- "rationale" is the reasoning given, or the competing positions if left unresolved.
+- The transcript contains placeholders such as [NRIC_1] in place of personal data. Keep them exactly as they appear. Never invent a value to fill one, and never name a person.
+- Use only what the transcript says. Do not infer a decision that was not actually reached.
+
+Return JSON only:
+{"decisions":[{"topic":"...","decision":"...","rationale":"..."}]}`;
+
+const ACTION_ITEMS_PROMPT = `Read this redacted credit-committee transcript and list the follow-up actions it implies.
+
+Rules:
+- "owner" must be a meeting role or speaker label exactly as the transcript names them (e.g. "Credit Manager", "Speaker 2") — never a person's name. The transcript has none to give you; attribute by role.
+- "task" is what is to be done, stated plainly.
+- "dueDate" is a due date only if one was actually stated, as free text; omit the key entirely if none was given. Never invent one.
+- The transcript contains placeholders such as [NRIC_1] in place of personal data. Keep them exactly as they appear if a task must reference one. Never invent a value to fill one.
+- Use only what the transcript implies. An empty list is a correct answer for a meeting with no follow-up actions.
+
+Return JSON only:
+{"actionItems":[{"owner":"...","task":"...","dueDate":"..."}]}`;
+
+const PROJECT_DRAFT_PROMPT = `Read this redacted credit-committee transcript and draft an instant project kickoff.
+
+Rules:
+- "kickoff" is one or two sentences: what happens next to move this facility forward, based only on what the transcript discussed.
+- "followUps" is a short list of probable follow-up actions, one line each — the practical next steps a credit officer would take.
+- The transcript contains placeholders such as [NRIC_1] in place of personal data. Keep them exactly as they appear if a line must reference one. Never invent a value to fill one, and never name a person.
+- Use only what the transcript supports. If there is nothing to draft, return an empty "kickoff" string and an empty "followUps" array.
+
+Return JSON only:
+{"kickoff":"...","followUps":["..."]}`;
+
+const DecisionsSchema = z.object({
+  decisions: z
+    .array(
+      z.object({
+        topic: z.string().min(1).max(200),
+        decision: z.string().min(1).max(500),
+        rationale: z.string().min(1).max(500),
+      }),
+    )
+    .max(20),
+});
+
+const ActionItemsSchema = z.object({
+  actionItems: z
+    .array(
+      z.object({
+        owner: z.string().min(1).max(100),
+        task: z.string().min(1).max(500),
+        dueDate: z.string().max(100).optional().catch(undefined),
+      }),
+    )
+    .max(20),
+});
+
+const ProjectDraftSchema = z.object({
+  kickoff: z.string().max(1000),
+  followUps: z.array(z.string().min(1).max(300)).max(20),
+});
 
 const TOPICS_PROMPT = `Read this credit-meeting summary and list the topics it discusses.
 
@@ -409,6 +476,99 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
         cause instanceof Error ? `embedding failed (${cause.name})` : 'embedding failed',
       );
     }
+  }
+
+  /**
+   * States the decision each debated point reached, or that it was left
+   * unresolved, from an already-redacted transcript.
+   */
+  async arbitrateDecisions(redactedText: string): Promise<readonly DecisionDraft[]> {
+    if (redactedText.trim() === '') return [];
+
+    let raw: string;
+    try {
+      const response = await this.client.models.generateContent({
+        model: this.config.textModel,
+        contents: [{ role: 'user', parts: [{ text: DECISIONS_PROMPT }, { text: redactedText }] }],
+        config: { responseMimeType: 'application/json', temperature: 0 },
+      });
+      raw = response.text ?? '';
+    } catch (cause) {
+      throw new TranscriptionError(
+        'gemini',
+        cause instanceof Error
+          ? `decision arbitration failed (${cause.name})`
+          : 'decision arbitration failed',
+      );
+    }
+
+    const parsed = DecisionsSchema.safeParse(parseJsonLoosely(raw));
+    if (!parsed.success) {
+      // A malformed decision list loses this meeting's distilled decisions,
+      // not the meeting. Returning none is honest; guessing would invent a
+      // decision nobody made.
+      return [];
+    }
+
+    return parsed.data.decisions;
+  }
+
+  /**
+   * Who/what/when, attributed by role — the transcript holds no names to draw
+   * from in the first place, only placeholders.
+   */
+  async extractActionItems(redactedText: string): Promise<readonly ActionItemDraft[]> {
+    if (redactedText.trim() === '') return [];
+
+    let raw: string;
+    try {
+      const response = await this.client.models.generateContent({
+        model: this.config.textModel,
+        contents: [{ role: 'user', parts: [{ text: ACTION_ITEMS_PROMPT }, { text: redactedText }] }],
+        config: { responseMimeType: 'application/json', temperature: 0 },
+      });
+      raw = response.text ?? '';
+    } catch (cause) {
+      throw new TranscriptionError(
+        'gemini',
+        cause instanceof Error
+          ? `action item extraction failed (${cause.name})`
+          : 'action item extraction failed',
+      );
+    }
+
+    const parsed = ActionItemsSchema.safeParse(parseJsonLoosely(raw));
+    if (!parsed.success) return [];
+
+    return parsed.data.actionItems;
+  }
+
+  /**
+   * An instant kickoff draft plus probable follow-ups, from an
+   * already-redacted transcript.
+   */
+  async draftProject(redactedText: string): Promise<ProjectDraft> {
+    if (redactedText.trim() === '') return { kickoff: '', followUps: [] };
+
+    let raw: string;
+    try {
+      const response = await this.client.models.generateContent({
+        model: this.config.textModel,
+        contents: [{ role: 'user', parts: [{ text: PROJECT_DRAFT_PROMPT }, { text: redactedText }] }],
+        config: { responseMimeType: 'application/json', temperature: 0 },
+      });
+      raw = response.text ?? '';
+    } catch (cause) {
+      throw new TranscriptionError(
+        'gemini',
+        cause instanceof Error ? `project draft failed (${cause.name})` : 'project draft failed',
+      );
+    }
+
+    const parsed = ProjectDraftSchema.safeParse(parseJsonLoosely(raw));
+    if (!parsed.success) return { kickoff: '', followUps: [] };
+
+    return { kickoff: parsed.data.kickoff, followUps: parsed.data.followUps };
   }
 
   /**

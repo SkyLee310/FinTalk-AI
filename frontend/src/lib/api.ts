@@ -8,7 +8,23 @@ import { apiFetch } from './api-client';
  * amount is not a place to lose precision for convenience.
  */
 
-export type Role = 'VIEWER' | 'MAKER' | 'CHECKER' | 'SHARIAH' | 'SUPERVISOR' | 'ADMIN';
+// Mirrors the backend Prisma Role enum, which keeps all six values for audit-chain
+// integrity. VIEWER and SUPERVISOR are retired — nothing new is assigned either
+// (see the admin invite form) — but an audit row may still name one as a historical
+// actor, so the display type keeps them.
+/**
+ * VIEWER and SUPERVISOR are superseded by OVERSIGHT, not assignable to a new
+ * or changed account (see backend/src/routes/users.routes.ts's ROLES const)
+ * — kept here only because an audit row can still name one as its actor.
+ */
+export type Role =
+  | 'VIEWER'
+  | 'MAKER'
+  | 'CHECKER'
+  | 'SHARIAH'
+  | 'SUPERVISOR'
+  | 'ADMIN'
+  | 'OVERSIGHT';
 
 /** PENDING has no role and no session; ACTIVE can sign in. Set by POST /auth/register and PATCH /users/:id/approve. */
 export type AccountStatus = 'PENDING' | 'ACTIVE';
@@ -141,6 +157,22 @@ export interface ShariahFlagRow {
   status: ShariahStatus;
 }
 
+/** The final decision a debated point reached, or "left unresolved" — arbiter output. */
+export interface DecisionRow {
+  id: string;
+  topic: string;
+  decision: string;
+  rationale: string;
+}
+
+/** Who/what/when. `owner` is a role or speaker label — redaction means it is never a name. */
+export interface ActionItemRow {
+  id: string;
+  owner: string;
+  task: string;
+  dueDate: string | null;
+}
+
 export interface MeetingDetail {
   id: string;
   title: string;
@@ -158,10 +190,19 @@ export interface MeetingDetail {
     languages: string[];
     modelId: string;
     promptVersion: string;
+    /** Milliseconds the capture pipeline took, or null if it predates timing. */
+    processingMs: number | null;
+    /** Null when no provider produced one, or a PII check skipped it — never an error. */
+    projectKickoff: string | null;
+    followUps: string[];
     segments: TranscriptSegment[];
     redactions: RedactionRow[];
   } | null;
   shariahFlags: ShariahFlagRow[];
+  /** The final decision each debated point reached, arbiter output. Empty is normal, not a failure. */
+  decisions: DecisionRow[];
+  /** Who/what/when. Empty is normal, not a failure. */
+  actionItems: ActionItemRow[];
 }
 
 export interface TermSheetRow {
@@ -297,6 +338,10 @@ export interface ManagedUser {
   createdAt: string;
   /** Null means active. A deactivated account cannot sign in. */
   deactivatedAt: string | null;
+  /** Meaningful only when role is 'OVERSIGHT'; false and ignored otherwise. */
+  canViewMeetings: boolean;
+  /** Meaningful only when role is 'OVERSIGHT'; false and ignored otherwise. */
+  canViewAuditTrail: boolean;
   /** What this role permits, so the UI need not restate the matrix. Empty for a PENDING row, which holds none. */
   capabilities: Capability[];
 }
@@ -487,13 +532,44 @@ export const api = {
    * Invites a user. No password is sent or returned — the server mints a random
    * one nobody reads, so the account is unusable until its owner sets their own.
    */
-  createUser: (email: string, displayName: string, role: Role) =>
-    apiFetch<ManagedUser>('/users', json({ email, displayName, role })),
+  /**
+   * `oversight` is only meaningful when role is 'OVERSIGHT' — the two flags
+   * an admin ticks to grant that account meeting/transcript visibility,
+   * audit-trail visibility, or both. Omitted (both false) for every other role.
+   */
+  createUser: (
+    email: string,
+    displayName: string,
+    role: Role,
+    oversight?: { canViewMeetings: boolean; canViewAuditTrail: boolean },
+  ) =>
+    apiFetch<ManagedUser>(
+      '/users',
+      json({
+        email,
+        displayName,
+        role,
+        canViewMeetings: oversight?.canViewMeetings ?? false,
+        canViewAuditTrail: oversight?.canViewAuditTrail ?? false,
+      }),
+    ),
 
-  setUserRole: (id: string, role: Role) =>
+  /**
+   * Also how an existing OVERSIGHT account's two flags are edited without
+   * changing its role — pass the same role back with new flags.
+   */
+  setUserRole: (
+    id: string,
+    role: Role,
+    oversight?: { canViewMeetings: boolean; canViewAuditTrail: boolean },
+  ) =>
     apiFetch<ManagedUser>(`/users/${id}/role`, {
       method: 'PATCH',
-      body: JSON.stringify({ role }),
+      body: JSON.stringify({
+        role,
+        canViewMeetings: oversight?.canViewMeetings ?? false,
+        canViewAuditTrail: oversight?.canViewAuditTrail ?? false,
+      }),
     }),
 
   /** Deactivates or restores access. Never deletes — audit entries name the user. */
@@ -504,10 +580,18 @@ export const api = {
     }),
 
   /** Grants a role to a PENDING registration and flips it to ACTIVE — it can sign in immediately after. */
-  approveUser: (id: string, role: Role) =>
+  approveUser: (
+    id: string,
+    role: Role,
+    oversight?: { canViewMeetings: boolean; canViewAuditTrail: boolean },
+  ) =>
     apiFetch<ManagedUser>(`/users/${id}/approve`, {
       method: 'PATCH',
-      body: JSON.stringify({ role }),
+      body: JSON.stringify({
+        role,
+        canViewMeetings: oversight?.canViewMeetings ?? false,
+        canViewAuditTrail: oversight?.canViewAuditTrail ?? false,
+      }),
     }),
 
   /**

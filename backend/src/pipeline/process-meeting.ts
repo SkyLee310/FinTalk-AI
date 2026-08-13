@@ -15,6 +15,9 @@ import {
   type RedactionRecord,
 } from '../pdpa/redactor.js';
 import {
+  type ActionItemInput,
+  type DecisionInput,
+  storeIntelligence,
   storeTranscript,
   type TranscriptSegmentInput,
 } from '../pdpa/transcript-store.js';
@@ -80,12 +83,29 @@ export interface IndexingOutcome {
   readonly failure: string | null;
 }
 
+/**
+ * How meeting-intelligence derivation went. Never fatal — a meeting with none
+ * of the three outputs had a provider that does not support them, or output
+ * that failed its PII check, not a failed capture.
+ */
+export interface IntelligenceOutcome {
+  readonly decisionCount: number;
+  readonly actionItemCount: number;
+  readonly hasProjectDraft: boolean;
+  readonly followUpCount: number;
+  /** Names of the three outputs that failed their PII check and were skipped. */
+  readonly skipped: readonly string[];
+  /** Stage and error class, PII-free like PipelineError.persistableReason. */
+  readonly failure: string | null;
+}
+
 export interface ProcessResult {
   readonly transcriptId: string;
   readonly redactionCount: number;
   readonly segmentCount: number;
   readonly shariahFlagCount: number;
   readonly indexing: IndexingOutcome;
+  readonly intelligence: IntelligenceOutcome;
 }
 
 export const SEGMENT_SEPARATOR = '\n';
@@ -156,6 +176,11 @@ export async function processMeeting(
   actor: AuditActor,
 ): Promise<ProcessResult> {
   const { prisma, provider, vaultKey } = deps;
+
+  // Start the clock before anything else, so processingMs on the transcript
+  // reflects the whole pipeline the uploader waited on — transcription
+  // dominates it — up to the storing transaction below.
+  const startedAt = Date.now();
 
   await prisma.meeting.update({
     where: { id: meetingId },
@@ -239,6 +264,7 @@ export async function processMeeting(
       languages: transcription.languages,
       modelId: transcription.modelId,
       promptVersion: transcription.promptVersion,
+      processingMs: Date.now() - startedAt,
       segments: document.segments,
       redactions: document.records,
       actor,
@@ -326,6 +352,35 @@ export async function processMeeting(
     indexing = { topicCount: 0, embedded: false, failure: `indexing:${causeName}` };
   }
 
+  /**
+   * The final decision each debated point reached, a who/what/when action
+   * list, and an instant project draft — deliberately last and deliberately
+   * non-fatal, on the same reasoning as indexing just above: a meeting whose
+   * intelligence step failed is a meeting with a transcript, redactions and
+   * Shariah findings intact, not a lost capture.
+   */
+  let intelligence: IntelligenceOutcome;
+  try {
+    intelligence = await deriveIntelligence(
+      deps,
+      meetingId,
+      transcriptId,
+      document.rawRedacted,
+      document.context,
+      actor,
+    );
+  } catch (cause) {
+    const causeName = cause instanceof Error ? cause.name : typeof cause;
+    intelligence = {
+      decisionCount: 0,
+      actionItemCount: 0,
+      hasProjectDraft: false,
+      followUpCount: 0,
+      skipped: [],
+      failure: `intelligence:${causeName}`,
+    };
+  }
+
   await prisma.meeting.update({
     where: { id: meetingId },
     data: { status: 'READY', failureReason: null },
@@ -337,6 +392,7 @@ export async function processMeeting(
     segmentCount: document.segments.length,
     shariahFlagCount: flagCount,
     indexing,
+    intelligence,
   };
 }
 
@@ -408,4 +464,141 @@ async function indexForKnowledge(
   }
 
   return { topicCount, embedded, failure: null };
+}
+
+/**
+ * Verifies one piece of derived text against the transcript's redaction
+ * context and returns the storable, branded form.
+ *
+ * `clean` is false when the model produced real personal data from redacted
+ * input. The caller discards the *whole* output that field belongs to, not
+ * just this one field — see deriveIntelligence below.
+ */
+function verifyDerivedField(
+  text: string,
+  vaultKey: Buffer,
+  context: RedactionContext,
+): { readonly text: RedactedText; readonly clean: boolean } {
+  const verified = redactDerived(text, vaultKey, context);
+  return { text: verified.text, clean: verified.records.length === 0 };
+}
+
+/**
+ * Distils a final decision, a who/what/when action list, and an instant
+ * project draft from the redacted transcript.
+ *
+ * All three provider methods are optional, like extractTopics and embed
+ * above. Each output is verified as a whole: if any field the model returned
+ * for that output carries real personal data, the whole output is discarded —
+ * never patched and stored — and its name is recorded in `skipped`, on the
+ * same fail-closed reasoning as the summary check in processMeeting. A
+ * provider that supports none of the three writes nothing and appends no
+ * audit entry, since nothing ran.
+ */
+async function deriveIntelligence(
+  deps: PipelineDeps,
+  meetingId: string,
+  transcriptId: string,
+  redactedText: RedactedText,
+  context: RedactionContext,
+  actor: AuditActor,
+): Promise<IntelligenceOutcome> {
+  const { prisma, provider, vaultKey } = deps;
+
+  // Bound once, for the same reason indexForKnowledge binds extractTopics/embed.
+  const arbitrateDecisions = provider.arbitrateDecisions?.bind(provider);
+  const extractActionItems = provider.extractActionItems?.bind(provider);
+  const draftProject = provider.draftProject?.bind(provider);
+
+  if (
+    arbitrateDecisions === undefined
+    && extractActionItems === undefined
+    && draftProject === undefined
+  ) {
+    return {
+      decisionCount: 0,
+      actionItemCount: 0,
+      hasProjectDraft: false,
+      followUpCount: 0,
+      skipped: [],
+      failure: null,
+    };
+  }
+
+  const skipped: string[] = [];
+
+  let decisions: DecisionInput[] = [];
+  if (arbitrateDecisions !== undefined) {
+    const drafts = await arbitrateDecisions(redactedText);
+    const verified = drafts.map((draft) => ({
+      topic: verifyDerivedField(draft.topic, vaultKey, context),
+      decision: verifyDerivedField(draft.decision, vaultKey, context),
+      rationale: verifyDerivedField(draft.rationale, vaultKey, context),
+    }));
+    if (verified.every((v) => v.topic.clean && v.decision.clean && v.rationale.clean)) {
+      decisions = verified.map((v) => ({
+        topic: v.topic.text,
+        decision: v.decision.text,
+        rationale: v.rationale.text,
+      }));
+    } else {
+      skipped.push('decisions');
+    }
+  }
+
+  let actionItems: ActionItemInput[] = [];
+  if (extractActionItems !== undefined) {
+    const drafts = await extractActionItems(redactedText);
+    const verified = drafts.map((draft) => ({
+      owner: verifyDerivedField(draft.owner, vaultKey, context),
+      task: verifyDerivedField(draft.task, vaultKey, context),
+      dueDate:
+        draft.dueDate === undefined ? null : verifyDerivedField(draft.dueDate, vaultKey, context),
+    }));
+    if (verified.every((v) => v.owner.clean && v.task.clean && (v.dueDate === null || v.dueDate.clean))) {
+      actionItems = verified.map((v) => ({
+        owner: v.owner.text,
+        task: v.task.text,
+        dueDate: v.dueDate?.text ?? null,
+      }));
+    } else {
+      skipped.push('actionItems');
+    }
+  }
+
+  let projectKickoff: RedactedText | null = null;
+  let followUps: RedactedText[] = [];
+  if (draftProject !== undefined) {
+    const draft = await draftProject(redactedText);
+    if (draft.kickoff.trim() !== '' || draft.followUps.length > 0) {
+      const kickoff = verifyDerivedField(draft.kickoff, vaultKey, context);
+      const items = draft.followUps.map((line) => verifyDerivedField(line, vaultKey, context));
+      if (kickoff.clean && items.every((v) => v.clean)) {
+        projectKickoff = draft.kickoff.trim() === '' ? null : kickoff.text;
+        followUps = items.map((v) => v.text);
+      } else {
+        skipped.push('project');
+      }
+    }
+  }
+
+  await storeIntelligence(prisma, {
+    meetingId,
+    transcriptId,
+    decisions,
+    actionItems,
+    projectKickoff,
+    followUps,
+    skipped,
+    actor,
+  });
+
+  return {
+    decisionCount: decisions.length,
+    actionItemCount: actionItems.length,
+    hasProjectDraft: projectKickoff !== null,
+    followUpCount: followUps.length,
+    skipped,
+    failure: null,
+  };
 }

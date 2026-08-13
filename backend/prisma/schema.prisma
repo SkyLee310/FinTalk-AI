@@ -14,6 +14,11 @@ enum Role {
   SHARIAH
   SUPERVISOR
   ADMIN
+  /// Read-only oversight. Unlike every other role, what it grants is not a
+  /// fixed list — it is set per account by canViewMeetings/canViewAuditTrail
+  /// below. Supersedes VIEWER and SUPERVISOR, which read as the same person
+  /// with the audit trail toggled; see src/auth/rbac.ts.
+  OVERSIGHT
 }
 
 enum MeetingStatus {
@@ -105,6 +110,15 @@ model User {
   /// Null only while accountStatus is PENDING — a self-registered applicant
   /// has no role until an admin approves them (PATCH /users/:id/approve).
   role          Role?
+  /// Meaningful only when role is OVERSIGHT — grants meeting:read +
+  /// transcript:read there. Ignored (and kept false) for every other role;
+  /// see capabilitiesOf in src/auth/rbac.ts, the only reader of this column.
+  canViewMeetings Boolean @default(false)
+  /// Meaningful only when role is OVERSIGHT — grants audit:read there. Kept
+  /// independent of canViewMeetings on purpose: the audit trail is the more
+  /// sensitive of the two surfaces, and this is what lets an administrator
+  /// grant one without the other.
+  canViewAuditTrail Boolean @default(false)
   /// Existing rows default to ACTIVE: every one of them was admin-created with
   /// a role already assigned, so no backfill judgment call is needed.
   accountStatus AccountStatus @default(ACTIVE)
@@ -173,6 +187,8 @@ model Meeting {
   termSheets   TermSheet[]
   participants MeetingParticipant[]
   topics       MeetingTopic[]
+  decisions    MeetingDecision[]
+  actionItems  ActionItem[]
 
   @@index([createdById])
 }
@@ -201,6 +217,53 @@ model MeetingParticipant {
   @@index([meetingId, ordinal])
 }
 
+/// A decision the meeting reached, distilled by the arbiter from the debate.
+///
+/// topic/decision/rationale are model output, re-verified with redactDerived
+/// before storage — so they hold placeholders where they reference a person,
+/// never a name. Best-effort: a meeting with none simply had no decision
+/// distilled, not a failed capture.
+model MeetingDecision {
+  id        String   @id @default(cuid())
+  meetingId String
+  /// The point that was debated or decided.
+  topic     String
+  /// The final decision reached, or a statement that it was left unresolved.
+  decision  String
+  /// The reasoning, or the competing positions where it stayed unresolved.
+  rationale String
+  /// Display order as the arbiter returned them.
+  ordinal   Int
+  createdAt DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, ordinal])
+}
+
+/// A follow-up action, attributed to a role or speaker label — never a name.
+///
+/// owner/task/dueDate are model output, re-verified with redactDerived before
+/// storage. `owner` is a meeting role or speaker label by construction: the
+/// prompt attributes by role, and names are placeholders in the input anyway.
+model ActionItem {
+  id        String   @id @default(cuid())
+  meetingId String
+  /// A meeting role or speaker label. Never a personal name.
+  owner     String
+  /// What is to be done.
+  task      String
+  /// A due date as stated in the meeting, free text, or null if none was given.
+  dueDate   String?
+  /// Display order as the extractor returned them.
+  ordinal   Int
+  createdAt DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, ordinal])
+}
+
 /// rawRedacted and summaryEn are only ever written with redacted content.
 /// The RedactedText branded type (Plan 2) enforces this at the call site.
 model Transcript {
@@ -213,6 +276,12 @@ model Transcript {
   promptVersion String
   createdAt     DateTime @default(now())
 
+  /// Wall-clock milliseconds the capture pipeline took, from entry to the
+  /// transcript-writing transaction — transcription, redaction, summarisation
+  /// and persistence. Null on rows written before this existed and on the seed
+  /// fixture. Surfaced on the meeting page as how long processing took.
+  processingMs  Int?
+
   /// Embedding of summaryEn, for cross-meeting similarity.
   ///
   /// Stored as a plain float array, not pgvector: Railway's Postgres image
@@ -224,6 +293,14 @@ model Transcript {
   /// Empty when not yet embedded. Derived from already-redacted text, so it
   /// encodes placeholders rather than identifiers.
   summaryEmbedding Float[]
+
+  /// AI-drafted project kickoff, derived from the redacted transcript and
+  /// re-verified with redactDerived before storage. Null when no provider
+  /// produced it or a PII check skipped it — never a reason to fail the capture.
+  projectKickoffRedacted String?
+  /// Probable follow-up actions, one prose line each. Same derivation and
+  /// verification as the kickoff; empty when none were produced.
+  followUpsRedacted String[]
 
   meeting    Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   segments   TranscriptSegment[]

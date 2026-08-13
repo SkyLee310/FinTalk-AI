@@ -8,7 +8,12 @@ import {
 
 const ACCESS_SECRET = 'a'.repeat(32);
 const REFRESH_SECRET = 'b'.repeat(32);
-const SUBJECT = { sub: 'user_123', role: 'MAKER' } as const;
+const SUBJECT = {
+  sub: 'user_123',
+  role: 'MAKER',
+  canViewMeetings: false,
+  canViewAuditTrail: false,
+} as const;
 
 afterEach(() => { vi.useRealTimers(); });
 
@@ -65,12 +70,20 @@ describe('token kinds are not interchangeable', () => {
 });
 
 describe('payload hygiene', () => {
-  it('carries no field beyond sub, role and the standard claims', async () => {
+  it('carries no field beyond sub, role, the two oversight flags and the standard claims', async () => {
     const token = await signAccessToken(SUBJECT, ACCESS_SECRET, '15m');
     const body = JSON.parse(
       Buffer.from(token.split('.')[1]!, 'base64url').toString('utf8'),
     ) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(['aud', 'exp', 'iat', 'role', 'sub']);
+    expect(Object.keys(body).sort()).toEqual([
+      'aud',
+      'canViewAuditTrail',
+      'canViewMeetings',
+      'exp',
+      'iat',
+      'role',
+      'sub',
+    ]);
   });
 
   it('rejects a secret shorter than 32 characters', async () => {

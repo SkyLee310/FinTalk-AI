@@ -11,6 +11,8 @@ export const REFRESH_COOKIE = 'fintalk_refresh';
 export interface AuthenticatedUser {
   readonly id: string;
   readonly role: Role;
+  readonly canViewMeetings: boolean;
+  readonly canViewAuditTrail: boolean;
 }
 
 declare module 'fastify' {
@@ -39,7 +41,12 @@ export async function requireAuth(
 
   try {
     const payload = await verifyAccessToken(token, getEnv().JWT_ACCESS_SECRET);
-    request.authUser = { id: payload.sub, role: payload.role };
+    request.authUser = {
+      id: payload.sub,
+      role: payload.role,
+      canViewMeetings: payload.canViewMeetings,
+      canViewAuditTrail: payload.canViewAuditTrail,
+    };
   } catch {
     await sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
   }
@@ -60,7 +67,7 @@ export function requireCapability(capability: Capability) {
       return;
     }
 
-    if (!can(user.role, capability)) {
+    if (!can(user, capability)) {
       await sendProblem(
         reply,
         403,

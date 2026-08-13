@@ -1,5 +1,7 @@
 import {
+  type ActionItemDraft,
   type AudioInput,
+  type DecisionDraft,
   type GroundedAnswer,
   type GroundingExcerpt,
   type TopicDraft,
@@ -172,6 +174,62 @@ export class FakeTranscriptionProvider implements TranscriptionProvider {
     // Normalised, so cosine similarity behaves the way it would on real vectors.
     const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
     return Promise.resolve(norm === 0 ? vector : vector.map((value) => value / norm));
+  }
+
+  /**
+   * A deterministic decision list: one point resolved, one left open — so a
+   * test can exercise both branches of "state the decision or mark it
+   * unresolved" without an API key.
+   */
+  arbitrateDecisions(): Promise<readonly DecisionDraft[]> {
+    return Promise.resolve([
+      {
+        topic: 'Facility amount and tenure',
+        decision: 'Approved at RM 50,000 over a five-year tenure.',
+        rationale: 'Matches the expansion the credit officer described; no objection was raised.',
+      },
+      {
+        topic: 'Pricing basis',
+        decision: 'Left unresolved.',
+        rationale:
+          'The Shariah officer objected to the quoted 8% interest rate and proposed a Murabahah '
+          + 'profit rate instead; the meeting ended before the two sides agreed.',
+      },
+    ]);
+  }
+
+  /**
+   * Owners are role labels, never names. The fixture text has no names to draw
+   * from in the first place — only placeholders — which is the point.
+   */
+  extractActionItems(): Promise<readonly ActionItemDraft[]> {
+    return Promise.resolve([
+      {
+        owner: 'Shariah Officer',
+        task: 'Confirm a Murabahah profit rate to replace the quoted interest rate.',
+      },
+      {
+        owner: 'Credit Manager',
+        task: 'Re-submit the facility once pricing is agreed.',
+        dueDate: 'next committee meeting',
+      },
+    ]);
+  }
+
+  /**
+   * A fixed kickoff draft and two follow-ups, echoing the same placeholder
+   * convention as `summarize`: clean text in, clean text out, nothing invented.
+   */
+  draftProject(): Promise<{ kickoff: string; followUps: readonly string[] }> {
+    return Promise.resolve({
+      kickoff:
+        'Kick off the Tech Solutions SME working capital facility: confirm the pricing basis, '
+        + 'then route to the checker for approval.',
+      followUps: [
+        'Confirm the Murabahah profit rate with the Shariah officer.',
+        'Re-submit the term sheet once pricing is agreed.',
+      ],
+    });
   }
 
   /**

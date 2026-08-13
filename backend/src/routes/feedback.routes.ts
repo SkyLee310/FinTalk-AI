@@ -11,7 +11,7 @@ import { detectPii } from '../pdpa/detectors.js';
  *
  * Submission needs `requireAuth` and nothing more — every role may say the
  * product is wrong, and gating that on a capability would silence exactly the
- * accounts (a VIEWER, a freshly approved MAKER) whose confusion is most worth
+ * accounts (a freshly approved MAKER, say) whose confusion is most worth
  * hearing. Reading the pile is a different matter: it is other people's words
  * about their own work, so it reuses `user:manage`, which only ADMIN holds. No
  * new capability is introduced.

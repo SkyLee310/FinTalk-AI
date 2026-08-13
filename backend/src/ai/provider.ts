@@ -131,6 +131,35 @@ export interface TranscriptionProvider {
   embed?(redactedText: string): Promise<readonly number[]>;
 
   /**
+   * Optional arbiter over an already-redacted transcript: for each point the
+   * meeting debated, states the decision actually reached, or that it was
+   * left unresolved.
+   *
+   * Returns plain strings, like every other provider method — model output,
+   * re-verified with redactDerived before storage on the same reasoning as
+   * `summarize`: a model handed placeholders has no identifier to leak, but
+   * is not trusted at this boundary regardless.
+   */
+  arbitrateDecisions?(redactedText: string): Promise<readonly DecisionDraft[]>;
+
+  /**
+   * Optional who/what/when extraction from an already-redacted transcript.
+   *
+   * `owner` must be a meeting role or speaker label, never a person's name.
+   * The input holds no names to begin with — only placeholders — so the
+   * prompt attributes by role for the same reason topic labels are forbidden
+   * from naming anyone in `extractTopics`.
+   */
+  extractActionItems?(redactedText: string): Promise<readonly ActionItemDraft[]>;
+
+  /**
+   * Optional instant project-kickoff draft plus probable follow-ups, from an
+   * already-redacted transcript. Same derivation and re-verification as the
+   * other two: model output, never trusted at this boundary.
+   */
+  draftProject?(redactedText: string): Promise<ProjectDraft>;
+
+  /**
    * Optional grounded answer over already-redacted excerpts.
    *
    * `excerpts` are redacted transcripts. The implementation must instruct the
@@ -150,6 +179,46 @@ export interface TopicDraft {
   readonly label: string;
   readonly kind: 'CONTRACT' | 'SECTOR' | 'PRODUCT' | 'ISSUE' | 'TERM';
   readonly weight: number;
+}
+
+/**
+ * A decision as the arbiter read it. Raw model output — unredacted by
+ * construction, exactly like SegmentDraft.text.
+ */
+export interface DecisionDraft {
+  /** The point that was debated. */
+  readonly topic: string;
+  /** The final decision reached, or a statement that it was left unresolved. */
+  readonly decision: string;
+  /** The reasoning, or the competing positions where it stayed unresolved. */
+  readonly rationale: string;
+}
+
+/**
+ * A follow-up action as the extractor read it. Raw model output — unredacted
+ * by construction, exactly like SegmentDraft.text.
+ */
+export interface ActionItemDraft {
+  /** A meeting role or speaker label. Never a personal name. */
+  readonly owner: string;
+  /** What is to be done. */
+  readonly task: string;
+  /**
+   * A due date as stated in the meeting, free text, or absent if none was
+   * given. Written `| undefined` for the same exactOptionalPropertyTypes
+   * reason as SegmentDraft.confidence: absent and "not stated" are the same
+   * thing, and a provider that never saw a date should not have to care.
+   */
+  readonly dueDate?: string | undefined;
+}
+
+/**
+ * An instant project-kickoff draft as the model wrote it. Raw model output —
+ * unredacted by construction, exactly like SegmentDraft.text.
+ */
+export interface ProjectDraft {
+  readonly kickoff: string;
+  readonly followUps: readonly string[];
 }
 
 export interface GroundingExcerpt {

@@ -90,12 +90,13 @@ FinTalk-AI/
 
 | Role | Can |
 |---|---|
-| `VIEWER` | Read meetings and transcripts |
 | `MAKER` | Capture meetings, draft and submit term sheets |
-| `CHECKER` | Approve or reject a term sheet — and nothing else |
+| `CHECKER` | Approve or reject a term sheet, then settle it — and nothing else |
 | `SHARIAH` | Resolve a Shariah finding — the only role that can |
-| `SUPERVISOR` | Read the audit trail |
-| `ADMIN` | Manage users, read the audit trail. **Cannot** clear a finding or approve a facility. |
+| `ADMIN` | Manage users. **Cannot** read a transcript, read the audit trail, clear a finding, approve a facility, or settle one. |
+| `OVERSIGHT` | Read-only. Two independent per-account flags, set by an administrator when the account is created or edited: view meetings & transcripts, and/or view the audit trail. Grants no write capability under any combination. |
+
+> Two decisions here are deliberate, not oversights. `ADMIN` and `SUPERVISOR` are never merged: a role holding both `user:manage` and `audit:read` could hide its own abuse of permissions, which is exactly what the audit trail exists to catch. And `VIEWER`/`SUPERVISOR` are retired in favour of `OVERSIGHT` instead of being folded into another role: their visibility was already identical except `SUPERVISOR` could additionally read the audit trail, so `OVERSIGHT` reproduces that split as two independent booleans (`canViewMeetings`, `canViewAuditTrail`) rather than two separate roles. All three retired enum values remain for audit-chain integrity (historical entries still name them), but nothing new is ever assigned any of them, and none grants anything on its own.
 
 ---
 

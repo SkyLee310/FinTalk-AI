@@ -356,8 +356,8 @@ export function registerMeetingRoutes(
    * this route runs. Only this list's own query excludes an archived row.
    *
    * Scoped to the meeting's own creator: archiving is personal cleanup, not
-   * shared moderation. Widening it to SUPERVISOR or ADMIN later is a
-   * capability decision (meeting:archive), not a tweak to this check.
+   * shared moderation. Widening it to ADMIN later is a capability decision
+   * (meeting:archive), not a tweak to this check.
    */
   app.patch<{ Params: { id: string } }>(
     '/meetings/:id/archive',
@@ -432,6 +432,8 @@ export function registerMeetingRoutes(
           },
           shariahFlags: { orderBy: { createdAt: 'asc' } },
           participants: { orderBy: { ordinal: 'asc' } },
+          decisions: { orderBy: { ordinal: 'asc' } },
+          actionItems: { orderBy: { ordinal: 'asc' } },
         },
       });
 
@@ -491,6 +493,12 @@ export function registerMeetingRoutes(
                 languages: meeting.transcript.languages,
                 modelId: meeting.transcript.modelId,
                 promptVersion: meeting.transcript.promptVersion,
+                processingMs: meeting.transcript.processingMs,
+                // Null/empty when no provider produced one or a PII check
+                // skipped it — never a reason to fail the capture, so the
+                // client must render an absent draft, not an error.
+                projectKickoff: meeting.transcript.projectKickoffRedacted,
+                followUps: meeting.transcript.followUpsRedacted,
                 segments: meeting.transcript.segments.map((segment) => ({
                   id: segment.id,
                   startMs: segment.startMs,
@@ -524,6 +532,20 @@ export function registerMeetingRoutes(
           confidence: flag.confidence,
           reference: flag.reference,
           status: flag.status,
+        })),
+        /** The final decision each debated point reached, arbiter output. */
+        decisions: meeting.decisions.map((decision) => ({
+          id: decision.id,
+          topic: decision.topic,
+          decision: decision.decision,
+          rationale: decision.rationale,
+        })),
+        /** Who/what/when. `owner` is a role or speaker label, never a name. */
+        actionItems: meeting.actionItems.map((item) => ({
+          id: item.id,
+          owner: item.owner,
+          task: item.task,
+          dueDate: item.dueDate,
         })),
       });
     },

@@ -35,9 +35,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const mayManageUsers = can(session, 'user:manage');
   /**
    * A second, independent fetch of /users — admin/page.tsx has its own for
-   * the same reason. Gated on the loader, not just the key: a SUPERVISOR
-   * sees this nav item via audit:read but not user:manage, and an ungated
-   * GET /users would 403 for them.
+   * the same reason. Gated on the loader, not just the key: any role that could
+   * see this nav item without holding user:manage would 403 on an ungated
+   * GET /users, so the fetch is skipped unless user:manage is present.
    */
   const pendingUsers = useAsync(
     () => (mayManageUsers ? api.users() : Promise.resolve({ users: [] })),

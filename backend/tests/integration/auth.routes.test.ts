@@ -272,7 +272,10 @@ describe('POST /auth/refresh', () => {
    */
   it('reflects a role change made after the refresh token was issued', async () => {
     const session = await login();
-    await prisma.user.update({ where: { email: EMAIL }, data: { role: 'VIEWER' } });
+    await prisma.user.update({
+      where: { email: EMAIL },
+      data: { role: 'OVERSIGHT', canViewAuditTrail: true },
+    });
 
     const response = await app.inject({
       method: 'POST',
@@ -281,7 +284,19 @@ describe('POST /auth/refresh', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json<{ role: string }>().role).toBe('VIEWER');
+    expect(response.json<{ role: string }>().role).toBe('OVERSIGHT');
+
+    // The refreshed cookie must carry canViewAuditTrail as read from the
+    // database, not one still stale from before the promotion — otherwise a
+    // freshly promoted OVERSIGHT account keeps being refused the audit trail
+    // for the rest of the access token's life.
+    const refreshedAccess = cookiesOf(response).find((c) => c.name === ACCESS_COOKIE)!.value;
+    const audit = await app.inject({
+      method: 'GET',
+      url: '/audit',
+      headers: { cookie: `${ACCESS_COOKIE}=${refreshedAccess}` },
+    });
+    expect(audit.statusCode).toBe(200);
   });
 
   it('refuses an access token presented as a refresh token', async () => {

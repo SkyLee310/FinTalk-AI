@@ -10,9 +10,18 @@ import { jwtVerify, SignJWT } from 'jose';
  * misconfiguration that reuses one secret still cannot turn a seven-day refresh
  * token into an access token.
  *
- * The payload carries the subject and role and nothing else. A JWT body is
- * readable by anyone holding the token, so it is not a place for anything the
- * bearer should not see.
+ * The payload carries the subject, role, and the two OVERSIGHT grant flags —
+ * canViewMeetings and canViewAuditTrail — and nothing else. Every other role
+ * ignores the two flags (see capabilitiesOf in auth/rbac.ts); they ride along
+ * for all roles rather than being conditionally included, so the payload shape
+ * never depends on what role signed it. A JWT body is readable by anyone
+ * holding the token, so it is not a place for anything the bearer should not
+ * see — a boolean the bearer already knows about their own account is fine.
+ *
+ * Like role, these two flags are trusted for the token's TTL once issued.
+ * A grant revoked mid-session takes effect on next refresh, when the refresh
+ * route re-reads the User row rather than trusting the old token's claims —
+ * the same staleness window role changes already accept.
  */
 
 const ALGORITHM = 'HS256';
@@ -23,6 +32,8 @@ const MIN_SECRET_LENGTH = 32;
 export interface TokenSubject {
   readonly sub: string;
   readonly role: Role;
+  readonly canViewMeetings: boolean;
+  readonly canViewAuditTrail: boolean;
 }
 
 export interface TokenPayload extends TokenSubject {
@@ -47,7 +58,11 @@ async function sign(
   ttl: string,
   audience: string,
 ): Promise<string> {
-  return new SignJWT({ role: subject.role })
+  return new SignJWT({
+    role: subject.role,
+    canViewMeetings: subject.canViewMeetings,
+    canViewAuditTrail: subject.canViewAuditTrail,
+  })
     .setProtectedHeader({ alg: ALGORITHM })
     .setSubject(subject.sub)
     .setAudience(audience)
@@ -66,15 +81,18 @@ async function verify(
     audience,
   });
 
-  const { sub, role, aud, exp, iat } = payload;
+  const { sub, role, canViewMeetings, canViewAuditTrail, aud, exp, iat } = payload;
   if (typeof sub !== 'string' || typeof role !== 'string') {
     throw new Error('token payload is missing sub or role');
+  }
+  if (typeof canViewMeetings !== 'boolean' || typeof canViewAuditTrail !== 'boolean') {
+    throw new Error('token payload is missing canViewMeetings or canViewAuditTrail');
   }
   if (typeof aud !== 'string' || typeof exp !== 'number' || typeof iat !== 'number') {
     throw new Error('token payload is missing standard claims');
   }
 
-  return { sub, role: role as Role, aud, exp, iat };
+  return { sub, role: role as Role, canViewMeetings, canViewAuditTrail, aud, exp, iat };
 }
 
 export function signAccessToken(

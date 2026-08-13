@@ -1,6 +1,7 @@
 import type { Role } from '@prisma/client';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { FakeTranscriptionProvider } from '../../src/ai/fake.provider.js';
+import type { DecisionDraft, TranscriptionProvider, TranscriptionResult } from '../../src/ai/provider.js';
 import { ACCESS_COOKIE } from '../../src/auth/middleware.js';
 import { hashPassword } from '../../src/auth/password.js';
 import { buildServer } from '../../src/server.js';
@@ -25,7 +26,11 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-async function sessionFor(role: Role, suffix = ''): Promise<string> {
+async function sessionFor(
+  role: Role,
+  suffix = '',
+  oversight?: { canViewMeetings?: boolean; canViewAuditTrail?: boolean },
+): Promise<string> {
   const email = `${role.toLowerCase()}${suffix}@fintalk.test`;
   await prisma.user.create({
     data: {
@@ -33,6 +38,8 @@ async function sessionFor(role: Role, suffix = ''): Promise<string> {
       passwordHash: await hashPassword(PASSWORD),
       displayName: `Demo ${role}`,
       role,
+      canViewMeetings: oversight?.canViewMeetings ?? false,
+      canViewAuditTrail: oversight?.canViewAuditTrail ?? false,
     },
   });
 
@@ -95,9 +102,14 @@ const METADATA = {
   transferAcknowledged: 'true',
 };
 
-function upload(cookie: string, fields: Record<string, string>, withAudio = true) {
+function upload(
+  cookie: string,
+  fields: Record<string, string>,
+  withAudio = true,
+  targetApp = app,
+) {
   const { payload, headers } = multipart(fields, withAudio ? AUDIO : undefined);
-  return app.inject({
+  return targetApp.inject({
     method: 'POST',
     url: '/meetings',
     headers: { ...headers, cookie },
@@ -122,8 +134,8 @@ async function waitForSettled(meetingId: string): Promise<string> {
   throw new Error(`meeting ${meetingId} never settled`);
 }
 
-async function uploadAndWait(cookie: string): Promise<string> {
-  const response = await upload(cookie, METADATA);
+async function uploadAndWait(cookie: string, targetApp = app): Promise<string> {
+  const response = await upload(cookie, METADATA, true, targetApp);
   expect(response.statusCode).toBe(202);
   const { meetingId } = response.json<{ meetingId: string }>();
   expect(await waitForSettled(meetingId)).toBe('READY');
@@ -142,8 +154,11 @@ describe('POST /meetings — access control', () => {
     expect(response.statusCode).toBe(401);
   });
 
-  it('refuses a viewer, who cannot create meetings', async () => {
-    const response = await upload(await sessionFor('VIEWER'), METADATA);
+  it('refuses an oversight account, who cannot create meetings even with read access', async () => {
+    const response = await upload(
+      await sessionFor('OVERSIGHT', '', { canViewMeetings: true }),
+      METADATA,
+    );
     expect(response.statusCode).toBe(403);
     expect(await prisma.meeting.count()).toBe(0);
   });
@@ -295,17 +310,29 @@ describe('POST /meetings — the capture round trip', () => {
     expect(detail.body).not.toContain('vaultId');
   });
 
-  it('lists the meeting for a viewer', async () => {
+  it('lists the meeting for an oversight account with canViewMeetings', async () => {
     await uploadAndWait(await sessionFor('MAKER'));
 
     const response = await app.inject({
       method: 'GET',
       url: '/meetings',
-      headers: { cookie: await sessionFor('VIEWER') },
+      headers: { cookie: await sessionFor('OVERSIGHT', '', { canViewMeetings: true }) },
     });
 
     expect(response.statusCode).toBe(200);
     expect(response.json<{ meetings: unknown[] }>().meetings).toHaveLength(1);
+  });
+
+  it('refuses the list to an oversight account with canViewMeetings unset', async () => {
+    await uploadAndWait(await sessionFor('MAKER', '-2'));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/meetings',
+      headers: { cookie: await sessionFor('OVERSIGHT', '-noflag', { canViewAuditTrail: true }) },
+    });
+
+    expect(response.statusCode).toBe(403);
   });
 
   /**
@@ -353,6 +380,102 @@ describe('POST /meetings — the capture round trip', () => {
       headers: { cookie: await sessionFor('MAKER') },
     });
     expect(response.statusCode).toBe(404);
+  });
+});
+
+describe('POST /meetings — meeting intelligence', () => {
+  it('stores decisions, action items, and a project draft, and audits the step', async () => {
+    const cookie = await sessionFor('MAKER', '-intel');
+    const meetingId = await uploadAndWait(cookie);
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/meetings/${meetingId}`,
+      headers: { cookie },
+    });
+    const body = detail.json<{
+      decisions: { id: string; topic: string; decision: string; rationale: string }[];
+      actionItems: { id: string; owner: string; task: string; dueDate: string | null }[];
+      transcript: { projectKickoff: string | null; followUps: string[] } | null;
+    }>();
+
+    expect(body.decisions.length).toBeGreaterThan(0);
+    expect(body.actionItems.length).toBeGreaterThan(0);
+    expect(body.transcript?.projectKickoff).toBeTruthy();
+    expect(body.transcript?.followUps.length).toBeGreaterThan(0);
+
+    const entry = await prisma.auditEntry.findFirstOrThrow({
+      where: { action: 'meeting.intelligence', entityId: meetingId },
+    });
+    expect(entry.payload).toMatchObject({
+      decisionCount: body.decisions.length,
+      actionItemCount: body.actionItems.length,
+      hasProjectDraft: true,
+      followUpCount: body.transcript?.followUps.length,
+      skipped: [],
+    });
+  });
+
+  /**
+   * A provider that implements only arbitrateDecisions, and answers with a
+   * fresh NRIC-shaped string its input never contained. redactDerived must
+   * catch it the same way it would catch a leak from a real model — this
+   * stub exists to prove the fail-closed path actually runs, not to describe
+   * anything a real provider would do.
+   */
+  class DirtyIntelligenceProvider implements TranscriptionProvider {
+    readonly name = 'fake' as const;
+
+    transcribe(): Promise<TranscriptionResult> {
+      return new FakeTranscriptionProvider().transcribe({
+        bytes: new Uint8Array([1, 2, 3, 4]),
+        mimeType: 'audio/wav',
+      });
+    }
+
+    arbitrateDecisions(): Promise<readonly DecisionDraft[]> {
+      return Promise.resolve([
+        {
+          topic: 'Pricing basis',
+          decision: 'Approved.',
+          rationale: 'Confirmed directly with the director, IC 770202-08-2222.',
+        },
+      ]);
+    }
+  }
+
+  it('skips an output whose derived text leaks real PII, without failing the meeting', async () => {
+    const dirtyApp = buildServer({ prisma, provider: new DirtyIntelligenceProvider() });
+    try {
+      const cookie = await sessionFor('MAKER', '-dirty');
+      const meetingId = await uploadAndWait(cookie, dirtyApp);
+
+      const detail = await dirtyApp.inject({
+        method: 'GET',
+        url: `/meetings/${meetingId}`,
+        headers: { cookie },
+      });
+      const body = detail.json<{ decisions: unknown[] }>();
+      expect(body.decisions).toHaveLength(0);
+      // No leaked NRIC anywhere in the response, not even inside the skipped output.
+      expect(detail.body).not.toContain('770202-08-2222');
+
+      const meetingRow = await prisma.meeting.findUniqueOrThrow({ where: { id: meetingId } });
+      expect(meetingRow.status).toBe('READY');
+
+      const entry = await prisma.auditEntry.findFirstOrThrow({
+        where: { action: 'meeting.intelligence', entityId: meetingId },
+      });
+      expect(entry.payload).toMatchObject({
+        decisionCount: 0,
+        actionItemCount: 0,
+        hasProjectDraft: false,
+        skipped: ['decisions'],
+      });
+    } finally {
+      await dirtyApp.backgroundJobs.drain();
+      await dirtyApp.close();
+    }
   });
 });
 
@@ -421,13 +544,13 @@ describe('PATCH /meetings/:id/archive', () => {
 
   it('refuses a role without meeting:create', async () => {
     const maker = await sessionFor('MAKER', '-viewed');
-    const viewer = await sessionFor('VIEWER', '-x');
+    const oversight = await sessionFor('OVERSIGHT', '-x', { canViewMeetings: true });
     const meetingId = await uploadAndWait(maker);
 
     const response = await app.inject({
       method: 'PATCH',
       url: `/meetings/${meetingId}/archive`,
-      headers: { cookie: viewer },
+      headers: { cookie: oversight },
     });
     expect(response.statusCode).toBe(403);
   });

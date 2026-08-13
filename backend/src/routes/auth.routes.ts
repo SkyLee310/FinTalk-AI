@@ -194,7 +194,12 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
     }
 
     const env = getEnv();
-    const subject = { sub: user.id, role: user.role };
+    const subject = {
+      sub: user.id,
+      role: user.role,
+      canViewMeetings: user.canViewMeetings,
+      canViewAuditTrail: user.canViewAuditTrail,
+    };
     const [access, refresh] = await Promise.all([
       signAccessToken(subject, env.JWT_ACCESS_SECRET, env.JWT_ACCESS_TTL),
       signRefreshToken(subject, env.JWT_REFRESH_SECRET, env.JWT_REFRESH_TTL),
@@ -216,7 +221,11 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
         email: user.email,
         displayName: user.displayName,
         role: user.role,
-        capabilities: capabilitiesOf(user.role),
+        capabilities: capabilitiesOf({
+          role: user.role,
+          canViewMeetings: user.canViewMeetings,
+          canViewAuditTrail: user.canViewAuditTrail,
+        }),
       });
   });
 
@@ -244,7 +253,11 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
       email: user.email,
       displayName: user.displayName,
       role: user.role,
-      capabilities: capabilitiesOf(user.role),
+      capabilities: capabilitiesOf({
+        role: user.role,
+        canViewMeetings: user.canViewMeetings,
+        canViewAuditTrail: user.canViewAuditTrail,
+      }),
     });
   });
 
@@ -274,7 +287,12 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
       }
 
       const access = await signAccessToken(
-        { sub: user.id, role: user.role },
+        {
+          sub: user.id,
+          role: user.role,
+          canViewMeetings: user.canViewMeetings,
+          canViewAuditTrail: user.canViewAuditTrail,
+        },
         env.JWT_ACCESS_SECRET,
         env.JWT_ACCESS_TTL,
       );

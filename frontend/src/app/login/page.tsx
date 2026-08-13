@@ -159,10 +159,9 @@ function LoginPageContent() {
           <p className="mt-1">
             <code className="font-mono">maker@fintalk.test</code>,{' '}
             <code className="font-mono">checker@fintalk.test</code>,{' '}
-            <code className="font-mono">shariah@fintalk.test</code>, plus{' '}
-            <code className="font-mono">viewer</code>,{' '}
-            <code className="font-mono">supervisor</code> and{' '}
-            <code className="font-mono">admin</code> at the same domain.
+            <code className="font-mono">shariah@fintalk.test</code>,{' '}
+            <code className="font-mono">oversight@fintalk.test</code> and{' '}
+            <code className="font-mono">admin@fintalk.test</code>.
           </p>
           <p className="mt-1">
             Password <code className="font-mono">Demo!2345</code>. Run{' '}

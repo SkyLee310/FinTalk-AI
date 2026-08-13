@@ -27,31 +27,78 @@ import { api, can, type ManagedUser, type Role, type Session } from '@/lib/api';
  * decision, and a bare six-item dropdown assumes they already know the matrix.
  */
 
-const ROLES: readonly Role[] = [
-  'VIEWER',
-  'MAKER',
-  'CHECKER',
-  'SHARIAH',
-  'SUPERVISOR',
-  'ADMIN',
-];
+// Assignable roles only. The Role type (lib/api) still lists VIEWER and
+// SUPERVISOR so audit rows can display those historical actors, but neither
+// is offered here: both are superseded by OVERSIGHT below.
+const ROLES: readonly Role[] = ['MAKER', 'CHECKER', 'SHARIAH', 'ADMIN', 'OVERSIGHT'];
 
 const ROLE_MEANING: Record<Role, string> = {
-  VIEWER: 'Read meetings and transcripts. Changes nothing.',
+  VIEWER: 'Superseded by Oversight. Grants nothing on its own — see Oversight below.',
   MAKER: 'Record meetings, and draft and submit term sheets for approval.',
   CHECKER:
     'Approve or reject a submitted term sheet, then record its settlement. Never their own work.',
   SHARIAH:
     'Resolve Shariah findings — the only role that can, including instead of an administrator.',
-  SUPERVISOR: 'Read the audit trail. Makes no decisions.',
+  SUPERVISOR: 'Superseded by Oversight. Grants nothing on its own — see Oversight below.',
   ADMIN:
-    'Manage users and read the audit trail. Cannot clear a finding, approve a facility, or settle one.',
+    'Manage users only. Cannot view meetings, transcripts, or the audit trail — that '
+    + 'visibility belongs to Oversight, kept separate so an administrator can never both '
+    + 'grant permissions and inspect the trail meant to catch their own misuse of them.',
+  OVERSIGHT:
+    'Read-only, and never both permission-managing and audit-watching at once. What it '
+    + 'sees is set per account, below — meetings and transcripts, the audit trail, or both.',
 };
+
+/**
+ * The two OVERSIGHT grants, shown wherever a role is being chosen or an
+ * existing Oversight account is being edited. Not shown for any other role —
+ * the two columns are meaningless there (see capabilitiesOf in
+ * backend/src/auth/rbac.ts).
+ */
+function OversightFlagsFields({
+  canViewMeetings,
+  canViewAuditTrail,
+  disabled,
+  onChangeMeetings,
+  onChangeAuditTrail,
+}: {
+  canViewMeetings: boolean;
+  canViewAuditTrail: boolean;
+  disabled: boolean;
+  onChangeMeetings: (value: boolean) => void;
+  onChangeAuditTrail: (value: boolean) => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-lg border border-line bg-raised px-4 py-3">
+      <p className="text-caption font-medium text-text">What this Oversight account can see</p>
+      <label className="flex items-center gap-2 text-caption text-muted">
+        <input
+          type="checkbox"
+          checked={canViewMeetings}
+          disabled={disabled}
+          onChange={(event) => onChangeMeetings(event.target.checked)}
+        />
+        Meetings and transcripts
+      </label>
+      <label className="flex items-center gap-2 text-caption text-muted">
+        <input
+          type="checkbox"
+          checked={canViewAuditTrail}
+          disabled={disabled}
+          onChange={(event) => onChangeAuditTrail(event.target.checked)}
+        />
+        The audit trail
+      </label>
+    </div>
+  );
+}
 
 function InviteForm({ onDone }: { onDone: (user: ManagedUser) => void }) {
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [role, setRole] = useState<Role>('VIEWER');
+  const [role, setRole] = useState<Role>('MAKER');
+  const [canViewMeetings, setCanViewMeetings] = useState(false);
+  const [canViewAuditTrail, setCanViewAuditTrail] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,10 +107,15 @@ function InviteForm({ onDone }: { onDone: (user: ManagedUser) => void }) {
     setBusy(true);
     setError(null);
     try {
-      const created = await api.createUser(email.trim(), displayName.trim(), role);
+      const created = await api.createUser(email.trim(), displayName.trim(), role, {
+        canViewMeetings,
+        canViewAuditTrail,
+      });
       setEmail('');
       setDisplayName('');
-      setRole('VIEWER');
+      setRole('MAKER');
+      setCanViewMeetings(false);
+      setCanViewAuditTrail(false);
       onDone(created);
     } catch (cause) {
       setError(describeError(cause));
@@ -123,6 +175,16 @@ function InviteForm({ onDone }: { onDone: (user: ManagedUser) => void }) {
           </Select>
         </Field>
 
+        {role === 'OVERSIGHT' && (
+          <OversightFlagsFields
+            canViewMeetings={canViewMeetings}
+            canViewAuditTrail={canViewAuditTrail}
+            disabled={busy}
+            onChangeMeetings={setCanViewMeetings}
+            onChangeAuditTrail={setCanViewAuditTrail}
+          />
+        )}
+
         {/*
           Stated on the form, not buried in a help page. An administrator who
           expects to be handed a password needs to know here that they will not be,
@@ -162,6 +224,8 @@ function PendingUserRow({
   onChanged: (message: string) => void;
 }) {
   const [role, setRole] = useState<Role | ''>('');
+  const [canViewMeetings, setCanViewMeetings] = useState(false);
+  const [canViewAuditTrail, setCanViewAuditTrail] = useState(false);
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -170,7 +234,7 @@ function PendingUserRow({
     setBusy('approve');
     setError(null);
     try {
-      await api.approveUser(user.id, role);
+      await api.approveUser(user.id, role, { canViewMeetings, canViewAuditTrail });
       onChanged(`${user.displayName} was approved as ${role}.`);
     } catch (cause) {
       setError(describeError(cause));
@@ -215,44 +279,56 @@ function PendingUserRow({
           </div>
         )}
 
-        <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-line pt-4">
-          <Field
-            label="Grant role"
-            htmlFor={`grant-role-${user.id}`}
-            hint={role === '' ? 'Choose a role to enable Approve.' : ROLE_MEANING[role]}
-          >
-            <Select
-              id={`grant-role-${user.id}`}
-              value={role}
-              disabled={busy !== null}
-              onChange={(event) => setRole(event.target.value as Role | '')}
+        <div className="mt-4 space-y-3 border-t border-line pt-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <Field
+              label="Grant role"
+              htmlFor={`grant-role-${user.id}`}
+              hint={role === '' ? 'Choose a role to enable Approve.' : ROLE_MEANING[role]}
             >
-              <option value="">Choose a role…</option>
-              {ROLES.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </Select>
-          </Field>
+              <Select
+                id={`grant-role-${user.id}`}
+                value={role}
+                disabled={busy !== null}
+                onChange={(event) => setRole(event.target.value as Role | '')}
+              >
+                <option value="">Choose a role…</option>
+                {ROLES.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </Select>
+            </Field>
 
-          <Button
-            disabled={busy !== null || role === ''}
-            onClick={() => {
-              void approve();
-            }}
-          >
-            {busy === 'approve' ? 'Approving…' : 'Approve'}
-          </Button>
-          <Button
-            variant="danger"
-            disabled={busy !== null}
-            onClick={() => {
-              void reject();
-            }}
-          >
-            {busy === 'reject' ? 'Rejecting…' : 'Reject'}
-          </Button>
+            <Button
+              disabled={busy !== null || role === ''}
+              onClick={() => {
+                void approve();
+              }}
+            >
+              {busy === 'approve' ? 'Approving…' : 'Approve'}
+            </Button>
+            <Button
+              variant="danger"
+              disabled={busy !== null}
+              onClick={() => {
+                void reject();
+              }}
+            >
+              {busy === 'reject' ? 'Rejecting…' : 'Reject'}
+            </Button>
+          </div>
+
+          {role === 'OVERSIGHT' && (
+            <OversightFlagsFields
+              canViewMeetings={canViewMeetings}
+              canViewAuditTrail={canViewAuditTrail}
+              disabled={busy !== null}
+              onChangeMeetings={setCanViewMeetings}
+              onChangeAuditTrail={setCanViewAuditTrail}
+            />
+          )}
         </div>
       </Card>
     </li>
@@ -321,53 +397,83 @@ function UserRow({
           </div>
         )}
 
-        <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-line pt-4">
+        <div className="mt-4 space-y-3 border-t border-line pt-4">
           {/*
             Both controls are disabled for your own account, and the server refuses
             them independently. Changing your own role or deactivating yourself is
             how a system ends up with no administrator — a mistake, not a decision.
           */}
-          <Field label="Change role" htmlFor={`role-${user.id}`}>
-            <Select
-              id={`role-${user.id}`}
-              value={role}
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="Change role" htmlFor={`role-${user.id}`}>
+              <Select
+                id={`role-${user.id}`}
+                value={role}
+                disabled={busy || isSelf}
+                onChange={(event) => {
+                  const next = event.target.value as Role;
+                  void run(
+                    () => api.setUserRole(user.id, next),
+                    `${user.displayName} is now ${next}.`,
+                  );
+                }}
+              >
+                {ROLES.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            <Button
+              variant={active ? 'danger' : 'secondary'}
               disabled={busy || isSelf}
-              onChange={(event) => {
-                const next = event.target.value as Role;
+              onClick={() => {
                 void run(
-                  () => api.setUserRole(user.id, next),
-                  `${user.displayName} is now ${next}.`,
+                  () => api.setUserActive(user.id, !active),
+                  active
+                    ? `${user.displayName} can no longer sign in.`
+                    : `${user.displayName} can sign in again.`,
                 );
               }}
             >
-              {ROLES.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </Select>
-          </Field>
+              {busy ? 'Saving…' : active ? 'Deactivate' : 'Reactivate'}
+            </Button>
 
-          <Button
-            variant={active ? 'danger' : 'secondary'}
-            disabled={busy || isSelf}
-            onClick={() => {
-              void run(
-                () => api.setUserActive(user.id, !active),
-                active
-                  ? `${user.displayName} can no longer sign in.`
-                  : `${user.displayName} can sign in again.`,
-              );
-            }}
-          >
-            {busy ? 'Saving…' : active ? 'Deactivate' : 'Reactivate'}
-          </Button>
+            {isSelf && (
+              <p className="w-full text-caption text-faint">
+                You cannot change your own role or deactivate yourself. Ask another
+                administrator.
+              </p>
+            )}
+          </div>
 
-          {isSelf && (
-            <p className="w-full text-caption text-faint">
-              You cannot change your own role or deactivate yourself. Ask another
-              administrator.
-            </p>
+          {role === 'OVERSIGHT' && (
+            <OversightFlagsFields
+              canViewMeetings={user.canViewMeetings}
+              canViewAuditTrail={user.canViewAuditTrail}
+              disabled={busy || isSelf}
+              onChangeMeetings={(value) => {
+                void run(
+                  () =>
+                    api.setUserRole(user.id, 'OVERSIGHT', {
+                      canViewMeetings: value,
+                      canViewAuditTrail: user.canViewAuditTrail,
+                    }),
+                  `${user.displayName}'s meeting visibility is now ${value ? 'on' : 'off'}.`,
+                );
+              }}
+              onChangeAuditTrail={(value) => {
+                void run(
+                  () =>
+                    api.setUserRole(user.id, 'OVERSIGHT', {
+                      canViewMeetings: user.canViewMeetings,
+                      canViewAuditTrail: value,
+                    }),
+                  `${user.displayName}'s audit trail visibility is now ${value ? 'on' : 'off'}.`,
+                );
+              }}
+            />
           )}
         </div>
 

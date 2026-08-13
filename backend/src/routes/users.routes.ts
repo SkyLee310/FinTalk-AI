@@ -28,19 +28,47 @@ import { sendProblem } from '../http/problem.js';
  * as configuration mistakes rather than decisions.
  */
 
-const ROLES = ['VIEWER', 'MAKER', 'CHECKER', 'SHARIAH', 'SUPERVISOR', 'ADMIN'] as const;
+// Assignable roles. VIEWER and SUPERVISOR are superseded by OVERSIGHT (see
+// auth/rbac.ts): create, role-change and approve all validate against this
+// list, so the API refuses to assign either directly. The Role enum still
+// defines all seven for audit history — this is only the write-side subset.
+const ROLES = ['MAKER', 'CHECKER', 'SHARIAH', 'ADMIN', 'OVERSIGHT'] as const;
 
-const CreateBody = z.object({
-  email: z.string().email().max(200),
-  displayName: z.string().min(1).max(120),
-  role: z.enum(ROLES),
+// Meaningful only when role is OVERSIGHT (capabilitiesOf in auth/rbac.ts is
+// the only reader). Optional with a false default so a request for any other
+// role need not mention them; normalizeOversightFlags below zeroes them out
+// defensively regardless of what a caller sends for a non-OVERSIGHT role.
+const OversightFlags = z.object({
+  canViewMeetings: z.boolean().optional().default(false),
+  canViewAuditTrail: z.boolean().optional().default(false),
 });
 
-const RoleBody = z.object({ role: z.enum(ROLES) });
+const CreateBody = z
+  .object({
+    email: z.string().email().max(200),
+    displayName: z.string().min(1).max(120),
+    role: z.enum(ROLES),
+  })
+  .merge(OversightFlags);
+
+const RoleBody = z.object({ role: z.enum(ROLES) }).merge(OversightFlags);
 
 const ActiveBody = z.object({ active: z.boolean() });
 
-const ApproveBody = z.object({ role: z.enum(ROLES) });
+const ApproveBody = z.object({ role: z.enum(ROLES) }).merge(OversightFlags);
+
+/**
+ * Zeroes both flags for every role but OVERSIGHT, so a client cannot leave
+ * inert-but-misleading `true` values sitting on a MAKER or ADMIN row. The two
+ * columns exist only for capabilitiesOf to read when role is OVERSIGHT.
+ */
+function normalizeOversightFlags(
+  role: (typeof ROLES)[number],
+  flags: { canViewMeetings: boolean; canViewAuditTrail: boolean },
+): { canViewMeetings: boolean; canViewAuditTrail: boolean } {
+  if (role !== 'OVERSIGHT') return { canViewMeetings: false, canViewAuditTrail: false };
+  return flags;
+}
 
 export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): void {
   const gate = { preHandler: [requireAuth, requireCapability('user:manage')] };
@@ -58,6 +86,8 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
         staffId: true,
         createdAt: true,
         deactivatedAt: true,
+        canViewMeetings: true,
+        canViewAuditTrail: true,
       },
     });
 
@@ -72,10 +102,19 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
         staffId: user.staffId,
         createdAt: user.createdAt.toISOString(),
         deactivatedAt: user.deactivatedAt?.toISOString() ?? null,
+        canViewMeetings: user.canViewMeetings,
+        canViewAuditTrail: user.canViewAuditTrail,
         // Sent so the UI can show what a role actually permits, rather than
         // asking an administrator to remember the matrix. A PENDING row has
         // no role yet, so it gets no capabilities rather than a crash.
-        capabilities: user.role === null ? [] : capabilitiesOf(user.role),
+        capabilities:
+          user.role === null
+            ? []
+            : capabilitiesOf({
+                role: user.role,
+                canViewMeetings: user.canViewMeetings,
+                canViewAuditTrail: user.canViewAuditTrail,
+              }),
       })),
     });
   });
@@ -121,6 +160,8 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
     const unusable = randomBytes(32).toString('base64');
     const passwordHash = await hashPassword(unusable);
 
+    const oversight = normalizeOversightFlags(body.data.role, body.data);
+
     const created = await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
@@ -128,6 +169,8 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
           displayName: body.data.displayName,
           role: body.data.role,
           passwordHash,
+          canViewMeetings: oversight.canViewMeetings,
+          canViewAuditTrail: oversight.canViewAuditTrail,
         },
       });
 
@@ -144,6 +187,8 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
           // in — Meeting.title is kept out of payloads for the same reason.
           email: user.email,
           role: user.role,
+          canViewMeetings: oversight.canViewMeetings,
+          canViewAuditTrail: oversight.canViewAuditTrail,
         },
       });
 
@@ -157,11 +202,13 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
       role: created.role,
       createdAt: created.createdAt.toISOString(),
       deactivatedAt: null,
+      canViewMeetings: oversight.canViewMeetings,
+      canViewAuditTrail: oversight.canViewAuditTrail,
       // body.data.role, not created.role: same reasoning as PATCH
       // /users/:id/role below — equal at runtime (we just created the row
       // with it), non-null at the type level because zod already validated
       // it, whereas created.role stays Role | null per the schema.
-      capabilities: capabilitiesOf(body.data.role),
+      capabilities: capabilitiesOf({ role: body.data.role, ...oversight }),
     });
   });
 
@@ -206,7 +253,17 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
       );
     }
 
-    if (user.role === body.data.role) {
+    const oversight = normalizeOversightFlags(body.data.role, body.data);
+
+    // "No change" covers role AND, for OVERSIGHT, the two flags — this route
+    // doubles as how an administrator adjusts an existing OVERSIGHT account's
+    // grants without changing its role, and a role-only comparison would
+    // reject that as a false no-op.
+    const roleUnchanged = user.role === body.data.role;
+    const flagsUnchanged =
+      user.canViewMeetings === oversight.canViewMeetings
+      && user.canViewAuditTrail === oversight.canViewAuditTrail;
+    if (roleUnchanged && (user.role !== 'OVERSIGHT' || flagsUnchanged)) {
       return sendProblem(
         reply,
         409,
@@ -218,7 +275,11 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
     const updated = await prisma.$transaction(async (tx) => {
       const next = await tx.user.update({
         where: { id: user.id },
-        data: { role: body.data.role },
+        data: {
+          role: body.data.role,
+          canViewMeetings: oversight.canViewMeetings,
+          canViewAuditTrail: oversight.canViewAuditTrail,
+        },
       });
 
       await appendAuditWithin(tx, {
@@ -228,7 +289,13 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
         action: 'user.role.changed',
         entityType: 'User',
         entityId: user.id,
-        payload: { email: user.email, from: user.role, to: body.data.role },
+        payload: {
+          email: user.email,
+          from: user.role,
+          to: body.data.role,
+          canViewMeetings: oversight.canViewMeetings,
+          canViewAuditTrail: oversight.canViewAuditTrail,
+        },
       });
 
       return next;
@@ -241,11 +308,13 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
       role: updated.role,
       createdAt: updated.createdAt.toISOString(),
       deactivatedAt: updated.deactivatedAt?.toISOString() ?? null,
+      canViewMeetings: updated.canViewMeetings,
+      canViewAuditTrail: updated.canViewAuditTrail,
       // body.data.role, not updated.role: they're equal at runtime (we just
       // set it), but body.data.role is the non-null value zod already
       // validated, and the PENDING guard above is what makes that equality
       // hold — updated.role stays typed Role | null at the schema level.
-      capabilities: capabilitiesOf(body.data.role),
+      capabilities: capabilitiesOf({ role: body.data.role, ...oversight }),
     });
   });
 
@@ -324,11 +393,20 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
       role: updated.role,
       createdAt: updated.createdAt.toISOString(),
       deactivatedAt: updated.deactivatedAt?.toISOString() ?? null,
+      canViewMeetings: updated.canViewMeetings,
+      canViewAuditTrail: updated.canViewAuditTrail,
       // Role is untouched by this route, so a still-PENDING row (role null)
       // is possible here in principle — same null-tolerant treatment as
       // GET /users, rather than assuming this route only ever sees active
       // accounts.
-      capabilities: updated.role === null ? [] : capabilitiesOf(updated.role),
+      capabilities:
+        updated.role === null
+          ? []
+          : capabilitiesOf({
+              role: updated.role,
+              canViewMeetings: updated.canViewMeetings,
+              canViewAuditTrail: updated.canViewAuditTrail,
+            }),
     });
   });
 
@@ -362,10 +440,17 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
       );
     }
 
+    const oversight = normalizeOversightFlags(body.data.role, body.data);
+
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: target.id },
-        data: { role: body.data.role, accountStatus: 'ACTIVE' },
+        data: {
+          role: body.data.role,
+          accountStatus: 'ACTIVE',
+          canViewMeetings: oversight.canViewMeetings,
+          canViewAuditTrail: oversight.canViewAuditTrail,
+        },
       });
 
       await appendAuditWithin(tx, {
@@ -375,7 +460,11 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
         action: 'user.approved',
         entityType: 'User',
         entityId: target.id,
-        payload: { role: body.data.role },
+        payload: {
+          role: body.data.role,
+          canViewMeetings: oversight.canViewMeetings,
+          canViewAuditTrail: oversight.canViewAuditTrail,
+        },
       });
     });
 

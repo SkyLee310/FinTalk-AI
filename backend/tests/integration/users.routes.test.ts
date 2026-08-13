@@ -30,7 +30,11 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-async function sessionFor(role: Role, suffix = ''): Promise<{ id: string; cookie: string }> {
+async function sessionFor(
+  role: Role,
+  suffix = '',
+  oversight?: { canViewMeetings?: boolean; canViewAuditTrail?: boolean },
+): Promise<{ id: string; cookie: string }> {
   const email = `${role.toLowerCase()}${suffix}@fintalk.test`;
   const user = await prisma.user.create({
     data: {
@@ -38,6 +42,8 @@ async function sessionFor(role: Role, suffix = ''): Promise<{ id: string; cookie
       passwordHash: await hashPassword(PASSWORD),
       displayName: `Demo ${role}${suffix}`,
       role,
+      canViewMeetings: oversight?.canViewMeetings ?? false,
+      canViewAuditTrail: oversight?.canViewAuditTrail ?? false,
     },
   });
 
@@ -93,7 +99,7 @@ describe('GET /users', () => {
   });
 
   it('refuses every role but ADMIN', async () => {
-    for (const role of ['MAKER', 'CHECKER', 'SHARIAH', 'SUPERVISOR', 'VIEWER'] as const) {
+    for (const role of ['MAKER', 'CHECKER', 'SHARIAH', 'SUPERVISOR', 'VIEWER', 'OVERSIGHT'] as const) {
       const actor = await sessionFor(role);
       const response = await app.inject({
         method: 'GET',
@@ -148,7 +154,7 @@ describe('POST /users', () => {
       method: 'POST',
       url: '/users',
       headers: { cookie: admin.cookie },
-      payload: { email: 'Person@bank.example', displayName: 'Person', role: 'VIEWER' },
+      payload: { email: 'Person@bank.example', displayName: 'Person', role: 'MAKER' },
     });
     expect(first.statusCode).toBe(201);
     expect(first.json<{ email: string }>().email).toBe('person@bank.example');
@@ -157,7 +163,7 @@ describe('POST /users', () => {
       method: 'POST',
       url: '/users',
       headers: { cookie: admin.cookie },
-      payload: { email: 'PERSON@bank.example', displayName: 'Person', role: 'VIEWER' },
+      payload: { email: 'PERSON@bank.example', displayName: 'Person', role: 'MAKER' },
     });
     expect(second.statusCode).toBe(409);
   });
@@ -184,7 +190,7 @@ describe('POST /users', () => {
 describe('PATCH /users/:id/role', () => {
   it('changes a role and audits both sides of the change', async () => {
     const admin = await sessionFor('ADMIN');
-    const target = await sessionFor('VIEWER');
+    const target = await sessionFor('OVERSIGHT', '', { canViewMeetings: true });
 
     const response = await app.inject({
       method: 'PATCH',
@@ -199,7 +205,7 @@ describe('PATCH /users/:id/role', () => {
     const entry = await prisma.auditEntry.findFirstOrThrow({
       where: { action: 'user.role.changed' },
     });
-    expect(entry.payload).toMatchObject({ from: 'VIEWER', to: 'CHECKER' });
+    expect(entry.payload).toMatchObject({ from: 'OVERSIGHT', to: 'CHECKER' });
   });
 
   /**
@@ -213,7 +219,7 @@ describe('PATCH /users/:id/role', () => {
       method: 'PATCH',
       url: `/users/${admin.id}/role`,
       headers: { cookie: admin.cookie },
-      payload: { role: 'VIEWER' },
+      payload: { role: 'MAKER' },
     });
 
     expect(response.statusCode).toBe(409);
@@ -223,7 +229,7 @@ describe('PATCH /users/:id/role', () => {
 
   it('rejects an unknown role', async () => {
     const admin = await sessionFor('ADMIN');
-    const target = await sessionFor('VIEWER');
+    const target = await sessionFor('OVERSIGHT');
 
     const response = await app.inject({
       method: 'PATCH',
@@ -380,7 +386,7 @@ describe('PATCH /users/:id/approve', () => {
 
   it('refuses a row that is already active', async () => {
     const admin = await sessionFor('ADMIN');
-    const other = await sessionFor('VIEWER', '-active');
+    const other = await sessionFor('OVERSIGHT', '-active');
 
     const response = await app.inject({
       method: 'PATCH',
@@ -432,7 +438,7 @@ describe('PATCH /users/:id/reject', () => {
 
   it('refuses a row that is already active', async () => {
     const admin = await sessionFor('ADMIN');
-    const other = await sessionFor('VIEWER', '-active2');
+    const other = await sessionFor('OVERSIGHT', '-active2');
 
     const response = await app.inject({
       method: 'PATCH',
@@ -459,5 +465,105 @@ describe('GET /users pending row shape', () => {
     const row = body.users.find((u) => u.email === 'pendingshape1@fintalk.test');
 
     expect(row).toMatchObject({ accountStatus: 'PENDING', role: null, capabilities: [] });
+  });
+});
+
+describe('OVERSIGHT accounts', () => {
+  it('grants exactly the ticked flags at creation', async () => {
+    const admin = await sessionFor('ADMIN');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/users',
+      headers: { cookie: admin.cookie },
+      payload: {
+        email: 'oversight-new@bank.example',
+        displayName: 'New Oversight',
+        role: 'OVERSIGHT',
+        canViewMeetings: true,
+        canViewAuditTrail: false,
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json<{
+      canViewMeetings: boolean;
+      canViewAuditTrail: boolean;
+      capabilities: string[];
+    }>();
+    expect(body.canViewMeetings).toBe(true);
+    expect(body.canViewAuditTrail).toBe(false);
+    expect(body.capabilities).toContain('meeting:read');
+    expect(body.capabilities).not.toContain('audit:read');
+  });
+
+  it('ignores the two flags for a non-OVERSIGHT role', async () => {
+    const admin = await sessionFor('ADMIN');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/users',
+      headers: { cookie: admin.cookie },
+      payload: {
+        email: 'maker-flagged@bank.example',
+        displayName: 'Flagged Maker',
+        role: 'MAKER',
+        canViewAuditTrail: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json<{ canViewMeetings: boolean; canViewAuditTrail: boolean }>();
+    expect(body.canViewMeetings).toBe(false);
+    expect(body.canViewAuditTrail).toBe(false);
+  });
+
+  it("lets an administrator edit an existing OVERSIGHT account's flags without changing its role", async () => {
+    const admin = await sessionFor('ADMIN');
+    const target = await sessionFor('OVERSIGHT', '-edit', { canViewMeetings: true });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/users/${target.id}/role`,
+      headers: { cookie: admin.cookie },
+      payload: { role: 'OVERSIGHT', canViewMeetings: true, canViewAuditTrail: true },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<{ canViewAuditTrail: boolean }>();
+    expect(body.canViewAuditTrail).toBe(true);
+
+    const entry = await prisma.auditEntry.findFirstOrThrow({
+      where: { action: 'user.role.changed', entityId: target.id },
+    });
+    expect(entry.payload).toMatchObject({ canViewMeetings: true, canViewAuditTrail: true });
+  });
+
+  it('refuses a true no-op — same role, same flags', async () => {
+    const admin = await sessionFor('ADMIN');
+    const target = await sessionFor('OVERSIGHT', '-noop', {
+      canViewMeetings: true,
+      canViewAuditTrail: true,
+    });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/users/${target.id}/role`,
+      headers: { cookie: admin.cookie },
+      payload: { role: 'OVERSIGHT', canViewMeetings: true, canViewAuditTrail: true },
+    });
+
+    expect(response.statusCode).toBe(409);
+  });
+
+  it('lets an OVERSIGHT session with canViewAuditTrail read the audit trail, and refuses one without it', async () => {
+    const withAudit = await sessionFor('OVERSIGHT', '-audit-yes', { canViewAuditTrail: true });
+    const withoutAudit = await sessionFor('OVERSIGHT', '-audit-no', { canViewMeetings: true });
+
+    const allowed = await app.inject({ method: 'GET', url: '/audit', headers: { cookie: withAudit.cookie } });
+    const denied = await app.inject({ method: 'GET', url: '/audit', headers: { cookie: withoutAudit.cookie } });
+
+    expect(allowed.statusCode).toBe(200);
+    expect(denied.statusCode).toBe(403);
   });
 });

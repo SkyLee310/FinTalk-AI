@@ -22,7 +22,10 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-async function sessionFor(role: Role): Promise<string> {
+async function sessionFor(
+  role: Role,
+  oversight?: { canViewMeetings?: boolean; canViewAuditTrail?: boolean },
+): Promise<string> {
   const email = `${role.toLowerCase()}@fintalk.test`;
   await prisma.user.create({
     data: {
@@ -30,6 +33,8 @@ async function sessionFor(role: Role): Promise<string> {
       passwordHash: await hashPassword(PASSWORD),
       displayName: `Demo ${role}`,
       role,
+      canViewMeetings: oversight?.canViewMeetings ?? false,
+      canViewAuditTrail: oversight?.canViewAuditTrail ?? false,
     },
   });
 
@@ -109,11 +114,14 @@ describe('POST /meetings/:id/whiteboards — access control', () => {
     expect(await prisma.whiteboard.count()).toBe(0);
   });
 
-  it('refuses a viewer, who cannot create', async () => {
+  it('refuses an oversight account, who cannot create even with read access', async () => {
     await sessionFor('MAKER');
     const meetingId = await meetingForMaker();
 
-    const response = await upload(await sessionFor('VIEWER'), meetingId);
+    const response = await upload(
+      await sessionFor('OVERSIGHT', { canViewMeetings: true }),
+      meetingId,
+    );
     expect(response.statusCode).toBe(403);
     expect(await prisma.whiteboard.count()).toBe(0);
   });

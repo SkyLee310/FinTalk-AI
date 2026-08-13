@@ -55,14 +55,22 @@ async function loadHomeStats(session: Session | null): Promise<HomeStatsData> {
   switch (session.role) {
     case 'MAKER':
     case 'SHARIAH':
-    case 'VIEWER':
       return { kind: 'meetings', meetings: (await api.meetings()).meetings };
     case 'CHECKER':
       return { kind: 'approvals', approvals: (await api.approvals()).approvals };
-    case 'SUPERVISOR':
-      return { kind: 'audit', entries: (await api.audit()).entries };
     case 'ADMIN':
       return { kind: 'users', users: (await api.users()).users };
+    case 'OVERSIGHT':
+      // Not a fixed capability set — see capabilitiesOf in
+      // backend/src/auth/rbac.ts. audit:read takes priority when an account
+      // holds both grants, since it is the strictly more sensitive one.
+      if (session.capabilities.includes('audit:read')) {
+        return { kind: 'audit', entries: (await api.audit()).entries };
+      }
+      if (session.capabilities.includes('meeting:read')) {
+        return { kind: 'meetings', meetings: (await api.meetings()).meetings };
+      }
+      return { kind: 'none' };
     default:
       return { kind: 'none' };
   }
@@ -76,9 +84,9 @@ interface Tile {
 
 /**
  * One role's numbers, read out of whatever loadHomeStats fetched for it.
- * MAKER, SHARIAH and VIEWER all fetch the same 'meetings' list but read
- * three different things out of it, which is why this switches on the
- * session's role rather than on data.kind.
+ * MAKER and SHARIAH both fetch the same 'meetings' list but read two
+ * different things out of it, which is why this switches on the session's
+ * role rather than on data.kind.
  */
 function statsFor(session: Session, data: HomeStatsData): Tile[] {
   switch (session.role) {
@@ -123,15 +131,6 @@ function statsFor(session: Session, data: HomeStatsData): Tile[] {
       return [{ key: 'flagged-meetings', label: 'Meetings with Shariah flags', value: flagged }];
     }
 
-    case 'SUPERVISOR': {
-      if (data.kind !== 'audit') return [];
-      const since = Date.now() - DAY_MS;
-      const recent = data.entries.filter((entry) => new Date(entry.at).getTime() >= since).length;
-      return [
-        { key: 'recent-activity', label: 'Audit entries in the last 24 hours', value: recent },
-      ];
-    }
-
     case 'ADMIN': {
       if (data.kind !== 'users') return [];
       const pending = data.users.filter((user) => user.accountStatus === 'PENDING').length;
@@ -144,15 +143,26 @@ function statsFor(session: Session, data: HomeStatsData): Tile[] {
       ];
     }
 
-    case 'VIEWER': {
-      if (data.kind !== 'meetings') return [];
-      return [
-        {
-          key: 'meetings-visible',
-          label: 'Meetings visible to you',
-          value: data.meetings.length,
-        },
-      ];
+    case 'OVERSIGHT': {
+      if (data.kind === 'audit') {
+        const since = Date.now() - DAY_MS;
+        const recent = data.entries.filter(
+          (entry) => new Date(entry.at).getTime() >= since,
+        ).length;
+        return [
+          { key: 'recent-activity', label: 'Audit entries in the last 24 hours', value: recent },
+        ];
+      }
+      if (data.kind === 'meetings') {
+        return [
+          {
+            key: 'meetings-visible',
+            label: 'Meetings visible to you',
+            value: data.meetings.length,
+          },
+        ];
+      }
+      return [];
     }
 
     default:

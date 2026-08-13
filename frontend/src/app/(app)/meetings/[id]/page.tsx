@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 import { Badge, type Tone } from '@/components/badge';
@@ -9,6 +10,7 @@ import { SegmentReview, TranscriptConfidence } from '@/components/segment-review
 import { TransferRecord } from '@/components/transfer-notice';
 import {
   Button,
+  Disclosure,
   EmptyState,
   ErrorNote,
   Field,
@@ -28,6 +30,8 @@ import {
   type ShariahStatus,
   timecode,
 } from '@/lib/api';
+import { formatDuration } from '@/lib/duration';
+import { guidanceFor } from '@/lib/shariah-guidance';
 
 const FLAG_TONE: Record<ShariahStatus, Tone> = {
   FLAGGED: 'warn',
@@ -425,6 +429,8 @@ export default function MeetingDetailPage() {
           <p className="mt-1 text-sm text-muted">
             {new Date(data.occurredAt).toLocaleString()}
             {data.transcript && ` · ${data.transcript.languages.join(', ')}`}
+            {data.transcript?.processingMs != null
+              && ` · processed in ${formatDuration(data.transcript.processingMs)}`}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -501,6 +507,113 @@ export default function MeetingDetailPage() {
               <RedactedText text={data.transcript.summaryEn} />
             </p>
           </Card>
+
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
+              Final decisions
+            </h2>
+            {data.decisions.length === 0 ? (
+              <EmptyState
+                title="No decisions recorded"
+                body="The arbiter found no debated point to resolve, or this meeting predates the feature."
+              />
+            ) : (
+              <ul className="space-y-3">
+                {data.decisions.map((decision) => (
+                  <li key={decision.id}>
+                    <Card className="px-5 py-4">
+                      <p className="text-sm font-semibold">
+                        <RedactedText text={decision.topic} />
+                      </p>
+                      <p className="mt-1 text-sm text-muted">
+                        <RedactedText text={decision.decision} />
+                      </p>
+                      <p className="mt-2 text-xs leading-relaxed text-faint">
+                        <RedactedText text={decision.rationale} />
+                      </p>
+                    </Card>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
+              Action items
+            </h2>
+            {data.actionItems.length === 0 ? (
+              <EmptyState
+                title="No action items"
+                body="Nothing was extracted as a follow-up task for this meeting."
+              />
+            ) : (
+              <Card>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[36rem] text-left text-sm">
+                    <thead className="border-b border-line text-xs uppercase tracking-wide text-faint">
+                      <tr>
+                        <th scope="col" className="px-5 py-2.5 font-medium">
+                          Owner
+                        </th>
+                        <th scope="col" className="px-5 py-2.5 font-medium">
+                          Task
+                        </th>
+                        <th scope="col" className="px-5 py-2.5 font-medium">
+                          Due
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {data.actionItems.map((item) => (
+                        <tr key={item.id}>
+                          <td className="px-5 py-2.5 text-xs font-medium text-brand">
+                            <RedactedText text={item.owner} />
+                          </td>
+                          <td className="px-5 py-2.5 text-sm">
+                            <RedactedText text={item.task} />
+                          </td>
+                          <td className="whitespace-nowrap px-5 py-2.5 text-xs text-muted">
+                            {item.dueDate === null ? '—' : <RedactedText text={item.dueDate} />}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
+              Project kickoff
+            </h2>
+            {data.transcript.projectKickoff === null && data.transcript.followUps.length === 0 ? (
+              <EmptyState
+                title="No kickoff draft"
+                body="No project draft was generated for this meeting."
+              />
+            ) : (
+              <Card className="px-5 py-4">
+                {data.transcript.projectKickoff !== null && (
+                  <p className="text-sm leading-relaxed">
+                    <RedactedText text={data.transcript.projectKickoff} />
+                  </p>
+                )}
+                {data.transcript.followUps.length > 0 && (
+                  <ul className="mt-3 space-y-1.5 border-t border-line pt-3">
+                    {data.transcript.followUps.map((line, index) => (
+                      <li key={index} className="flex gap-2 text-sm text-muted">
+                        <span className="text-faint">·</span>
+                        <RedactedText text={line} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            )}
+          </section>
 
           <div className="grid gap-5 lg:grid-cols-5">
             <Card className="lg:col-span-3">
@@ -605,14 +718,29 @@ export default function MeetingDetailPage() {
 
               <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
                 {Object.entries(board.structuredJson as Record<string, unknown>).map(
-                  ([key, value]) => (
-                    <div key={key} className="contents">
-                      <dt className="text-faint">{key}</dt>
-                      <dd className="font-medium">
-                        <RedactedText text={String(value)} />
-                      </dd>
-                    </div>
-                  ),
+                  ([key, value]) => {
+                    // A nested object or array under String() prints the
+                    // literal text "[object Object]" — pretty-print it as
+                    // JSON instead, the same <pre><code> treatment the
+                    // stored source view above already gives board.mermaid.
+                    const isNested = typeof value === 'object' && value !== null;
+                    return (
+                      <div key={key} className="contents">
+                        <dt className="text-faint">{key}</dt>
+                        <dd className="font-medium">
+                          {isNested ? (
+                            <pre className="overflow-x-auto rounded-lg border border-line bg-raised p-2 text-xs leading-relaxed">
+                              <code>
+                                <RedactedText text={JSON.stringify(value, null, 2)} />
+                              </code>
+                            </pre>
+                          ) : (
+                            <RedactedText text={String(value)} />
+                          )}
+                        </dd>
+                      </div>
+                    );
+                  },
                 )}
               </dl>
 
@@ -646,6 +774,7 @@ export default function MeetingDetailPage() {
             {data.shariahFlags.map((flag) => {
               const resolved =
                 flag.status === 'CLEARED' || flag.status === 'CONFIRMED_VIOLATION';
+              const guidance = guidanceFor(flag.issueType);
               return (
                 <li key={flag.id}>
                   <Card className="px-5 py-4">
@@ -663,6 +792,58 @@ export default function MeetingDetailPage() {
                       <Badge tone={FLAG_TONE[flag.status]} dot>
                         {flag.status}
                       </Badge>
+                    </div>
+
+                    {/*
+                      Request 3: a details view that says what was detected and
+                      why it flags — drawn from the same guidance module as the
+                      Islamic Banking page, so the two never disagree.
+                    */}
+                    <div className="mt-3">
+                      <Disclosure summary="Details — what was detected, and why it flags">
+                        <div className="space-y-3 text-sm leading-relaxed">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-faint">
+                              Detected in the transcript
+                            </p>
+                            <p className="mt-1 italic text-muted">
+                              <RedactedText text={flag.excerpt} />
+                            </p>
+                          </div>
+                          {guidance !== null && (
+                            <>
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-faint">
+                                  What {guidance.title} is
+                                </p>
+                                <p className="mt-1 text-muted">{guidance.whatItIs}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-faint">
+                                  Why it flags
+                                </p>
+                                <p className="mt-1 text-muted">{guidance.whyItViolates}</p>
+                              </div>
+                            </>
+                          )}
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-faint">
+                              Detected by · confidence · reference
+                            </p>
+                            <p className="mt-1 text-muted">
+                              <span className="font-mono text-xs">{flag.detectedBy}</span> ·{' '}
+                              {(flag.confidence * 100).toFixed(0)}% · {flag.reference}
+                            </p>
+                          </div>
+                          <p className="text-xs text-faint">
+                            A machine reading of the transcript, not a ruling.{' '}
+                            <Link href="/islamic-banking" className="underline underline-offset-2">
+                              Learn more about Shariah banking
+                            </Link>
+                            .
+                          </p>
+                        </div>
+                      </Disclosure>
                     </div>
 
                     {mayReview && !resolved && openFlag === flag.id && (

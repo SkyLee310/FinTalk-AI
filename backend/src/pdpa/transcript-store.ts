@@ -27,6 +27,11 @@ export interface StoreTranscriptInput {
   readonly languages: readonly string[];
   readonly modelId: string;
   readonly promptVersion: string;
+  /**
+   * Wall-clock milliseconds the pipeline took to reach this write. Optional — a
+   * caller that does not measure it (or the seed) stores null.
+   */
+  readonly processingMs?: number | undefined;
   readonly segments: readonly TranscriptSegmentInput[];
   readonly redactions: readonly RedactionRecord[];
   /** Attributed in the audit log as the uploader this transcript came from. */
@@ -59,6 +64,9 @@ export async function storeTranscript(
         languages: [...input.languages],
         modelId: input.modelId,
         promptVersion: input.promptVersion,
+        // null, not undefined: "not measured" is an explicit value, the same
+        // treatment segment confidence gets just below.
+        processingMs: input.processingMs ?? null,
         segments: {
           create: input.segments.map((segment) => ({
             startMs: segment.startMs,
@@ -129,5 +137,104 @@ export async function storeTranscript(
     });
 
     return transcript.id;
+  });
+}
+
+/** A decision the arbiter reached, verified — every field is RedactedText. */
+export interface DecisionInput {
+  readonly topic: RedactedText;
+  readonly decision: RedactedText;
+  readonly rationale: RedactedText;
+}
+
+/** A follow-up action, verified — every field is RedactedText. */
+export interface ActionItemInput {
+  readonly owner: RedactedText;
+  readonly task: RedactedText;
+  readonly dueDate: RedactedText | null;
+}
+
+export interface StoreIntelligenceInput {
+  readonly meetingId: string;
+  readonly transcriptId: string;
+  readonly decisions: readonly DecisionInput[];
+  readonly actionItems: readonly ActionItemInput[];
+  readonly projectKickoff: RedactedText | null;
+  readonly followUps: readonly RedactedText[];
+  /** Names of the three outputs (decisions/actionItems/project) that failed
+   *  their PII check and were left out of this call entirely. */
+  readonly skipped: readonly string[];
+  readonly actor: AuditActor;
+}
+
+/**
+ * The only write path for meeting-intelligence output: decisions, action
+ * items, and the transcript's project-kickoff draft with its follow-ups.
+ *
+ * Every text field is RedactedText, on the same reasoning as storeTranscript
+ * above. A skipped output is not an argument here at all — deriveIntelligence
+ * decides what survived redactDerived verification before calling this, so
+ * there is nothing left for this function to reject.
+ */
+export async function storeIntelligence(
+  prisma: PrismaClient,
+  input: StoreIntelligenceInput,
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    if (input.decisions.length > 0) {
+      await tx.meetingDecision.createMany({
+        data: input.decisions.map((decision, ordinal) => ({
+          meetingId: input.meetingId,
+          topic: decision.topic,
+          decision: decision.decision,
+          rationale: decision.rationale,
+          ordinal,
+        })),
+      });
+    }
+
+    if (input.actionItems.length > 0) {
+      await tx.actionItem.createMany({
+        data: input.actionItems.map((item, ordinal) => ({
+          meetingId: input.meetingId,
+          owner: item.owner,
+          task: item.task,
+          dueDate: item.dueDate,
+          ordinal,
+        })),
+      });
+    }
+
+    if (input.projectKickoff !== null || input.followUps.length > 0) {
+      await tx.transcript.update({
+        where: { id: input.transcriptId },
+        data: {
+          projectKickoffRedacted: input.projectKickoff,
+          followUpsRedacted: [...input.followUps],
+        },
+      });
+    }
+
+    /**
+     * Written whenever deriveIntelligence ran at all, even at zero counts: it
+     * records that the step executed and what it found, the same way
+     * transcript.created records a redaction sweep that found nothing to
+     * redact. `skipped` names which of the three outputs failed verification.
+     */
+    await appendAuditWithin(tx, {
+      at: new Date(),
+      actorId: input.actor.id,
+      actorRole: input.actor.role,
+      action: 'meeting.intelligence',
+      entityType: 'Meeting',
+      entityId: input.meetingId,
+      payload: {
+        decisionCount: input.decisions.length,
+        actionItemCount: input.actionItems.length,
+        hasProjectDraft: input.projectKickoff !== null,
+        followUpCount: input.followUps.length,
+        skipped: input.skipped,
+      },
+    });
   });
 }

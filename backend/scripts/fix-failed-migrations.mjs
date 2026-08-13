@@ -46,11 +46,11 @@ try {
       IF v_ids IS NOT NULL AND array_length(v_ids, 1) > 0 THEN
         IF admin_id IS NOT NULL THEN
           UPDATE "Meeting" SET "createdById" = admin_id WHERE "createdById" = ANY(v_ids);
-          UPDATE "HumanEdit" SET "userId" = admin_id WHERE "userId" = ANY(v_ids);
+          UPDATE "HumanEdit" SET "editorId" = admin_id WHERE "editorId" = ANY(v_ids);
         END IF;
         UPDATE "ShariahFlag" SET "reviewedById" = NULL WHERE "reviewedById" = ANY(v_ids);
         UPDATE "TranscriptSegment" SET "confirmedById" = NULL, "confirmedAt" = NULL WHERE "confirmedById" = ANY(v_ids);
-        UPDATE "Feedback" SET "createdById" = NULL WHERE "createdById" = ANY(v_ids);
+        DELETE FROM "Feedback" WHERE "authorId" = ANY(v_ids);
         DELETE FROM "Approval" WHERE "makerId" = ANY(v_ids) OR "checkerId" = ANY(v_ids);
         DELETE FROM "Settlement" WHERE "settledById" = ANY(v_ids);
         DELETE FROM "User" WHERE id = ANY(v_ids);

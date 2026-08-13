@@ -39,11 +39,11 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
     const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
     if (admin) {
       await prisma.meeting.updateMany({ where: { createdById: { in: ids } }, data: { createdById: admin.id } });
-      await prisma.humanEdit.updateMany({ where: { userId: { in: ids } }, data: { userId: admin.id } });
+      await prisma.humanEdit.updateMany({ where: { editorId: { in: ids } }, data: { editorId: admin.id } });
     }
     await prisma.shariahFlag.updateMany({ where: { reviewedById: { in: ids } }, data: { reviewedById: null } });
     await prisma.transcriptSegment.updateMany({ where: { confirmedById: { in: ids } }, data: { confirmedById: null, confirmedAt: null } });
-    await prisma.feedback.updateMany({ where: { createdById: { in: ids } }, data: { createdById: null } });
+    await prisma.feedback.deleteMany({ where: { authorId: { in: ids } } });
     await prisma.approval.deleteMany({ where: { OR: [{ makerId: { in: ids } }, { checkerId: { in: ids } }] } });
     await prisma.settlement.deleteMany({ where: { settledById: { in: ids } } });
     await prisma.user.deleteMany({ where: { id: { in: ids } } });

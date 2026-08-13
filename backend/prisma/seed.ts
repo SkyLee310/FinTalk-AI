@@ -29,12 +29,15 @@ const SEGMENTS = [
 export async function seedDatabase(prisma: PrismaClient): Promise<void> {
   const passwordHash = await argon2.hash(DEMO_PASSWORD);
 
-  // Clean up retired demo accounts so they no longer exist in the database
-  await prisma.user.deleteMany({
+  // Deactivate legacy demo accounts so they cannot log in, respecting FK constraints
+  await prisma.user.updateMany({
     where: {
       email: {
         in: ['viewer@fintalk.test', 'supervisor@fintalk.test'],
       },
+    },
+    data: {
+      deactivatedAt: new Date(),
     },
   });
 

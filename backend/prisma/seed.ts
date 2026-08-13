@@ -29,17 +29,25 @@ const SEGMENTS = [
 export async function seedDatabase(prisma: PrismaClient): Promise<void> {
   const passwordHash = await argon2.hash(DEMO_PASSWORD);
 
-  // Deactivate legacy demo accounts so they cannot log in, respecting FK constraints
-  await prisma.user.updateMany({
-    where: {
-      email: {
-        in: ['viewer@fintalk.test', 'supervisor@fintalk.test'],
-      },
-    },
-    data: {
-      deactivatedAt: new Date(),
-    },
+  // Clean up legacy demo accounts entirely from the database
+  const legacyUsers = await prisma.user.findMany({
+    where: { email: { in: ['viewer@fintalk.test', 'supervisor@fintalk.test'] } },
+    select: { id: true },
   });
+  if (legacyUsers.length > 0) {
+    const ids = legacyUsers.map((u) => u.id);
+    const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
+    if (admin) {
+      await prisma.meeting.updateMany({ where: { createdById: { in: ids } }, data: { createdById: admin.id } });
+      await prisma.humanEdit.updateMany({ where: { userId: { in: ids } }, data: { userId: admin.id } });
+    }
+    await prisma.shariahFlag.updateMany({ where: { reviewedById: { in: ids } }, data: { reviewedById: null } });
+    await prisma.transcriptSegment.updateMany({ where: { confirmedById: { in: ids } }, data: { confirmedById: null, confirmedAt: null } });
+    await prisma.feedback.updateMany({ where: { createdById: { in: ids } }, data: { createdById: null } });
+    await prisma.approval.deleteMany({ where: { OR: [{ makerId: { in: ids } }, { checkerId: { in: ids } }] } });
+    await prisma.settlement.deleteMany({ where: { settledById: { in: ids } } });
+    await prisma.user.deleteMany({ where: { id: { in: ids } } });
+  }
 
   const users = await Promise.all(
     ROLES.map((role) =>

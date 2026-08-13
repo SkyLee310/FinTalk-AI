@@ -405,6 +405,58 @@ export function registerMeetingRoutes(
     },
   );
 
+  /**
+   * Hard delete, unlike archive above. The row and everything Prisma
+   * cascades from it (Transcript, TranscriptSegment, MeetingTopic,
+   * ShariahFlag, TermSheet → Approval/Settlement, Whiteboard, HumanEdit) are
+   * gone — including from the knowledge graph and Ask FinTalk AI, which both
+   * query these tables live with no separate cache to invalidate. AuditEntry
+   * survives: entityId there is a plain string, not a foreign key, so the
+   * audit chain keeps a record the meeting existed and was deleted even once
+   * the row is gone.
+   *
+   * Same scope as archive: only the meeting's own creator.
+   */
+  app.delete<{ Params: { id: string } }>(
+    '/meetings/:id',
+    { preHandler: [requireAuth, requireCapability('meeting:create')] },
+    async (request, reply) => {
+      const actor = request.authUser;
+      if (actor === undefined) {
+        return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
+      }
+
+      const meeting = await prisma.meeting.findUnique({ where: { id: request.params.id } });
+      if (meeting === null) {
+        return sendProblem(reply, 404, 'Not found', 'No meeting exists with that id.');
+      }
+      if (meeting.createdById !== actor.id) {
+        return sendProblem(
+          reply,
+          403,
+          'Forbidden',
+          'Only the meeting you captured can be deleted by you.',
+        );
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await appendAuditWithin(tx, {
+          at: new Date(),
+          actorId: actor.id,
+          actorRole: actor.role,
+          action: 'meeting.deleted',
+          entityType: 'Meeting',
+          entityId: meeting.id,
+          payload: {},
+        });
+
+        await tx.meeting.delete({ where: { id: meeting.id } });
+      });
+
+      return reply.status(200).send({ ok: true });
+    },
+  );
+
   app.get<{ Params: { id: string } }>(
     '/meetings/:id',
     { preHandler: [requireAuth, requireCapability('transcript:read')] },

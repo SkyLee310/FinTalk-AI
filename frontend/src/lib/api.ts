@@ -431,6 +431,11 @@ export const api = {
     await apiFetch<{ ok: boolean }>(`/meetings/${id}/archive`, { method: 'PATCH' });
   },
 
+  /** Hard delete — the row and everything under it is gone, not archived. */
+  deleteMeeting: async (id: string): Promise<void> => {
+    await apiFetch<{ ok: boolean }>(`/meetings/${id}`, { method: 'DELETE' });
+  },
+
   /**
    * Returns as soon as the recording is accepted, not when it is processed.
    * Transcription takes minutes and the platform closes a request at 300

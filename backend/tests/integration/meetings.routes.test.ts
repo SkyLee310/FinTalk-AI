@@ -4,6 +4,7 @@ import { FakeTranscriptionProvider } from '../../src/ai/fake.provider.js';
 import type { DecisionDraft, TranscriptionProvider, TranscriptionResult } from '../../src/ai/provider.js';
 import { ACCESS_COOKIE } from '../../src/auth/middleware.js';
 import { hashPassword } from '../../src/auth/password.js';
+import { buildGraph } from '../../src/knowledge/graph.js';
 import { buildServer } from '../../src/server.js';
 import { prisma, resetDb } from '../helpers/db.js';
 
@@ -573,6 +574,74 @@ describe('PATCH /meetings/:id/archive', () => {
       method: 'PATCH',
       url: '/meetings/does-not-exist/archive',
       headers: { cookie: await sessionFor('MAKER', '-404') },
+    });
+    expect(response.statusCode).toBe(404);
+  });
+});
+
+describe('DELETE /meetings/:id', () => {
+  it('deletes a meeting for the maker who created it, cascading to its transcript', async () => {
+    const maker = await sessionFor('MAKER', '-hard');
+    const meetingId = await uploadAndWait(maker);
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/meetings/${meetingId}`,
+      headers: { cookie: maker },
+    });
+    expect(response.statusCode).toBe(200);
+
+    expect(await prisma.meeting.findUnique({ where: { id: meetingId } })).toBeNull();
+    expect(await prisma.transcript.findFirst({ where: { meetingId } })).toBeNull();
+
+    const entry = await prisma.auditEntry.findFirst({
+      where: { action: 'meeting.deleted', entityId: meetingId },
+    });
+    expect(entry).not.toBeNull();
+  });
+
+  it('removes a deleted meeting from the knowledge graph', async () => {
+    const maker = await sessionFor('MAKER', '-graph');
+    const meetingId = await uploadAndWait(maker);
+    expect((await buildGraph(prisma)).nodes.map((n) => n.meetingId)).toContain(meetingId);
+
+    await app.inject({ method: 'DELETE', url: `/meetings/${meetingId}`, headers: { cookie: maker } });
+
+    expect((await buildGraph(prisma)).nodes.map((n) => n.meetingId)).not.toContain(meetingId);
+  });
+
+  it('refuses a maker who did not create this meeting', async () => {
+    const creator = await sessionFor('MAKER', '-hard-owner');
+    const other = await sessionFor('MAKER', '-hard-other');
+    const meetingId = await uploadAndWait(creator);
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/meetings/${meetingId}`,
+      headers: { cookie: other },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(await prisma.meeting.findUnique({ where: { id: meetingId } })).not.toBeNull();
+  });
+
+  it('refuses a role without meeting:create', async () => {
+    const maker = await sessionFor('MAKER', '-hard-viewed');
+    const oversight = await sessionFor('OVERSIGHT', '-hard-x', { canViewMeetings: true });
+    const meetingId = await uploadAndWait(maker);
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/meetings/${meetingId}`,
+      headers: { cookie: oversight },
+    });
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('answers 404 for an unknown meeting', async () => {
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/meetings/does-not-exist',
+      headers: { cookie: await sessionFor('MAKER', '-hard-404') },
     });
     expect(response.statusCode).toBe(404);
   });

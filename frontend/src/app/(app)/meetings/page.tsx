@@ -17,7 +17,7 @@ const STATUS_TONE: Record<MeetingStatus, Tone> = {
 /**
  * One row. The position number is this list's own index, not a stored
  * identifier — it exists so a person can say "the third one" out loud, and
- * it reflows correctly when a row above it is archived away.
+ * it reflows correctly when a row above it is removed.
  *
  * canDelete is decided by the caller from meeting.createdById, because
  * showing this control to someone the server would 403 is worse than not
@@ -27,25 +27,27 @@ function MeetingRow({
   meeting,
   position,
   canDelete,
-  onArchived,
+  onDeleted,
 }: {
   meeting: MeetingSummary;
   position: number;
   canDelete: boolean;
-  onArchived: () => void;
+  onDeleted: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
-  async function archive(): Promise<void> {
+  async function remove(): Promise<void> {
     setBusy(true);
     setError(null);
     try {
-      await api.archiveMeeting(meeting.id);
-      onArchived();
+      await api.deleteMeeting(meeting.id);
+      onDeleted();
     } catch (cause) {
       setError(describeError(cause));
       setBusy(false);
+      setConfirming(false);
     }
   }
 
@@ -89,24 +91,36 @@ function MeetingRow({
           </div>
         )}
 
-        <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
           <Link
             href={`/meetings/${meeting.id}`}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-3.5 py-2 text-sm font-medium tracking-tight text-text transition hover:bg-raised active:scale-[0.98]"
           >
             More Details
           </Link>
-          {canDelete && (
-            <Button
-              variant="danger"
-              disabled={busy}
-              onClick={() => {
-                void archive();
-              }}
-            >
-              {busy ? 'Removing…' : 'Delete'}
+          {canDelete && (confirming ? (
+            <>
+              <span className="text-sm text-danger">
+                Delete permanently? This can&apos;t be undone.
+              </span>
+              <Button
+                variant="danger"
+                disabled={busy}
+                onClick={() => {
+                  void remove();
+                }}
+              >
+                {busy ? 'Deleting…' : 'Yes, delete'}
+              </Button>
+              <Button variant="secondary" disabled={busy} onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <Button variant="danger" onClick={() => setConfirming(true)}>
+              Delete
             </Button>
-          )}
+          ))}
         </div>
       </div>
     </li>
@@ -168,7 +182,7 @@ export default function MeetingsPage() {
               meeting={meeting}
               position={index + 1}
               canDelete={mayCreate && meeting.createdById === session.data?.id}
-              onArchived={() => meetings.reload()}
+              onDeleted={() => meetings.reload()}
             />
           ))}
         </ul>

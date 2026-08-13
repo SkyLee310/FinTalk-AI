@@ -202,7 +202,9 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
   }
 
   const transcripts = await prisma.transcript.findMany({
-    where: { meeting: { status: 'READY' } },
+    // Same archivedAt gap as buildGraph() in graph.ts: an archived meeting
+    // must stop being answerable, not just stop being listed.
+    where: { meeting: { status: 'READY', archivedAt: null } },
     select: {
       meetingId: true,
       rawRedacted: true,

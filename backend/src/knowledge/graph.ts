@@ -105,7 +105,11 @@ function describeEdge(shared: readonly string[], similarity: number): string {
  */
 export async function buildGraph(prisma: PrismaClient): Promise<Graph> {
   const meetings = await prisma.meeting.findMany({
-    where: { status: 'READY' },
+    // Archived is a second, older removal path alongside hard delete (see
+    // meetings.routes.ts's archive route) — a meeting hidden from Review that
+    // way must disappear from here too, or "removed" means something
+    // different depending which surface you're looking at.
+    where: { status: 'READY', archivedAt: null },
     orderBy: { occurredAt: 'desc' },
     select: {
       id: true,

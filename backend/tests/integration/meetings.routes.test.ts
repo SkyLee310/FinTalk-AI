@@ -530,6 +530,16 @@ describe('PATCH /meetings/:id/archive', () => {
     expect(reloaded.meetingId).toBe(meetingId);
   });
 
+  it('removes an archived meeting from the knowledge graph, same as a hard delete', async () => {
+    const maker = await sessionFor('MAKER', '-archive-graph');
+    const meetingId = await uploadAndWait(maker);
+    expect((await buildGraph(prisma)).nodes.map((n) => n.meetingId)).toContain(meetingId);
+
+    await app.inject({ method: 'PATCH', url: `/meetings/${meetingId}/archive`, headers: { cookie: maker } });
+
+    expect((await buildGraph(prisma)).nodes.map((n) => n.meetingId)).not.toContain(meetingId);
+  });
+
   it('refuses a maker who did not create this meeting', async () => {
     const creator = await sessionFor('MAKER', '-owner');
     const other = await sessionFor('MAKER', '-other');

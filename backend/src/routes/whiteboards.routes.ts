@@ -110,12 +110,31 @@ export function registerWhiteboardRoutes(
       const context = createRedactionContext();
       const mermaid = redact(extraction.mermaid, vaultKey, context);
 
-      /**
-       * Stringify the structured payload directly. Passing extraction.structured
-       * directly preserves nested objects/arrays for PII redaction and storage,
-       * preventing String(value) from turning objects into "[object Object]".
-       */
-      const structured = redact(JSON.stringify(extraction.structured), vaultKey, context);
+/**
+ * Recursively quotes primitive numbers/booleans in structured payloads before redaction.
+ *
+ * Keeps numeric identifiers (like account 1234567890) inside string literals so that
+ * redaction replaces "1234567890" with "[ACCOUNT_1]" rather than producing invalid
+ * JSON like {"account":[ACCOUNT_1]}. Preserves full nested object/array structure.
+ */
+function quotePrimitives(val: unknown): unknown {
+  if (val === null || val === undefined) return val;
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+  if (typeof val === 'string') return val;
+  if (Array.isArray(val)) return val.map(quotePrimitives);
+  if (typeof val === 'object') {
+    return Object.fromEntries(
+      Object.entries(val as Record<string, unknown>).map(([k, v]) => [k, quotePrimitives(v)]),
+    );
+  }
+  return String(val);
+}
+
+      const structured = redact(
+        JSON.stringify(quotePrimitives(extraction.structured)),
+        vaultKey,
+        context,
+      );
 
       /**
        * The JSON half's offsets are rebased onto the joined document, because

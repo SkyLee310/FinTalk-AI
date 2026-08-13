@@ -193,6 +193,15 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
       return sendProblem(reply, 401, 'Unauthenticated', UNAUTHENTICATED);
     }
 
+    if (user.role === 'VIEWER' || user.role === 'SUPERVISOR') {
+      return sendProblem(
+        reply,
+        403,
+        'Role retired',
+        'The Viewer and Supervisor roles have been retired. Contact an administrator to migrate your account to the Oversight role.',
+      );
+    }
+
     const env = getEnv();
     const subject = {
       sub: user.id,

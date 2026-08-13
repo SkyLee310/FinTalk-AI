@@ -29,11 +29,25 @@ const SEGMENTS = [
 export async function seedDatabase(prisma: PrismaClient): Promise<void> {
   const passwordHash = await argon2.hash(DEMO_PASSWORD);
 
+  // Clean up retired demo accounts so they no longer exist in the database
+  await prisma.user.deleteMany({
+    where: {
+      email: {
+        in: ['viewer@fintalk.test', 'supervisor@fintalk.test'],
+      },
+    },
+  });
+
   const users = await Promise.all(
     ROLES.map((role) =>
       prisma.user.upsert({
         where: { email: `${role.toLowerCase()}@fintalk.test` },
-        update: {},
+        update: {
+          role,
+          ...(role === 'OVERSIGHT'
+            ? { canViewMeetings: true, canViewAuditTrail: true }
+            : {}),
+        },
         create: {
           email: `${role.toLowerCase()}@fintalk.test`,
           passwordHash,

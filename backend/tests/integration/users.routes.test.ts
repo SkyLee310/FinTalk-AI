@@ -99,7 +99,7 @@ describe('GET /users', () => {
   });
 
   it('refuses every role but ADMIN', async () => {
-    for (const role of ['MAKER', 'CHECKER', 'SHARIAH', 'SUPERVISOR', 'VIEWER', 'OVERSIGHT'] as const) {
+    for (const role of ['MAKER', 'CHECKER', 'SHARIAH', 'OVERSIGHT'] as const) {
       const actor = await sessionFor(role);
       const response = await app.inject({
         method: 'GET',

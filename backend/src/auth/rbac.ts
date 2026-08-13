@@ -54,15 +54,11 @@ const CAPABILITIES: Readonly<Record<Exclude<Role, 'OVERSIGHT'>, readonly Capabil
      * append-only and hash-chained — historical rows still name them and must
      * stay valid — but nothing new is assigned either, and both grant
      * nothing here. can() denies by default, so a stale token carrying one
-     * gets no access rather than its old access. SUPERVISOR's extra
-     * audit:read became OVERSIGHT's canViewAuditTrail.
-     *
-     * VIEWER is read-only: meeting:read + transcript:read let a viewer see
-     * meetings, transcripts and corrections others have made. The segment
-     * review service rejects confirm/correct attempts from this role
-     * (see segment-review.ts), and the frontend hides the controls entirely.
+     * gets no access rather than its old access. VIEWER's bundle
+     * (meeting:read + transcript:read) became OVERSIGHT's canViewMeetings;
+     * SUPERVISOR's extra audit:read became canViewAuditTrail.
      */
-    VIEWER: Object.freeze<Capability[]>(['meeting:read', 'transcript:read']),
+    VIEWER: NONE,
 
     MAKER: Object.freeze<Capability[]>([
       'meeting:create',

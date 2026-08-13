@@ -45,7 +45,7 @@ export interface CorrectInput extends ConfirmInput {
  * this service-level check is the one that enforces "can see, cannot do".
  */
 function rejectViewer(actor: AuditActor): void {
-  if (actor.role === 'VIEWER') {
+  if (actor.role === 'VIEWER' || actor.role === 'OVERSIGHT') {
     throw new ComplianceError(
       'viewer-read-only',
       403,

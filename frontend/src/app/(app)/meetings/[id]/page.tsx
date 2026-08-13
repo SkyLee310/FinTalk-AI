@@ -414,7 +414,9 @@ export default function MeetingDetailPage() {
    * so this hides controls that would 403 rather than work.
    */
   const mayReviewTranscript =
-    can(session.data, 'transcript:read') && session.data?.role !== 'VIEWER';
+    can(session.data, 'transcript:read') &&
+    session.data?.role !== 'VIEWER' &&
+    session.data?.role !== 'OVERSIGHT';
 
   if (meeting.loading) return <Spinner label="Loading meeting" />;
   if (meeting.error !== null) return <ErrorNote>{meeting.error}</ErrorNote>;

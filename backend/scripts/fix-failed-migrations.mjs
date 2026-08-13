@@ -2,12 +2,14 @@
  * Self-healing migration script for deployment environments (Railway/Vercel).
  *
  * Runs before `prisma migrate deploy`. Ensures that any stuck or failed
- * migration entries in `_prisma_migrations` are marked completed, and directly
- * applies critical database updates (oversight defaults and legacy user deletion)
- * so that deployment never fails due to Prisma migration lock or checksum drift.
+ * migration entries in `_prisma_migrations` are marked completed, directly
+ * applies critical database updates, purges legacy accounts, and guarantees
+ * that all demo accounts (including oversight@fintalk.test with Demo!2345)
+ * exist and are fully configured with valid password hashes.
  */
 import 'dotenv/config';
 import pg from 'pg';
+import argon2 from 'argon2';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -15,6 +17,7 @@ if (!connectionString) {
   process.exit(0);
 }
 
+const DEMO_PASSWORD = 'Demo!2345';
 const client = new pg.Client({ connectionString });
 
 try {
@@ -33,7 +36,7 @@ try {
     await client.query(`ALTER TABLE "User" ALTER COLUMN "canViewMeetings" SET DEFAULT true;`);
   }
 
-  // Safely delete viewer@fintalk.test and supervisor@fintalk.test entirely from DB
+  // 2. Safely delete viewer@fintalk.test and supervisor@fintalk.test entirely from DB
   await client.query(`
     DO $$
     DECLARE
@@ -58,17 +61,34 @@ try {
     END $$;
   `);
 
-  if (foundColumns.has('canViewMeetings') && foundColumns.has('canViewAuditTrail')) {
-    await client.query(`
-      UPDATE "User"
-      SET "canViewMeetings" = true,
-          "canViewAuditTrail" = true,
-          "displayName" = CASE WHEN "email" = 'oversight@fintalk.test' THEN 'Demo Oversight' ELSE "displayName" END
-      WHERE "role"::text = 'OVERSIGHT';
-    `);
-  }
+  // 3. Upsert demo accounts so oversight@fintalk.test and all demo users ALWAYS exist with password Demo!2345
+  const passwordHash = await argon2.hash(DEMO_PASSWORD);
+  const demoUsers = [
+    { email: 'maker@fintalk.test', displayName: 'Demo Maker', role: 'MAKER', canViewMeetings: false, canViewAuditTrail: false },
+    { email: 'checker@fintalk.test', displayName: 'Demo Checker', role: 'CHECKER', canViewMeetings: false, canViewAuditTrail: false },
+    { email: 'shariah@fintalk.test', displayName: 'Demo Shariah', role: 'SHARIAH', canViewMeetings: false, canViewAuditTrail: false },
+    { email: 'oversight@fintalk.test', displayName: 'Demo Oversight', role: 'OVERSIGHT', canViewMeetings: true, canViewAuditTrail: true },
+    { email: 'admin@fintalk.test', displayName: 'Demo Admin', role: 'ADMIN', canViewMeetings: false, canViewAuditTrail: false },
+  ];
 
-  // 2. Resolve any failed migration records in _prisma_migrations
+  for (const u of demoUsers) {
+    const id = `cl_demo_${u.role.toLowerCase()}`;
+    await client.query(`
+      INSERT INTO "User" ("id", "email", "passwordHash", "displayName", "role", "canViewMeetings", "canViewAuditTrail", "accountStatus")
+      VALUES ($1, $2, $3, $4, $5::"Role", $6, $7, 'ACTIVE'::"AccountStatus")
+      ON CONFLICT ("email") DO UPDATE SET
+        "passwordHash" = $3,
+        "displayName" = $4,
+        "role" = $5::"Role",
+        "canViewMeetings" = $6,
+        "canViewAuditTrail" = $7,
+        "accountStatus" = 'ACTIVE'::"AccountStatus",
+        "deactivatedAt" = NULL;
+    `, [id, u.email, passwordHash, u.displayName, u.role, u.canViewMeetings, u.canViewAuditTrail]);
+  }
+  console.log('Successfully upserted all demo accounts with password Demo!2345.');
+
+  // 4. Resolve any failed migration records in _prisma_migrations
   const tableCheck = await client.query(`
     SELECT EXISTS (
       SELECT FROM information_schema.tables 

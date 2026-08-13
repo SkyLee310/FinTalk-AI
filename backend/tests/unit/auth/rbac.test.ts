@@ -39,16 +39,17 @@ describe('OVERSIGHT capabilities', () => {
     expect(caps).not.toContain('audit:read');
   });
 
-  it('grants only audit:read when canViewAuditTrail is set alone', () => {
+  it('grants only audit:read and user:read when canViewAuditTrail is set alone', () => {
     const caps = capabilitiesOf({ role: 'OVERSIGHT', canViewMeetings: false, canViewAuditTrail: true });
-    expect(caps).toEqual(['audit:read']);
+    expect(caps).toEqual(['audit:read', 'user:read']);
   });
 
-  it('grants all three when both flags are set', () => {
+  it('grants all four when both flags are set', () => {
     const caps = capabilitiesOf({ role: 'OVERSIGHT', canViewMeetings: true, canViewAuditTrail: true });
     expect(caps).toContain('meeting:read');
     expect(caps).toContain('transcript:read');
     expect(caps).toContain('audit:read');
+    expect(caps).toContain('user:read');
   });
 
   it('never grants user:manage, under any flag combination', () => {

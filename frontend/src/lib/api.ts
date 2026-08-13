@@ -39,6 +39,7 @@ export type Capability =
   | 'termsheet:approve'
   | 'payment:settle'
   | 'audit:read'
+  | 'user:read'
   | 'user:manage';
 
 export interface Session {

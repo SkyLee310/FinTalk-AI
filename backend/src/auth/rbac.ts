@@ -30,6 +30,7 @@ export type Capability =
   | 'termsheet:approve'
   | 'payment:settle'
   | 'audit:read'
+  | 'user:read'
   | 'user:manage';
 
 /**
@@ -98,14 +99,17 @@ const CAPABILITIES: Readonly<Record<Exclude<Role, 'OVERSIGHT'>, readonly Capabil
      * account audit visibility, but cannot read the audit trail itself, and
      * cannot read a transcript either.
      */
-    ADMIN: Object.freeze<Capability[]>(['meeting:read', 'user:manage']),
+    ADMIN: Object.freeze<Capability[]>(['meeting:read', 'user:manage', 'user:read']),
   });
 
 const OVERSIGHT_MEETINGS: readonly Capability[] = Object.freeze<Capability[]>([
   'meeting:read',
   'transcript:read',
 ]);
-const OVERSIGHT_AUDIT: readonly Capability[] = Object.freeze<Capability[]>(['audit:read']);
+const OVERSIGHT_AUDIT: readonly Capability[] = Object.freeze<Capability[]>([
+  'audit:read',
+  'user:read',
+]);
 
 /** Frozen, so a caller cannot widen its own permissions by mutating the list. */
 export function capabilitiesOf(context: CapabilityContext): readonly Capability[] {

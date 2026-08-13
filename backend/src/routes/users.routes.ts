@@ -71,9 +71,10 @@ function normalizeOversightFlags(
 }
 
 export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): void {
-  const gate = { preHandler: [requireAuth, requireCapability('user:manage')] };
+  const readGate = { preHandler: [requireAuth, requireCapability('user:read')] };
+  const writeGate = { preHandler: [requireAuth, requireCapability('user:manage')] };
 
-  app.get('/users', gate, async (_request, reply) => {
+  app.get('/users', readGate, async (_request, reply) => {
     const users = await prisma.user.findMany({
       orderBy: [{ deactivatedAt: 'asc' }, { createdAt: 'asc' }],
       select: {
@@ -119,7 +120,7 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
     });
   });
 
-  app.post('/users', gate, async (request, reply) => {
+  app.post('/users', writeGate, async (request, reply) => {
     const actor = request.authUser;
     if (actor === undefined) {
       return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
@@ -212,7 +213,7 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
     });
   });
 
-  app.patch<{ Params: { id: string } }>('/users/:id/role', gate, async (request, reply) => {
+  app.patch<{ Params: { id: string } }>('/users/:id/role', writeGate, async (request, reply) => {
     const actor = request.authUser;
     if (actor === undefined) {
       return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
@@ -325,7 +326,7 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
    * Shariah rulings, their audit entries. Deletion would orphan all of it, and an
    * audit trail that cannot say who did something is not an audit trail.
    */
-  app.patch<{ Params: { id: string } }>('/users/:id/active', gate, async (request, reply) => {
+  app.patch<{ Params: { id: string } }>('/users/:id/active', writeGate, async (request, reply) => {
     const actor = request.authUser;
     if (actor === undefined) {
       return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
@@ -416,7 +417,7 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
    * by anything else in the system — this is the only route that turns one
    * into a normal, sign-in-able User.
    */
-  app.patch<{ Params: { id: string } }>('/users/:id/approve', gate, async (request, reply) => {
+  app.patch<{ Params: { id: string } }>('/users/:id/approve', writeGate, async (request, reply) => {
     const actor = request.authUser;
     if (actor === undefined) {
       return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
@@ -478,7 +479,7 @@ export function registerUserRoutes(app: FastifyInstance, prisma: PrismaClient): 
    * every submitted field first, since after the delete it is the only
    * surviving record of the submission.
    */
-  app.patch<{ Params: { id: string } }>('/users/:id/reject', gate, async (request, reply) => {
+  app.patch<{ Params: { id: string } }>('/users/:id/reject', writeGate, async (request, reply) => {
     const actor = request.authUser;
     if (actor === undefined) {
       return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');

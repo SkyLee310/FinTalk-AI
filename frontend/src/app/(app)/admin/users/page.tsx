@@ -218,9 +218,11 @@ function InviteForm({ onDone }: { onDone: (user: ManagedUser) => void }) {
  */
 function PendingUserRow({
   user,
+  readOnly,
   onChanged,
 }: {
   user: ManagedUser;
+  readOnly: boolean;
   onChanged: (message: string) => void;
 }) {
   const [role, setRole] = useState<Role | ''>('');
@@ -279,57 +281,59 @@ function PendingUserRow({
           </div>
         )}
 
-        <div className="mt-4 space-y-3 border-t border-line pt-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <Field
-              label="Grant role"
-              htmlFor={`grant-role-${user.id}`}
-              hint={role === '' ? 'Choose a role to enable Approve.' : ROLE_MEANING[role]}
-            >
-              <Select
-                id={`grant-role-${user.id}`}
-                value={role}
-                disabled={busy !== null}
-                onChange={(event) => setRole(event.target.value as Role | '')}
+        {!readOnly && (
+          <div className="mt-4 space-y-3 border-t border-line pt-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <Field
+                label="Grant role"
+                htmlFor={`grant-role-${user.id}`}
+                hint={role === '' ? 'Choose a role to enable Approve.' : ROLE_MEANING[role]}
               >
-                <option value="">Choose a role…</option>
-                {ROLES.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+                <Select
+                  id={`grant-role-${user.id}`}
+                  value={role}
+                  disabled={busy !== null}
+                  onChange={(event) => setRole(event.target.value as Role | '')}
+                >
+                  <option value="">Choose a role…</option>
+                  {ROLES.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
 
-            <Button
-              disabled={busy !== null || role === ''}
-              onClick={() => {
-                void approve();
-              }}
-            >
-              {busy === 'approve' ? 'Approving…' : 'Approve'}
-            </Button>
-            <Button
-              variant="danger"
-              disabled={busy !== null}
-              onClick={() => {
-                void reject();
-              }}
-            >
-              {busy === 'reject' ? 'Rejecting…' : 'Reject'}
-            </Button>
+              <Button
+                disabled={busy !== null || role === ''}
+                onClick={() => {
+                  void approve();
+                }}
+              >
+                {busy === 'approve' ? 'Approving…' : 'Approve'}
+              </Button>
+              <Button
+                variant="danger"
+                disabled={busy !== null}
+                onClick={() => {
+                  void reject();
+                }}
+              >
+                {busy === 'reject' ? 'Rejecting…' : 'Reject'}
+              </Button>
+            </div>
+
+            {role === 'OVERSIGHT' && (
+              <OversightFlagsFields
+                canViewMeetings={canViewMeetings}
+                canViewAuditTrail={canViewAuditTrail}
+                disabled={busy !== null}
+                onChangeMeetings={setCanViewMeetings}
+                onChangeAuditTrail={setCanViewAuditTrail}
+              />
+            )}
           </div>
-
-          {role === 'OVERSIGHT' && (
-            <OversightFlagsFields
-              canViewMeetings={canViewMeetings}
-              canViewAuditTrail={canViewAuditTrail}
-              disabled={busy !== null}
-              onChangeMeetings={setCanViewMeetings}
-              onChangeAuditTrail={setCanViewAuditTrail}
-            />
-          )}
-        </div>
+        )}
       </Card>
     </li>
   );
@@ -338,10 +342,12 @@ function PendingUserRow({
 function UserRow({
   user,
   isSelf,
+  readOnly,
   onChanged,
 }: {
   user: ManagedUser;
   isSelf: boolean;
+  readOnly: boolean;
   onChanged: (message: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -397,95 +403,108 @@ function UserRow({
           </div>
         )}
 
-        <div className="mt-4 space-y-3 border-t border-line pt-4">
-          {/*
-            Both controls are disabled for your own account, and the server refuses
-            them independently. Changing your own role or deactivating yourself is
-            how a system ends up with no administrator — a mistake, not a decision.
-          */}
-          <div className="flex flex-wrap items-end gap-3">
-            <Field label="Change role" htmlFor={`role-${user.id}`}>
-              <Select
-                id={`role-${user.id}`}
-                value={role}
-                disabled={busy || isSelf}
-                onChange={(event) => {
-                  const next = event.target.value as Role;
-                  void run(
-                    () =>
-                      api.setUserRole(
-                        user.id,
-                        next,
-                        // When keeping or moving to OVERSIGHT, preserve the
-                        // existing flags rather than zeroing them out.
-                        next === 'OVERSIGHT'
-                          ? {
-                              canViewMeetings: user.canViewMeetings,
-                              canViewAuditTrail: user.canViewAuditTrail,
-                            }
-                          : undefined,
-                      ),
-                    `${user.displayName} is now ${next}.`,
-                  );
-                }}
-              >
-                {ROLES.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+        <div className="mt-4 border-t border-line pt-4">
+          {readOnly ? (
+            role === 'OVERSIGHT' && (
+              <div className="space-y-1 text-caption text-muted bg-raised px-4 py-3 rounded-lg border border-line">
+                <p className="font-medium text-text">Assigned permissions:</p>
+                <p className="flex items-center gap-2">
+                  <span className={`inline-block size-2 rounded-full ${user.canViewMeetings ? 'bg-brand' : 'bg-line'}`} />
+                  Meetings and transcripts: {user.canViewMeetings ? 'Enabled' : 'Disabled'}
+                </p>
+                <p className="flex items-center gap-2">
+                  <span className={`inline-block size-2 rounded-full ${user.canViewAuditTrail ? 'bg-brand' : 'bg-line'}`} />
+                  Audit trail: {user.canViewAuditTrail ? 'Enabled' : 'Disabled'}
+                </p>
+              </div>
+            )
+          ) : (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-end gap-3">
+                <Field label="Change role" htmlFor={`role-${user.id}`}>
+                  <Select
+                    id={`role-${user.id}`}
+                    value={role}
+                    disabled={busy || isSelf}
+                    onChange={(event) => {
+                      const next = event.target.value as Role;
+                      void run(
+                        () =>
+                          api.setUserRole(
+                            user.id,
+                            next,
+                            // When keeping or moving to OVERSIGHT, preserve the
+                            // existing flags rather than zeroing them out.
+                            next === 'OVERSIGHT'
+                              ? {
+                                  canViewMeetings: user.canViewMeetings,
+                                  canViewAuditTrail: user.canViewAuditTrail,
+                                }
+                              : undefined,
+                          ),
+                        `${user.displayName} is now ${next}.`,
+                      );
+                    }}
+                  >
+                    {ROLES.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
 
-            <Button
-              variant={active ? 'danger' : 'secondary'}
-              disabled={busy || isSelf}
-              onClick={() => {
-                void run(
-                  () => api.setUserActive(user.id, !active),
-                  active
-                    ? `${user.displayName} can no longer sign in.`
-                    : `${user.displayName} can sign in again.`,
-                );
-              }}
-            >
-              {busy ? 'Saving…' : active ? 'Deactivate' : 'Reactivate'}
-            </Button>
+                <Button
+                  variant={active ? 'danger' : 'secondary'}
+                  disabled={busy || isSelf}
+                  onClick={() => {
+                    void run(
+                      () => api.setUserActive(user.id, !active),
+                      active
+                        ? `${user.displayName} can no longer sign in.`
+                        : `${user.displayName} can sign in again.`,
+                    );
+                  }}
+                >
+                  {busy ? 'Saving…' : active ? 'Deactivate' : 'Reactivate'}
+                </Button>
 
-            {isSelf && (
-              <p className="w-full text-caption text-faint">
-                You cannot change your own role or deactivate yourself. Ask another
-                administrator.
-              </p>
-            )}
-          </div>
+                {isSelf && (
+                  <p className="w-full text-caption text-faint">
+                    You cannot change your own role or deactivate yourself. Ask another
+                    administrator.
+                  </p>
+                )}
+              </div>
 
-          {role === 'OVERSIGHT' && (
-            <OversightFlagsFields
-              canViewMeetings={user.canViewMeetings}
-              canViewAuditTrail={user.canViewAuditTrail}
-              disabled={busy || isSelf}
-              onChangeMeetings={(value) => {
-                void run(
-                  () =>
-                    api.setUserRole(user.id, 'OVERSIGHT', {
-                      canViewMeetings: value,
-                      canViewAuditTrail: user.canViewAuditTrail,
-                    }),
-                  `${user.displayName}'s meeting visibility is now ${value ? 'on' : 'off'}.`,
-                );
-              }}
-              onChangeAuditTrail={(value) => {
-                void run(
-                  () =>
-                    api.setUserRole(user.id, 'OVERSIGHT', {
-                      canViewMeetings: user.canViewMeetings,
-                      canViewAuditTrail: value,
-                    }),
-                  `${user.displayName}'s audit trail visibility is now ${value ? 'on' : 'off'}.`,
-                );
-              }}
-            />
+              {role === 'OVERSIGHT' && (
+                <OversightFlagsFields
+                  canViewMeetings={user.canViewMeetings}
+                  canViewAuditTrail={user.canViewAuditTrail}
+                  disabled={busy || isSelf}
+                  onChangeMeetings={(value) => {
+                    void run(
+                      () =>
+                        api.setUserRole(user.id, 'OVERSIGHT', {
+                          canViewMeetings: value,
+                          canViewAuditTrail: user.canViewAuditTrail,
+                        }),
+                      `${user.displayName}'s meeting visibility is now ${value ? 'on' : 'off'}.`,
+                    );
+                  }}
+                  onChangeAuditTrail={(value) => {
+                    void run(
+                      () =>
+                        api.setUserRole(user.id, 'OVERSIGHT', {
+                          canViewMeetings: user.canViewMeetings,
+                          canViewAuditTrail: value,
+                        }),
+                      `${user.displayName}'s audit trail visibility is now ${value ? 'on' : 'off'}.`,
+                    );
+                  }}
+                />
+              )}
+            </div>
           )}
         </div>
 
@@ -512,11 +531,11 @@ export default function AdminUsersPage() {
 
   if (session.loading) return <Spinner label="Checking your session" />;
 
-  if (!can(session.data, 'user:manage')) {
+  if (!can(session.data, 'user:read')) {
     return (
       <ErrorNote>
-        Only an administrator can manage users. Your role does not include
-        user:manage.
+        Only an administrator or oversight account can view users. Your role does not include
+        user:read.
       </ErrorNote>
     );
   }
@@ -540,12 +559,14 @@ export default function AdminUsersPage() {
       {users.loading && <Spinner label="Loading users" />}
       {users.error !== null && <ErrorNote>{users.error}</ErrorNote>}
 
-      <InviteForm
-        onDone={(user) => {
-          setDone(`${user.displayName} was created as ${user.role}.`);
-          users.reload();
-        }}
-      />
+      {can(session.data, 'user:manage') && (
+        <InviteForm
+          onDone={(user) => {
+            setDone(`${user.displayName} was created as ${user.role}.`);
+            users.reload();
+          }}
+        />
+      )}
 
       <Section
         title="Pending approval"
@@ -564,6 +585,7 @@ export default function AdminUsersPage() {
               <PendingUserRow
                 key={user.id}
                 user={user}
+                readOnly={!can(session.data, 'user:manage')}
                 onChanged={(message) => {
                   setDone(message);
                   users.reload();
@@ -584,6 +606,7 @@ export default function AdminUsersPage() {
               key={user.id}
               user={user}
               isSelf={user.id === session.data?.id}
+              readOnly={!can(session.data, 'user:manage')}
               onChanged={(message) => {
                 setDone(message);
                 users.reload();

@@ -28,10 +28,9 @@ const AREAS: readonly {
     href: '/admin/users',
     title: 'Users and roles',
     body:
-      'Invite people, change what a role permits them to do, and revoke access. '
-      + 'Accounts are deactivated rather than deleted, because approvals and audit '
-      + 'entries name them.',
-    needs: 'user:manage',
+      'View users, roles, and capabilities. Administrators can also invite '
+      + 'people, change roles, and deactivate/reactivate accounts.',
+    needs: 'user:read',
   },
   {
     href: '/audit',

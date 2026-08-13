@@ -412,7 +412,19 @@ function UserRow({
                 onChange={(event) => {
                   const next = event.target.value as Role;
                   void run(
-                    () => api.setUserRole(user.id, next),
+                    () =>
+                      api.setUserRole(
+                        user.id,
+                        next,
+                        // When keeping or moving to OVERSIGHT, preserve the
+                        // existing flags rather than zeroing them out.
+                        next === 'OVERSIGHT'
+                          ? {
+                              canViewMeetings: user.canViewMeetings,
+                              canViewAuditTrail: user.canViewAuditTrail,
+                            }
+                          : undefined,
+                      ),
                     `${user.displayName} is now ${next}.`,
                   );
                 }}

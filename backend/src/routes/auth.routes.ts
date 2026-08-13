@@ -193,6 +193,26 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
       return sendProblem(reply, 401, 'Unauthenticated', UNAUTHENTICATED);
     }
 
+    // An OVERSIGHT account with both flags false has no capabilities and
+    // would land on /home with no nav items and no page it can open.
+    // Blocking login here surfaces the misconfiguration as a clear message
+    // rather than a silent dead end. An admin must grant at least one flag
+    // (canViewMeetings or canViewAuditTrail) before the account is usable.
+    if (
+      user.role === 'OVERSIGHT'
+      && !user.canViewMeetings
+      && !user.canViewAuditTrail
+    ) {
+      return sendProblem(
+        reply,
+        403,
+        'No access configured',
+        'Your Oversight account has no access grants yet. An administrator '
+        + 'must enable at least one option (meetings or audit trail) before '
+        + 'you can sign in.',
+      );
+    }
+
     const env = getEnv();
     const subject = {
       sub: user.id,

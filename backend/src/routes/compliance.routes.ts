@@ -429,7 +429,7 @@ export function registerComplianceRoutes(
    */
   app.get<{ Params: { id: string }; Querystring: { format?: string } }>(
     '/term-sheets/:id/payment-payload',
-    { preHandler: [requireAuth, requireCapability('termsheet:submit')] },
+    { preHandler: [requireAuth, requireCapability('payment:settle')] },
     async (request, reply) => {
       const actor = request.authUser;
       if (actor === undefined) {

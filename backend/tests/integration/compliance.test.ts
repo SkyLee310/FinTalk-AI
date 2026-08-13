@@ -428,9 +428,19 @@ describe('payment payload', () => {
     const response = await app.inject({
       method: 'GET',
       url: `/term-sheets/${sheet.json<{ id: string }>().id}/payment-payload`,
-      headers: { cookie: as('MAKER') },
+      headers: { cookie: as('CHECKER') },
     });
     expect(response.statusCode).toBe(409);
+  });
+
+  it('refuses the maker who drafted it — the payload belongs to the checker who approves and settles', async () => {
+    const termSheetId = await approve();
+    const response = await app.inject({
+      method: 'GET',
+      url: `/term-sheets/${termSheetId}/payment-payload`,
+      headers: { cookie: as('MAKER') },
+    });
+    expect(response.statusCode).toBe(403);
   });
 
   it('produces a CSV handoff for an approved facility', async () => {
@@ -438,7 +448,7 @@ describe('payment payload', () => {
     const response = await app.inject({
       method: 'GET',
       url: `/term-sheets/${termSheetId}/payment-payload`,
-      headers: { cookie: as('MAKER') },
+      headers: { cookie: as('CHECKER') },
     });
 
     expect(response.statusCode).toBe(200);
@@ -460,7 +470,7 @@ describe('payment payload', () => {
     const response = await app.inject({
       method: 'GET',
       url: `/term-sheets/${termSheetId}/payment-payload?format=xml`,
-      headers: { cookie: as('MAKER') },
+      headers: { cookie: as('CHECKER') },
     });
 
     expect(response.statusCode).toBe(200);
@@ -474,7 +484,7 @@ describe('payment payload', () => {
     const response = await app.inject({
       method: 'GET',
       url: `/term-sheets/${termSheetId}/payment-payload`,
-      headers: { cookie: as('MAKER') },
+      headers: { cookie: as('CHECKER') },
     });
 
     expect(response.body).toContain(TO_BE_COMPLETED);
@@ -486,14 +496,14 @@ describe('payment payload', () => {
     await app.inject({
       method: 'GET',
       url: `/term-sheets/${termSheetId}/payment-payload`,
-      headers: { cookie: as('MAKER') },
+      headers: { cookie: as('CHECKER') },
     });
 
     const entry = await prisma.auditEntry.findFirst({
       where: { action: 'termsheet.payload.downloaded' },
     });
     expect(entry).not.toBeNull();
-    expect(entry?.actorId).toBe(userIds.get('MAKER'));
+    expect(entry?.actorId).toBe(userIds.get('CHECKER'));
   });
 });
 

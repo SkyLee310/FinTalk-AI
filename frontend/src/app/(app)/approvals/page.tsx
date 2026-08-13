@@ -311,7 +311,7 @@ export default function ApprovalsPage() {
   const [done, setDone] = useState<string | null>(null);
 
   const mayDecide = can(session.data, 'termsheet:approve');
-  const mayDownload = can(session.data, 'termsheet:submit');
+  const mayDownload = can(session.data, 'payment:settle');
   /**
    * CHECKER only, and the server narrows it further to the checker who actually
    * approved that facility — so this button appearing is not the same as the

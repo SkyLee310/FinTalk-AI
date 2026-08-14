@@ -222,7 +222,7 @@ export interface TermSheetRow {
   status: ApprovalStatus;
 }
 
-export type SettlementRail = 'DUITNOW' | 'FPX';
+export type SettlementRail = 'DUITNOW' | 'RENTAS';
 
 /**
  * A simulated settlement. No money moved and no bank was contacted.

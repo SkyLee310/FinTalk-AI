@@ -55,13 +55,14 @@ describe('mock settlement makes no network call', () => {
    * The import list is pinned whole, so a new dependency has to be justified here
    * rather than slipping in beside the existing ones.
    */
-  it('imports only crypto, Prisma types, the audit chain and the error type', () => {
+  it('imports only crypto, Prisma types, the audit chain, the error type and the money formatter', () => {
     const imports = [...code.matchAll(/from\s+['"]([^'"]+)['"]/g)]
       .map((match) => match[1])
       .sort();
     expect(imports).toEqual([
       '../audit/chain.js',
       '../compliance/errors.js',
+      '../export/pain001.js',
       '@prisma/client',
       'node:crypto',
     ]);
@@ -71,7 +72,7 @@ describe('mock settlement makes no network call', () => {
 describe('mockReference', () => {
   it('announces itself as a mock', () => {
     for (const rail of SETTLEMENT_RAILS) {
-      expect(mockReference(rail)).toMatch(/^MOCK-(DUITNOW|FPX)-[0-9A-Z]+$/);
+      expect(mockReference(rail)).toMatch(/^MOCK-(DUITNOW|RENTAS)-[0-9A-Z]+$/);
     }
   });
 
@@ -88,12 +89,12 @@ describe('mockReference', () => {
   });
 
   it('does not repeat itself', () => {
-    const seen = new Set(Array.from({ length: 200 }, () => mockReference('FPX')));
+    const seen = new Set(Array.from({ length: 200 }, () => mockReference('RENTAS')));
     expect(seen.size).toBe(200);
   });
 
   it('names the rail it simulates', () => {
     expect(mockReference('DUITNOW')).toContain('DUITNOW');
-    expect(mockReference('FPX')).toContain('FPX');
+    expect(mockReference('RENTAS')).toContain('RENTAS');
   });
 });

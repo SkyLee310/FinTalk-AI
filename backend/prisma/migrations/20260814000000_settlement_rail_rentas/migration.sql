@@ -1,0 +1,17 @@
+-- Malaysian banks disburse a loan over DuitNow Business or RENTAS, not FPX.
+-- See src/payments/mock-settlement.ts for the per-transaction limits each
+-- rail actually enforces (RM10,000,000 ceiling on DuitNow Business, RM10,000
+-- floor on RENTAS, both MYR-only).
+--
+-- FPX is not removed: Postgres has no DROP VALUE for an enum type, and this
+-- app's Role enum already carries the same precedent (VIEWER/SUPERVISOR stay
+-- valid forever once assigned — see the oversight_role migration). FPX
+-- becomes unassignable going forward purely because SETTLEMENT_RAILS, the
+-- Zod validator, and the frontend dropdown stop offering it — not because
+-- the database forbids it.
+--
+-- ADD VALUE cannot run in the same transaction that later reads it, so the
+-- two CHECK constraints enforcing the new rail's limits are a separate
+-- migration (20260814000001_settlement_rail_limits) that runs after this
+-- one commits.
+ALTER TYPE "SettlementRail" ADD VALUE 'RENTAS';

@@ -77,11 +77,20 @@ enum ApprovalStatus {
   WITHDRAWN
 }
 
-/// Malaysian retail payment rails. Named for realism in a simulation — no
-/// integration with either exists, and none is planned in this codebase.
+/// Malaysian payment rails used to disburse a loan. Named for realism in a
+/// simulation — no integration with any of them exists, and none is planned
+/// in this codebase.
+///
+/// FPX is retired (banks don't use it for loan disbursement) but stays a
+/// valid value: Postgres has no DROP VALUE for an enum, and the same
+/// precedent already exists on Role (VIEWER/SUPERVISOR — see the
+/// oversight_role migration). src/payments/mock-settlement.ts's
+/// SETTLEMENT_RAILS is what actually stops FPX from being offered or
+/// accepted going forward.
 enum SettlementRail {
   DUITNOW
   FPX
+  RENTAS
 }
 
 /// PENDING is reachable only through POST /auth/register and never receives a

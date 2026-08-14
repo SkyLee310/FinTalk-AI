@@ -102,6 +102,20 @@ ALTER TABLE "Settlement" ADD CONSTRAINT settlement_amount_positive CHECK (
   "amountMinor" > 0
 );
 
+-- DuitNow Business and RENTAS are the two rails Malaysian banks actually use
+-- to disburse a loan, each with its own real per-transaction limit rather
+-- than a shared size cutoff — see the settlement_rail_limits migration.
+-- MYR-scoped: a non-MYR row is not subject to either.
+ALTER TABLE "Settlement" DROP CONSTRAINT IF EXISTS settlement_duitnow_business_ceiling;
+ALTER TABLE "Settlement" ADD CONSTRAINT settlement_duitnow_business_ceiling CHECK (
+  rail != 'DUITNOW' OR currency != 'MYR' OR "amountMinor" <= 1000000000
+);
+
+ALTER TABLE "Settlement" DROP CONSTRAINT IF EXISTS settlement_rentas_floor;
+ALTER TABLE "Settlement" ADD CONSTRAINT settlement_rentas_floor CHECK (
+  rail != 'RENTAS' OR currency != 'MYR' OR "amountMinor" >= 1000000
+);
+
 -- A topic weight is a proportion, and its label is normalised.
 --
 -- The label check is not cosmetic: "Murabahah" and "murabahah" would become two

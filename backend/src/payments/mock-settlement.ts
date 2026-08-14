@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { PrismaClient, Settlement, SettlementRail } from '@prisma/client';
 import { appendAuditWithin, type AuditActor } from '../audit/chain.js';
 import { ComplianceError } from '../compliance/errors.js';
+import { minorToDecimal } from '../export/pain001.js';
 
 /**
  * A simulated DuitNow / FPX settlement.
@@ -28,8 +29,26 @@ import { ComplianceError } from '../compliance/errors.js';
  * decision.
  */
 
-/** Documented beside its use, rather than only in the Prisma enum. */
-export const SETTLEMENT_RAILS: readonly SettlementRail[] = ['DUITNOW', 'FPX'];
+/**
+ * Documented beside its use, rather than only in the Prisma enum.
+ *
+ * FPX is deliberately absent: it stays a valid SettlementRail value (Postgres
+ * has no DROP VALUE for an enum), but Malaysian banks don't use it to
+ * disburse a loan, so this app never offers or accepts it going forward.
+ */
+export const SETTLEMENT_RAILS: readonly SettlementRail[] = ['DUITNOW', 'RENTAS'];
+
+/**
+ * Real per-transaction limits, MYR minor units (sen).
+ *
+ * DuitNow Business covers everything from a small SME transfer up to
+ * RM10,000,000. RENTAS is interbank/institutional settlement with a
+ * RM10,000 floor and no comparable ceiling. The two ranges overlap — a
+ * facility between RM10,000 and RM10,000,000 is valid on either rail — so
+ * these are two independent limits, not one shared size cutoff.
+ */
+const DUITNOW_BUSINESS_CEILING_MINOR = 1_000_000_000n; // RM10,000,000
+const RENTAS_FLOOR_MINOR = 1_000_000n; // RM10,000
 
 export interface SettleInput {
   readonly termSheetId: string;
@@ -110,6 +129,32 @@ export async function settleMock(
         `This facility was already settled as ${existing.mockReference}. `
         + 'A second settlement is not recorded.',
       );
+    }
+
+    /**
+     * DuitNow Business and RENTAS each have a real limit (see the constants
+     * above), not a shared size cutoff. Restated as a CHECK constraint on
+     * Settlement (settlement_duitnow_business_ceiling / _rentas_floor) so the
+     * rule survives even a caller that bypasses this function — this is the
+     * friendly, specific error a normal request hits first.
+     */
+    if (sheet.currency === 'MYR') {
+      if (input.rail === 'DUITNOW' && sheet.principalMinor > DUITNOW_BUSINESS_CEILING_MINOR) {
+        throw new ComplianceError(
+          'rail-limit-exceeded',
+          400,
+          `DuitNow Business settles up to RM10,000,000 per transaction. This facility is `
+          + `RM${minorToDecimal(sheet.principalMinor)} — use RENTAS.`,
+        );
+      }
+      if (input.rail === 'RENTAS' && sheet.principalMinor < RENTAS_FLOOR_MINOR) {
+        throw new ComplianceError(
+          'rail-limit-exceeded',
+          400,
+          `RENTAS requires a minimum of RM10,000 per transaction. This facility is `
+          + `RM${minorToDecimal(sheet.principalMinor)} — use DuitNow Business.`,
+        );
+      }
     }
 
     const at = new Date();

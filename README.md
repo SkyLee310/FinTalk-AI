@@ -15,7 +15,7 @@ A credit committee meets, argues in three languages at once, and reaches a decis
 | **Screen** | Six Shariah rules run over the redacted transcript and raise findings — riba, gharar, maysir, prohibited sector, contract mismatch, late-payment penalty. |
 | **Decide** | A maker drafts a term sheet; a different person approves it. Every step is written to a hash-chained audit log. |
 | **Connect** | Meetings discussing the same things are linked automatically, and you can ask a question across the whole corpus. Answers cite the meetings they came from, or say nothing was found. |
-| **Settle** | The approving checker records a **simulated** DuitNow/FPX transfer. No money moves, no bank is contacted, and a database constraint makes a row claiming otherwise unstorable. |
+| **Settle** | The approving checker records a **simulated** DuitNow Business/RENTAS transfer. No money moves, no bank is contacted, and a database constraint makes a row claiming otherwise unstorable. |
 | **Export** | An approved facility produces a CSV handoff of the approved figures, for a human to complete in their own banking channel. Never a payment instruction. |
 
 ### Four guarantees, and how each is enforced
@@ -232,7 +232,7 @@ Root directory `frontend`. Set `NEXT_PUBLIC_API_BASE_URL` to the Railway backend
 
 ## Project status
 
-Built and tested: in-browser recording and file upload, whiteboard capture with the diagram drawn, per-segment transcription confidence with human confirmation, PDPA redaction, Shariah screening resolved by an explicit human yes/no, maker–checker approval, simulated DuitNow/FPX settlement, a cross-meeting knowledge graph, an assistant that answers only from the corpus and cites it, user administration, hash-chained audit, CSV handoff, and the screens for all of it.
+Built and tested: in-browser recording and file upload, whiteboard capture with the diagram drawn, per-segment transcription confidence with human confirmation, PDPA redaction, Shariah screening resolved by an explicit human yes/no, maker–checker approval, simulated DuitNow Business/RENTAS settlement, a cross-meeting knowledge graph, an assistant that answers only from the corpus and cites it, user administration, hash-chained audit, CSV handoff, and the screens for all of it.
 
 Not built: name and address detection in free-flowing speech (declared fields such as a participant's name *are* masked), self-service password reset, and the full BNM rule library — this ships a starter set of six rules.
 

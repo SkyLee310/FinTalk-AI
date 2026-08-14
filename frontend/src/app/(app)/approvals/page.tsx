@@ -108,6 +108,31 @@ function DecideForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
   );
 }
 
+const RAIL_LABEL: Record<SettlementRail, string> = {
+  DUITNOW: 'DuitNow Business',
+  RENTAS: 'RENTAS',
+};
+
+/**
+ * Mirrors the backend's settlement_duitnow_business_ceiling /
+ * settlement_rentas_floor CHECK constraints (see mock-settlement.ts), so the
+ * checker is never offered a rail the server is going to reject. DuitNow
+ * Business and RENTAS each have their own real limit, not a shared size
+ * cutoff — a facility between RM10,000 and RM10,000,000 is valid on either.
+ * MYR only: any other currency leaves both rails open.
+ */
+const DUITNOW_BUSINESS_CEILING_MINOR = 1_000_000_000n; // RM10,000,000
+const RENTAS_FLOOR_MINOR = 1_000_000n; // RM10,000
+
+function validRails(currency: string, principalMinor: string): SettlementRail[] {
+  if (currency !== 'MYR') return ['DUITNOW', 'RENTAS'];
+  const principal = BigInt(principalMinor);
+  const rails: SettlementRail[] = [];
+  if (principal <= DUITNOW_BUSINESS_CEILING_MINOR) rails.push('DUITNOW');
+  if (principal >= RENTAS_FLOOR_MINOR) rails.push('RENTAS');
+  return rails;
+}
+
 /**
  * Simulated settlement.
  *
@@ -118,7 +143,8 @@ function DecideForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
  * real payment confirmation.
  */
 function SettleForm({ approval, onDone }: { approval: ApprovalRow; onDone: () => void }) {
-  const [rail, setRail] = useState<SettlementRail>('DUITNOW');
+  const options = validRails(approval.termSheet.currency, approval.termSheet.principalMinor);
+  const [rail, setRail] = useState<SettlementRail>(options[0] ?? 'DUITNOW');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -132,7 +158,7 @@ function SettleForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
             Settled
           </Badge>
           <Badge tone="warn">{settlement.simulated ? 'Simulated' : 'NOT SIMULATED'}</Badge>
-          <Badge tone="neutral">{settlement.rail}</Badge>
+          <Badge tone="neutral">{RAIL_LABEL[settlement.rail]}</Badge>
         </div>
         <dl className="divide-y divide-line">
           <DataRow label="Reference">
@@ -149,7 +175,7 @@ function SettleForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
         </dl>
         <p className="text-xs text-faint">
           No funds moved and no bank was contacted. This is a simulated record for
-          demonstration, and the reference is not a real DuitNow or FPX reference.
+          demonstration, and the reference is not a real DuitNow Business or RENTAS reference.
         </p>
       </div>
     );
@@ -162,15 +188,24 @@ function SettleForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
       <Field
         label="Record a simulated transfer"
         htmlFor={`rail-${approval.id}`}
-        hint="Nothing is sent to any bank. The amount is taken from the approved figures, not from this form."
+        hint={
+          options.length === 1
+            ? `Only ${RAIL_LABEL[options[0] ?? rail]} applies at this facility's size. Nothing `
+              + 'is sent to any bank.'
+            : 'Nothing is sent to any bank. The amount is taken from the approved figures, not '
+              + 'from this form.'
+        }
       >
         <Select
           id={`rail-${approval.id}`}
           value={rail}
           onChange={(event) => setRail(event.target.value as SettlementRail)}
         >
-          <option value="DUITNOW">DuitNow</option>
-          <option value="FPX">FPX</option>
+          {options.map((value) => (
+            <option key={value} value={value}>
+              {RAIL_LABEL[value]}
+            </option>
+          ))}
         </Select>
       </Field>
 

@@ -61,7 +61,7 @@ const CorrectBody = z.object({
  * approved, and this is precisely the seam where that must be impossible.
  */
 const SettleBody = z.object({
-  rail: z.enum(['DUITNOW', 'FPX']),
+  rail: z.enum(['DUITNOW', 'RENTAS']),
 });
 
 function handleComplianceError(reply: FastifyReply, error: unknown): FastifyReply {
@@ -205,7 +205,7 @@ export function registerComplianceRoutes(
           reply,
           400,
           'Invalid request',
-          'A rail of DUITNOW or FPX is required.',
+          'A rail of DUITNOW or RENTAS is required.',
         );
       }
 

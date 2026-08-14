@@ -25,6 +25,7 @@ export type ComplianceErrorCode =
   | 'viewer-read-only'
   // Mock settlement (Phase 3).
   | 'already-settled'
+  | 'rail-limit-exceeded'
   // Knowledge assistant (Phase 5).
   | 'question-too-short'
   | 'question-contains-personal-data'

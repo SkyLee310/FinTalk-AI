@@ -69,7 +69,10 @@ async function userWithSession(
  * gates, and transcribing for each case would make it slow and couple it to
  * whatever the Shariah engine happens to find.
  */
-async function facility(status: 'DRAFT' | 'APPROVED' | 'REJECTED'): Promise<{
+async function facility(
+  status: 'DRAFT' | 'APPROVED' | 'REJECTED',
+  principalMinor = 50_000_00n,
+): Promise<{
   termSheetId: string;
   checkerId: string;
   checkerCookie: string;
@@ -92,7 +95,7 @@ async function facility(status: 'DRAFT' | 'APPROVED' | 'REJECTED'): Promise<{
       meetingId: meeting.id,
       applicantName: 'Demo Sdn Bhd',
       currency: 'MYR',
-      principalMinor: 50_000_00n,
+      principalMinor,
       tenureMonths: 60,
       facilityKind: 'ISLAMIC',
       profitRateBps: 800,
@@ -194,10 +197,39 @@ describe('POST /term-sheets/:id/settle', () => {
     const { termSheetId, checkerCookie } = await facility('APPROVED');
 
     expect((await settle(checkerCookie, termSheetId)).statusCode).toBe(201);
-    const second = await settle(checkerCookie, termSheetId, 'FPX');
+    const second = await settle(checkerCookie, termSheetId, 'RENTAS');
 
     expect(second.statusCode).toBe(409);
     expect(await prisma.settlement.count()).toBe(1);
+  });
+
+  /**
+   * DuitNow Business and RENTAS each have a real per-transaction limit, not a
+   * shared size cutoff — see mock-settlement.ts. RM50,000 (the default
+   * facility) satisfies both, so these cases deliberately push outside one
+   * rail's range to prove the other is required.
+   */
+  it('refuses DuitNow Business above its RM10,000,000 ceiling', async () => {
+    const { termSheetId, checkerCookie } = await facility('APPROVED', 15_000_000_00n);
+
+    const response = await settle(checkerCookie, termSheetId, 'DUITNOW');
+    expect(response.statusCode).toBe(400);
+    expect(await prisma.settlement.count()).toBe(0);
+  });
+
+  it('refuses RENTAS below its RM10,000 floor', async () => {
+    const { termSheetId, checkerCookie } = await facility('APPROVED', 5_000_00n);
+
+    const response = await settle(checkerCookie, termSheetId, 'RENTAS');
+    expect(response.statusCode).toBe(400);
+    expect(await prisma.settlement.count()).toBe(0);
+  });
+
+  it('accepts RENTAS for a facility above the DuitNow Business ceiling', async () => {
+    const { termSheetId, checkerCookie } = await facility('APPROVED', 15_000_000_00n);
+
+    const response = await settle(checkerCookie, termSheetId, 'RENTAS');
+    expect(response.statusCode).toBe(201);
   });
 
   /**
@@ -297,5 +329,39 @@ describe('Settlement constraints', () => {
         },
       }),
     ).rejects.toThrow(/settlement_amount_positive/);
+  });
+
+  it('refuses a DuitNow Business row above its ceiling at the database', async () => {
+    const { termSheetId, checkerId } = await facility('APPROVED', 15_000_000_00n);
+
+    await expect(
+      prisma.settlement.create({
+        data: {
+          termSheetId,
+          rail: 'DUITNOW',
+          mockReference: 'MOCK-DUITNOW-OVERCEIL1',
+          amountMinor: 15_000_000_00n,
+          currency: 'MYR',
+          settledById: checkerId,
+        },
+      }),
+    ).rejects.toThrow(/settlement_duitnow_business_ceiling/);
+  });
+
+  it('refuses a RENTAS row below its floor at the database', async () => {
+    const { termSheetId, checkerId } = await facility('APPROVED', 5_000_00n);
+
+    await expect(
+      prisma.settlement.create({
+        data: {
+          termSheetId,
+          rail: 'RENTAS',
+          mockReference: 'MOCK-RENTAS-UNDERFLOOR1',
+          amountMinor: 5_000_00n,
+          currency: 'MYR',
+          settledById: checkerId,
+        },
+      }),
+    ).rejects.toThrow(/settlement_rentas_floor/);
   });
 });

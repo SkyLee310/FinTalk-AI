@@ -344,8 +344,8 @@ async function seedProjectKickoffMeeting(prisma: PrismaClient, makerId: string):
     + '  A[Zenith Heights Industries] --> B{Facility structure};\n'
     + '  B -->|Rejected: 6.5% interest p.a.| C[Conventional];\n'
     + '  B -->|Approved in principle| D[Murabahah profit-rate];\n'
-    + '  D --> E[Applicant IC [NRIC_1]];\n'
-    + '  D --> F[Settlement acct [BANK_ACCOUNT_1]];\n'
+    + '  D --> E["Applicant IC [NRIC_1]"];\n'
+    + '  D --> F["Settlement acct [BANK_ACCOUNT_1]"];\n'
     + '  D --> G[Pending: Shariah screening of tenant mix];\n'
     + '  D --> H[Pending: legal review of penalty clause];';
 

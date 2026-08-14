@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { ApiError, GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import {
   type ActionItemDraft,
@@ -217,6 +217,21 @@ function parseJsonLoosely(raw: string): unknown {
 }
 
 /**
+ * Every catch block below keeps only `cause.name` — never the message — for
+ * the reason at the top of this file: a failed request can quote the payload
+ * it was sent. An HTTP status code carries no such risk (it's a number, not
+ * text echoed from the request), so it's logged here before that message is
+ * discarded, giving the server log a way to tell a rate limit (429) from an
+ * outage (5xx) from anything else, without ever writing transcript or image
+ * content to a log.
+ */
+function logApiErrorStatus(stage: string, cause: unknown): void {
+  if (cause instanceof ApiError) {
+    console.error(`[gemini:${stage}] ApiError status=${cause.status}`);
+  }
+}
+
+/**
  * Every node label must be double-quoted, and that requirement is not
  * cosmetic. Redaction runs after extraction and rewrites identifiers into
  * bracketed placeholders — `[NRIC_1]`, `[PHONE_1]` — and Mermaid delimits
@@ -281,6 +296,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       });
       raw = response.text ?? '';
     } catch (cause) {
+      logApiErrorStatus('transcribe', cause);
       throw new TranscriptionError(
         'gemini',
         cause instanceof Error ? `request failed (${cause.name})` : 'request failed',
@@ -358,6 +374,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
        * here that payload is a photograph of a whiteboard. The transcribe path
        * always got this right; this branch did not.
        */
+      logApiErrorStatus('extractWhiteboard', cause);
       throw new TranscriptionError(
         'gemini',
         cause instanceof Error
@@ -412,6 +429,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       });
       raw = response.text ?? '';
     } catch (cause) {
+      logApiErrorStatus('extractTopics', cause);
       throw new TranscriptionError(
         'gemini',
         cause instanceof Error
@@ -471,6 +489,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       return values;
     } catch (cause) {
       if (cause instanceof TranscriptionError) throw cause;
+      logApiErrorStatus('embed', cause);
       throw new TranscriptionError(
         'gemini',
         cause instanceof Error ? `embedding failed (${cause.name})` : 'embedding failed',
@@ -494,6 +513,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       });
       raw = response.text ?? '';
     } catch (cause) {
+      logApiErrorStatus('arbitrateDecisions', cause);
       throw new TranscriptionError(
         'gemini',
         cause instanceof Error
@@ -529,6 +549,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       });
       raw = response.text ?? '';
     } catch (cause) {
+      logApiErrorStatus('extractActionItems', cause);
       throw new TranscriptionError(
         'gemini',
         cause instanceof Error
@@ -559,6 +580,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       });
       raw = response.text ?? '';
     } catch (cause) {
+      logApiErrorStatus('draftProject', cause);
       throw new TranscriptionError(
         'gemini',
         cause instanceof Error ? `project draft failed (${cause.name})` : 'project draft failed',
@@ -607,6 +629,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       });
       raw = response.text ?? '';
     } catch (cause) {
+      logApiErrorStatus('answerFromContext', cause);
       throw new TranscriptionError(
         'gemini',
         cause instanceof Error ? `answer failed (${cause.name})` : 'answer failed',
@@ -644,6 +667,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       return summary;
     } catch (cause) {
       if (cause instanceof TranscriptionError) throw cause;
+      logApiErrorStatus('summarize', cause);
       throw new TranscriptionError(
         'gemini',
         cause instanceof Error ? `summary failed (${cause.name})` : 'summary failed',

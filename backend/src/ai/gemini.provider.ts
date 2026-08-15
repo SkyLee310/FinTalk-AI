@@ -1,4 +1,5 @@
 import { ApiError, GoogleGenAI } from '@google/genai';
+import type { JWTInput } from 'google-auth-library';
 import {
   type ActionItemDraft,
   type AudioInput,
@@ -53,8 +54,24 @@ const PROMPT_VERSION = 'gemini-transcribe-v2';
 const SUMMARY_PROMPT_VERSION = 'gemini-summary-v1';
 const ANSWER_PROMPT_VERSION = 'gemini-answer-v1';
 
+/**
+ * Two ways to authenticate against the same model family. `api-key` is the
+ * Gemini Developer API (a bearer token from AI Studio); `vertex` is the same
+ * models reached through a GCP service account's IAM identity. Nothing past
+ * the constructor cares which one is active — every method below calls
+ * `this.client` the same way regardless.
+ */
+export type GeminiAuth =
+  | { readonly mode: 'api-key'; readonly apiKey: string }
+  | {
+    readonly mode: 'vertex';
+    readonly project: string;
+    readonly location: string;
+    readonly credentials: JWTInput;
+  };
+
 export interface GeminiConfig {
-  readonly apiKey: string;
+  readonly auth: GeminiAuth;
   readonly transcribeModel: string;
   readonly textModel: string;
   readonly visionModel: string;
@@ -91,7 +108,14 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
 
   constructor(config: GeminiConfig) {
     this.config = config;
-    this.client = new GoogleGenAI({ apiKey: config.apiKey });
+    this.client = config.auth.mode === 'vertex'
+      ? new GoogleGenAI({
+        vertexai: true,
+        project: config.auth.project,
+        location: config.auth.location,
+        googleAuthOptions: { credentials: config.auth.credentials },
+      })
+      : new GoogleGenAI({ apiKey: config.auth.apiKey });
   }
 
   async transcribe(audio: AudioInput): Promise<TranscriptionResult> {

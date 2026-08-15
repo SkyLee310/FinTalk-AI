@@ -60,8 +60,8 @@ describe('parseEnv', () => {
       .toThrow(/TRANSCRIPTION_PROVIDER/);
   });
 
-  it('accepts only gemini and fake as providers', () => {
-    for (const provider of ['gemini', 'fake']) {
+  it('accepts gemini, vertex and fake as providers', () => {
+    for (const provider of ['gemini', 'vertex', 'fake']) {
       const raw = {
         ...valid,
         TRANSCRIPTION_PROVIDER: provider,
@@ -69,6 +69,12 @@ describe('parseEnv', () => {
         GEMINI_MODEL_TRANSCRIBE: 'model-id',
         GEMINI_MODEL_VISION: 'model-id',
         GEMINI_MODEL_TEXT: 'model-id',
+        VERTEX_PROJECT_ID: 'project',
+        VERTEX_LOCATION: 'us-central1',
+        GCP_SERVICE_ACCOUNT_KEY: '{"project_id":"project"}',
+        VERTEX_MODEL_TRANSCRIBE: 'model-id',
+        VERTEX_MODEL_VISION: 'model-id',
+        VERTEX_MODEL_TEXT: 'model-id',
       };
       expect(parseEnv(raw).TRANSCRIPTION_PROVIDER).toBe(provider);
     }
@@ -80,6 +86,39 @@ describe('parseEnv', () => {
       TRANSCRIPTION_PROVIDER: 'gemini',
       GEMINI_API_KEY: 'key',
     })).toThrow(/GEMINI_MODEL_TRANSCRIBE/);
+  });
+
+  it('requires the Vertex fields when the provider is vertex', () => {
+    expect(() => parseEnv({ ...valid, TRANSCRIPTION_PROVIDER: 'vertex' }))
+      .toThrow(/VERTEX_PROJECT_ID/);
+  });
+
+  it('does NOT require Vertex fields when the provider is gemini', () => {
+    expect(() => parseEnv({
+      ...valid,
+      TRANSCRIPTION_PROVIDER: 'gemini',
+      GEMINI_API_KEY: 'key',
+      GEMINI_MODEL_TRANSCRIBE: 'model-id',
+      GEMINI_MODEL_VISION: 'model-id',
+      GEMINI_MODEL_TEXT: 'model-id',
+    })).not.toThrow();
+  });
+
+  /**
+   * Caught here, at boot, rather than surfacing as an opaque JSON.parse
+   * crash the first time factory.ts builds the Vertex client.
+   */
+  it('rejects a GCP_SERVICE_ACCOUNT_KEY that is not valid JSON', () => {
+    expect(() => parseEnv({
+      ...valid,
+      TRANSCRIPTION_PROVIDER: 'vertex',
+      VERTEX_PROJECT_ID: 'project',
+      VERTEX_LOCATION: 'us-central1',
+      GCP_SERVICE_ACCOUNT_KEY: '/path/to/key.json',
+      VERTEX_MODEL_TRANSCRIBE: 'model-id',
+      VERTEX_MODEL_VISION: 'model-id',
+      VERTEX_MODEL_TEXT: 'model-id',
+    })).toThrow(/GCP_SERVICE_ACCOUNT_KEY/);
   });
 
   it('names every offending variable in one error', () => {

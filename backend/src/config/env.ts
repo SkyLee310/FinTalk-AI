@@ -13,7 +13,7 @@ const base = z.object({
    * Accepting it and falling through to another provider would transcribe
    * meetings somewhere the operator did not choose.
    */
-  TRANSCRIPTION_PROVIDER: z.enum(['gemini', 'fake']).default('gemini'),
+  TRANSCRIPTION_PROVIDER: z.enum(['gemini', 'vertex', 'fake']).default('gemini'),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL_TRANSCRIBE: z.string().optional(),
   GEMINI_MODEL_VISION: z.string().optional(),
@@ -27,6 +27,22 @@ const base = z.object({
    * for, which is a worse trade than a graph with fewer edges.
    */
   GEMINI_MODEL_EMBEDDING: z.string().optional(),
+
+  /**
+   * Vertex AI reaches the same Gemini models through a GCP service account
+   * instead of an API key. GCP_SERVICE_ACCOUNT_KEY holds the service account's
+   * JSON key file's contents verbatim — never a file path, since Railway has
+   * no persistent disk to point one at — parsed and handed straight to the
+   * SDK's credentials option at construction time. It is never written to disk.
+   */
+  VERTEX_PROJECT_ID: z.string().optional(),
+  VERTEX_LOCATION: z.string().optional(),
+  GCP_SERVICE_ACCOUNT_KEY: z.string().optional(),
+  VERTEX_MODEL_TRANSCRIBE: z.string().optional(),
+  VERTEX_MODEL_VISION: z.string().optional(),
+  VERTEX_MODEL_TEXT: z.string().optional(),
+  /** Optional, same reasoning as GEMINI_MODEL_EMBEDDING above. */
+  VERTEX_MODEL_EMBEDDING: z.string().optional(),
 
   /**
    * Optional automatic fallback. With TRANSCRIPTION_PROVIDER=gemini, setting
@@ -60,26 +76,61 @@ const base = z.object({
 });
 
 /**
- * Gemini credentials are required only when Gemini is the active provider,
- * so the test suite and CI run with TRANSCRIPTION_PROVIDER=fake and no key.
+ * Gemini/Vertex credentials are required only when that provider is active,
+ * so the test suite and CI run with TRANSCRIPTION_PROVIDER=fake and no keys.
  */
 const EnvSchema = base.superRefine((val, ctx) => {
-  if (val.TRANSCRIPTION_PROVIDER !== 'gemini') return;
+  if (val.TRANSCRIPTION_PROVIDER === 'gemini') {
+    const required = [
+      'GEMINI_API_KEY',
+      'GEMINI_MODEL_TRANSCRIBE',
+      'GEMINI_MODEL_VISION',
+      'GEMINI_MODEL_TEXT',
+    ] as const;
 
-  const required = [
-    'GEMINI_API_KEY',
-    'GEMINI_MODEL_TRANSCRIBE',
-    'GEMINI_MODEL_VISION',
-    'GEMINI_MODEL_TEXT',
-  ] as const;
+    for (const key of required) {
+      if (!val[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: 'required when TRANSCRIPTION_PROVIDER=gemini',
+        });
+      }
+    }
+  }
 
-  for (const key of required) {
-    if (!val[key]) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [key],
-        message: 'required when TRANSCRIPTION_PROVIDER=gemini',
-      });
+  if (val.TRANSCRIPTION_PROVIDER === 'vertex') {
+    const required = [
+      'VERTEX_PROJECT_ID',
+      'VERTEX_LOCATION',
+      'GCP_SERVICE_ACCOUNT_KEY',
+      'VERTEX_MODEL_TRANSCRIBE',
+      'VERTEX_MODEL_VISION',
+      'VERTEX_MODEL_TEXT',
+    ] as const;
+
+    for (const key of required) {
+      if (!val[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: 'required when TRANSCRIPTION_PROVIDER=vertex',
+        });
+      }
+    }
+
+    // Caught here, at boot, rather than on the first transcription request —
+    // same reasoning as the guard in factory.ts for a missing Gemini key.
+    if (val.GCP_SERVICE_ACCOUNT_KEY) {
+      try {
+        JSON.parse(val.GCP_SERVICE_ACCOUNT_KEY);
+      } catch {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['GCP_SERVICE_ACCOUNT_KEY'],
+          message: 'must be the service account key\'s JSON contents, not a file path',
+        });
+      }
     }
   }
 });

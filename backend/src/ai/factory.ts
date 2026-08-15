@@ -41,7 +41,7 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
         );
       }
       const gemini = new GeminiTranscriptionProvider({
-        apiKey: GEMINI_API_KEY,
+        auth: { mode: 'api-key', apiKey: GEMINI_API_KEY },
         transcribeModel: GEMINI_MODEL_TRANSCRIBE,
         textModel: GEMINI_MODEL_TEXT,
         visionModel: GEMINI_MODEL_VISION,
@@ -52,22 +52,75 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
          */
         embeddingModel: env.GEMINI_MODEL_EMBEDDING ?? '',
       });
+      return withOpenRouterFallback(gemini, env);
+    }
 
-      /**
-       * OPENROUTER_API_KEY is the only switch for this. Unset, boot behaviour
-       * is byte-for-byte what it was before this fallback existed — Gemini
-       * alone. Set, every Gemini call gets one retry against OpenRouter
-       * before the caller ever sees a failure.
-       */
-      if (env.OPENROUTER_API_KEY === undefined || env.OPENROUTER_API_KEY === '') {
-        return gemini;
+    case 'vertex': {
+      const {
+        VERTEX_PROJECT_ID,
+        VERTEX_LOCATION,
+        GCP_SERVICE_ACCOUNT_KEY,
+        VERTEX_MODEL_TRANSCRIBE,
+        VERTEX_MODEL_TEXT,
+        VERTEX_MODEL_VISION,
+      } = env;
+      if (
+        VERTEX_PROJECT_ID === undefined
+        || VERTEX_PROJECT_ID === ''
+        || VERTEX_LOCATION === undefined
+        || VERTEX_LOCATION === ''
+        || GCP_SERVICE_ACCOUNT_KEY === undefined
+        || GCP_SERVICE_ACCOUNT_KEY === ''
+        || VERTEX_MODEL_TRANSCRIBE === undefined
+        || VERTEX_MODEL_TRANSCRIBE === ''
+        || VERTEX_MODEL_TEXT === undefined
+        || VERTEX_MODEL_TEXT === ''
+        || VERTEX_MODEL_VISION === undefined
+        || VERTEX_MODEL_VISION === ''
+      ) {
+        throw new Error(
+          'TRANSCRIPTION_PROVIDER=vertex requires VERTEX_PROJECT_ID, VERTEX_LOCATION, '
+          + 'GCP_SERVICE_ACCOUNT_KEY, VERTEX_MODEL_TRANSCRIBE, VERTEX_MODEL_TEXT and '
+          + 'VERTEX_MODEL_VISION.',
+        );
       }
-      const openRouter = new OpenRouterProvider({
-        apiKey: env.OPENROUTER_API_KEY,
-        model: env.OPENROUTER_MODEL,
-        transcribeModel: env.OPENROUTER_MODEL_TRANSCRIBE,
+      // env.ts's superRefine already rejects a GCP_SERVICE_ACCOUNT_KEY that
+      // doesn't parse, so this JSON.parse cannot throw for a process that
+      // passed getEnv().
+      const gemini = new GeminiTranscriptionProvider({
+        auth: {
+          mode: 'vertex',
+          project: VERTEX_PROJECT_ID,
+          location: VERTEX_LOCATION,
+          credentials: JSON.parse(GCP_SERVICE_ACCOUNT_KEY),
+        },
+        transcribeModel: VERTEX_MODEL_TRANSCRIBE,
+        textModel: VERTEX_MODEL_TEXT,
+        visionModel: VERTEX_MODEL_VISION,
+        embeddingModel: env.VERTEX_MODEL_EMBEDDING ?? '',
       });
-      return new FallbackTranscriptionProvider(gemini, openRouter);
+      return withOpenRouterFallback(gemini, env);
     }
   }
+}
+
+/**
+ * OPENROUTER_API_KEY is the only switch for this, regardless of which Gemini
+ * auth transport is active. Unset, boot behaviour is byte-for-byte what it
+ * was before this fallback existed. Set, every call gets one retry against
+ * OpenRouter before the caller ever sees a failure.
+ */
+function withOpenRouterFallback(
+  gemini: TranscriptionProvider,
+  env: Env,
+): TranscriptionProvider {
+  if (env.OPENROUTER_API_KEY === undefined || env.OPENROUTER_API_KEY === '') {
+    return gemini;
+  }
+  const openRouter = new OpenRouterProvider({
+    apiKey: env.OPENROUTER_API_KEY,
+    model: env.OPENROUTER_MODEL,
+    transcribeModel: env.OPENROUTER_MODEL_TRANSCRIBE,
+  });
+  return new FallbackTranscriptionProvider(gemini, openRouter);
 }

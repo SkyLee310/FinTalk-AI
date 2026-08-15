@@ -732,6 +732,196 @@ export default function MeetingDetailPage() {
         />
       </div>
 
+      {/*
+        Participation, Shariah findings and the term sheet sit here, ahead of
+        the transcript, deliberately. A long recording's segment list can run
+        to hundreds of entries, and these three are exactly what a reviewer
+        opens the meeting to check — burying them below that list meant
+        scrolling past the transcript in full every time. Shariah findings and
+        the term sheet don't depend on a transcript existing, so they keep
+        rendering (and stay this early) even while a meeting is still
+        processing; Participation needs transcript segments, so it guards on
+        that itself instead of relying on the branch below.
+      */}
+      {data.transcript !== null && (() => {
+        const participation = computeParticipation(data.transcript.segments);
+        return participation.length === 0 ? null : (
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
+              Participation
+            </h2>
+            <Card className="px-5 py-4">
+              <p className="text-xs text-faint">
+                Talk share by speaker label. Labels are per-transcript tags and may
+                not map to named participants.
+              </p>
+              <ul className="mt-3 space-y-3">
+                {participation.map((speaker) => {
+                  const nudge = participationNudge(speaker);
+                  const pct = Math.round(speaker.share * 100);
+                  return (
+                    <li key={speaker.speakerLabel}>
+                      <div className="flex items-center justify-between gap-2 text-sm">
+                        <span className="font-medium text-brand">
+                          {speaker.speakerLabel}
+                        </span>
+                        <span className="text-xs text-muted">
+                          {pct}% · {formatDuration(speaker.totalMs)}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-raised">
+                        <div
+                          className={`h-full rounded-full ${speaker.quiet ? 'bg-warn' : 'bg-brand'}`}
+                          style={{ width: `${String(pct)}%` }}
+                        />
+                      </div>
+                      {nudge !== null && (
+                        <p className="mt-1.5 text-xs text-warn">{nudge}</p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </Card>
+          </section>
+        );
+      })()}
+
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
+            Shariah findings
+          </h2>
+          {unresolved.length > 0 && (
+            <Badge tone="warn" dot>
+              {unresolved.length} blocking approval
+            </Badge>
+          )}
+        </div>
+
+        {data.shariahFlags.length === 0 ? (
+          <EmptyState title="No findings" body="The rule set raised nothing on this transcript." />
+        ) : (
+          <ul className="space-y-3">
+            {data.shariahFlags.map((flag) => {
+              const resolved =
+                flag.status === 'CLEARED' || flag.status === 'CONFIRMED_VIOLATION';
+              const guidance = guidanceFor(flag.issueType);
+              return (
+                <li key={flag.id}>
+                  <Card className="px-5 py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold">{flag.issueType}</p>
+                        <p className="mt-1 text-sm italic text-muted">
+                          <RedactedText text={flag.excerpt} />
+                        </p>
+                        <p className="mt-2 text-xs text-faint">
+                          {flag.detectedBy} · {(flag.confidence * 100).toFixed(0)}% ·{' '}
+                          {flag.reference}
+                        </p>
+                      </div>
+                      <Badge tone={FLAG_TONE[flag.status]} dot>
+                        {flag.status}
+                      </Badge>
+                    </div>
+
+                    {/*
+                      Request 3: a details view that says what was detected and
+                      why it flags — drawn from the same guidance module as the
+                      Islamic Banking page, so the two never disagree.
+                    */}
+                    <div className="mt-3">
+                      <Disclosure summary="Details — what was detected, and why it flags">
+                        <div className="space-y-3 text-sm leading-relaxed">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-faint">
+                              Detected in the transcript
+                            </p>
+                            <p className="mt-1 italic text-muted">
+                              <RedactedText text={flag.excerpt} />
+                            </p>
+                          </div>
+                          {guidance !== null && (
+                            <>
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-faint">
+                                  What {guidance.title} is
+                                </p>
+                                <p className="mt-1 text-muted">{guidance.whatItIs}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-faint">
+                                  Why it flags
+                                </p>
+                                <p className="mt-1 text-muted">{guidance.whyItViolates}</p>
+                              </div>
+                            </>
+                          )}
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-faint">
+                              Detected by · confidence · reference
+                            </p>
+                            <p className="mt-1 text-muted">
+                              <span className="font-mono text-xs">{flag.detectedBy}</span> ·{' '}
+                              {(flag.confidence * 100).toFixed(0)}% · {flag.reference}
+                            </p>
+                          </div>
+                          <p className="text-xs text-faint">
+                            A machine reading of the transcript, not a ruling.{' '}
+                            <Link href="/islamic-banking" className="underline underline-offset-2">
+                              Learn more about Shariah banking
+                            </Link>
+                            .
+                          </p>
+                        </div>
+                      </Disclosure>
+                    </div>
+
+                    {mayReview && !resolved && openFlag === flag.id && (
+                      <ReviewForm
+                        flag={flag}
+                        onDone={() => {
+                          setOpenFlag(null);
+                          meeting.reload();
+                        }}
+                      />
+                    )}
+
+                    {mayReview && !resolved && openFlag !== flag.id && (
+                      <div className="mt-3">
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            setOpenFlag(flag.id);
+                          }}
+                        >
+                          Review this finding
+                        </Button>
+                      </div>
+                    )}
+                  </Card>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {maySubmit && (
+        <Card>
+          <CardHeader
+            title="Term sheet"
+            description={
+              unresolved.length > 0
+                ? 'Submission will be refused until every finding above is cleared.'
+                : 'All findings cleared. This can be submitted for checking.'
+            }
+          />
+          <TermSheetForm meetingId={id} blockedBy={unresolved} />
+        </Card>
+      )}
+
       {data.transcript === null ? (
         <>
           <ProcessingStatus status={data.status} failureReason={data.failureReason} />
@@ -973,186 +1163,7 @@ export default function MeetingDetailPage() {
               )}
             </Card>
           </div>
-
-          {(() => {
-            const participation = computeParticipation(data.transcript.segments);
-            return participation.length === 0 ? null : (
-              <section className="space-y-3">
-                <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
-                  Participation
-                </h2>
-                <Card className="px-5 py-4">
-                  <p className="text-xs text-faint">
-                    Talk share by speaker label. Labels are per-transcript tags and may
-                    not map to named participants.
-                  </p>
-                  <ul className="mt-3 space-y-3">
-                    {participation.map((speaker) => {
-                      const nudge = participationNudge(speaker);
-                      const pct = Math.round(speaker.share * 100);
-                      return (
-                        <li key={speaker.speakerLabel}>
-                          <div className="flex items-center justify-between gap-2 text-sm">
-                            <span className="font-medium text-brand">
-                              {speaker.speakerLabel}
-                            </span>
-                            <span className="text-xs text-muted">
-                              {pct}% · {formatDuration(speaker.totalMs)}
-                            </span>
-                          </div>
-                          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-raised">
-                            <div
-                              className={`h-full rounded-full ${speaker.quiet ? 'bg-warn' : 'bg-brand'}`}
-                              style={{ width: `${String(pct)}%` }}
-                            />
-                          </div>
-                          {nudge !== null && (
-                            <p className="mt-1.5 text-xs text-warn">{nudge}</p>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </Card>
-              </section>
-            );
-          })()}
         </>
-      )}
-
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
-            Shariah findings
-          </h2>
-          {unresolved.length > 0 && (
-            <Badge tone="warn" dot>
-              {unresolved.length} blocking approval
-            </Badge>
-          )}
-        </div>
-
-        {data.shariahFlags.length === 0 ? (
-          <EmptyState title="No findings" body="The rule set raised nothing on this transcript." />
-        ) : (
-          <ul className="space-y-3">
-            {data.shariahFlags.map((flag) => {
-              const resolved =
-                flag.status === 'CLEARED' || flag.status === 'CONFIRMED_VIOLATION';
-              const guidance = guidanceFor(flag.issueType);
-              return (
-                <li key={flag.id}>
-                  <Card className="px-5 py-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold">{flag.issueType}</p>
-                        <p className="mt-1 text-sm italic text-muted">
-                          <RedactedText text={flag.excerpt} />
-                        </p>
-                        <p className="mt-2 text-xs text-faint">
-                          {flag.detectedBy} · {(flag.confidence * 100).toFixed(0)}% ·{' '}
-                          {flag.reference}
-                        </p>
-                      </div>
-                      <Badge tone={FLAG_TONE[flag.status]} dot>
-                        {flag.status}
-                      </Badge>
-                    </div>
-
-                    {/*
-                      Request 3: a details view that says what was detected and
-                      why it flags — drawn from the same guidance module as the
-                      Islamic Banking page, so the two never disagree.
-                    */}
-                    <div className="mt-3">
-                      <Disclosure summary="Details — what was detected, and why it flags">
-                        <div className="space-y-3 text-sm leading-relaxed">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-faint">
-                              Detected in the transcript
-                            </p>
-                            <p className="mt-1 italic text-muted">
-                              <RedactedText text={flag.excerpt} />
-                            </p>
-                          </div>
-                          {guidance !== null && (
-                            <>
-                              <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-faint">
-                                  What {guidance.title} is
-                                </p>
-                                <p className="mt-1 text-muted">{guidance.whatItIs}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-faint">
-                                  Why it flags
-                                </p>
-                                <p className="mt-1 text-muted">{guidance.whyItViolates}</p>
-                              </div>
-                            </>
-                          )}
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-faint">
-                              Detected by · confidence · reference
-                            </p>
-                            <p className="mt-1 text-muted">
-                              <span className="font-mono text-xs">{flag.detectedBy}</span> ·{' '}
-                              {(flag.confidence * 100).toFixed(0)}% · {flag.reference}
-                            </p>
-                          </div>
-                          <p className="text-xs text-faint">
-                            A machine reading of the transcript, not a ruling.{' '}
-                            <Link href="/islamic-banking" className="underline underline-offset-2">
-                              Learn more about Shariah banking
-                            </Link>
-                            .
-                          </p>
-                        </div>
-                      </Disclosure>
-                    </div>
-
-                    {mayReview && !resolved && openFlag === flag.id && (
-                      <ReviewForm
-                        flag={flag}
-                        onDone={() => {
-                          setOpenFlag(null);
-                          meeting.reload();
-                        }}
-                      />
-                    )}
-
-                    {mayReview && !resolved && openFlag !== flag.id && (
-                      <div className="mt-3">
-                        <Button
-                          variant="secondary"
-                          onClick={() => {
-                            setOpenFlag(flag.id);
-                          }}
-                        >
-                          Review this finding
-                        </Button>
-                      </div>
-                    )}
-                  </Card>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      {maySubmit && (
-        <Card>
-          <CardHeader
-            title="Term sheet"
-            description={
-              unresolved.length > 0
-                ? 'Submission will be refused until every finding above is cleared.'
-                : 'All findings cleared. This can be submitted for checking.'
-            }
-          />
-          <TermSheetForm meetingId={id} blockedBy={unresolved} />
-        </Card>
       )}
     </div>
   );

@@ -130,7 +130,7 @@ function Bubble({ message }: { message: ChatMessage }) {
 }
 
 /**
- * The slide-over panel itself. Message state lives in the caller
+ * The centred modal itself. Message state lives in the caller
  * ((app)/layout.tsx) so it survives navigation between pages and resets on
  * reload or sign-out for free — this component only owns its own
  * in-progress input text and busy/error flags.
@@ -214,7 +214,7 @@ export function AskFinTalkAI({
   if (!open && !closing) return null;
 
   return (
-    <div className="fixed inset-0 z-30 flex justify-end">
+    <div className="fixed inset-0 z-30 flex items-center justify-center">
       <button
         type="button"
         aria-label="Close Ask FinTalk AI"
@@ -227,10 +227,10 @@ export function AskFinTalkAI({
       />
 
       <GlassPanel
-        className={`relative z-10 flex h-full w-full max-w-md flex-col rounded-none p-0 sm:m-4 sm:h-[calc(100%-2rem)] sm:rounded-2xl ${
+        className={`relative z-10 flex max-h-[85vh] w-[calc(100%-2rem)] max-w-[540px] flex-col p-0 ${
           closing
-            ? 'animate-[panel-out_var(--dur-base)_var(--ease-out)_both]'
-            : 'animate-[panel-in_var(--dur-base)_var(--ease-out)_both]'
+            ? 'animate-[modal-out_var(--dur-base)_var(--ease-out)_both]'
+            : 'animate-[modal-in_var(--dur-base)_var(--ease-out)_both]'
         }`}
         onAnimationEnd={() => {
           if (closing) setClosing(false);

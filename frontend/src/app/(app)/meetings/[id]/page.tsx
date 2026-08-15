@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { type FormEvent, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { Badge, type Tone } from '@/components/badge';
 import { Card, CardHeader, DataRow } from '@/components/card';
 import { MermaidDiagram } from '@/components/mermaid-diagram';
@@ -25,6 +25,7 @@ import {
   api,
   can,
   type FacilityKind,
+  type MeetingStatus,
   type Session,
   type ShariahFlagRow,
   type ShariahStatus,
@@ -429,6 +430,114 @@ function TermSheetForm({
   );
 }
 
+/** How long "usually 2 to 3 minutes" gets to run before the copy admits it's running late. */
+const SOFT_TIMEOUT_MS = 4 * 60 * 1000;
+
+/**
+ * Stands in for the transcript while the pipeline is still running or has
+ * already failed. This only animates the wait — the actual polling lives in
+ * MeetingDetailPage's effect below, since that is what owns the fetch.
+ */
+function ProcessingStatus({
+  status,
+  failureReason,
+}: {
+  status: MeetingStatus;
+  failureReason: string | null;
+}) {
+  const router = useRouter();
+  const startedAt = useRef(Date.now());
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const failed = status === 'FAILED' || failureReason !== null;
+
+  useEffect(() => {
+    if (failed) return undefined;
+    const tick = setInterval(() => {
+      setElapsedMs(Date.now() - startedAt.current);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [failed]);
+
+  if (failed) {
+    return (
+      <div className="rounded-xl border border-danger/30 bg-danger-soft/50 px-5 py-4">
+        <div className="flex items-start gap-3">
+          <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="mt-0.5 shrink-0 text-danger"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path strokeLinecap="round" d="M12 8v5M12 16h.01" />
+          </svg>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">Transcription could not be completed</p>
+            <p className="mt-1 text-sm text-muted">
+              {failureReason === null
+                ? 'The AI service did not respond.'
+                : `The pipeline failed during ${failureReason}.`}{' '}
+              Your audio was not stored, so there is nothing to resume. You can try
+              again.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button onClick={() => router.push('/record')}>Try again</Button>
+              <Button variant="secondary" onClick={() => router.push('/meetings')}>
+                Back
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const overdue = elapsedMs > SOFT_TIMEOUT_MS;
+  // Never reaches 100 on its own — only a real status flip does that, once
+  // polling picks it up. Capped short of full so there is always somewhere
+  // left for it to go while it waits.
+  const pct = Math.min(92, (elapsedMs / (3 * 60 * 1000)) * 100);
+
+  return (
+    <div className="rounded-xl border border-line bg-raised px-5 py-4">
+      <Button variant="secondary" disabled>
+        <span
+          aria-hidden="true"
+          className="size-3.5 animate-spin rounded-full border-2 border-line-strong border-t-brand"
+        />
+        Transcribing…
+      </Button>
+
+      <div
+        className="mt-4 h-1.5 overflow-hidden rounded-full bg-line"
+        role="progressbar"
+        aria-label="Transcription progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(pct)}
+      >
+        <div
+          className="h-full rounded-full bg-brand transition-[width] duration-1000 ease-linear"
+          style={{ width: `${String(pct)}%` }}
+        />
+      </div>
+
+      <p className="mt-3 text-sm font-medium">
+        {overdue
+          ? 'Still transcribing — this is taking longer than usual.'
+          : 'Transcribing audio — usually 2 to 3 minutes.'}
+      </p>
+      <p className="mt-0.5 text-xs text-faint">
+        Step 1 of 3 · then redaction, then Shariah screening
+      </p>
+    </div>
+  );
+}
+
 export default function MeetingDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -453,12 +562,106 @@ export default function MeetingDetailPage() {
     session.data?.role !== 'VIEWER' &&
     session.data?.role !== 'OVERSIGHT';
 
+  /**
+   * Transcription runs for minutes after the upload request already
+   * returned (api.uploadMeeting's own doc comment), so this is the one
+   * place that finds out when it lands. Silent, so a tick updates the page
+   * in place rather than flashing it back to the top-level loading spinner
+   * every 5 seconds. Stops itself once status leaves CAPTURED/PROCESSING —
+   * a READY or FAILED meeting has nothing left to poll for.
+   */
+  const meetingStatus = meeting.data?.status;
+  useEffect(() => {
+    if (meetingStatus !== 'CAPTURED' && meetingStatus !== 'PROCESSING') return undefined;
+    const poll = setInterval(() => {
+      meeting.reload({ silent: true });
+    }, 5000);
+    return () => clearInterval(poll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- meeting.reload is useCallback-stable; meeting itself is a fresh object every render and would restart the interval on every tick.
+  }, [meetingStatus]);
+
   if (meeting.loading) return <Spinner label="Loading meeting" />;
   if (meeting.error !== null) return <ErrorNote>{meeting.error}</ErrorNote>;
   if (meeting.data === null) return <EmptyState title="Not found" body="No such meeting." />;
 
   const data = meeting.data;
   const unresolved = data.shariahFlags.filter((flag) => flag.status !== 'CLEARED');
+
+  /**
+   * Built once and reused from two places: standalone (below) when there is
+   * no transcript yet — a whiteboard can finish extracting before audio
+   * finishes transcribing, since the two pipelines are independent — and
+   * folded into the populated/empty grouping once there is one.
+   */
+  const whiteboardsHasData = (whiteboards.data?.whiteboards.length ?? 0) > 0;
+  const whiteboardsContent = (
+    <>
+      {whiteboards.loading && <Spinner label="Loading whiteboards" />}
+      {whiteboards.error !== null && <ErrorNote>{whiteboards.error}</ErrorNote>}
+
+      {whiteboards.data?.whiteboards.length === 0 && (
+        <EmptyState
+          title="No whiteboard captured"
+          body="Attach a whiteboard photo when you capture a meeting and its diagram is extracted and redacted alongside the transcript."
+        />
+      )}
+
+      {whiteboards.data?.whiteboards.map((board) => (
+        <Card key={board.id}>
+          <CardHeader
+            title="Extracted diagram"
+            description={`Model ${board.modelId} · prompt ${board.promptVersion}`}
+          />
+          <div className="space-y-4 px-5 py-4">
+            <MermaidDiagram source={board.mermaid} />
+
+            {/*
+              The source stays reachable, collapsed. The drawing is what a
+              reviewer wants to look at; the source is what was actually
+              stored, and an auditor reconciling a redaction offset needs the
+              text rather than a picture of it.
+            */}
+            <details>
+              <summary className="cursor-pointer text-xs text-faint underline underline-offset-2">
+                View stored source
+              </summary>
+              <pre className="mt-2 overflow-x-auto rounded-lg border border-line bg-raised p-4 text-xs leading-relaxed">
+                <code>
+                  <RedactedText text={board.mermaid} />
+                </code>
+              </pre>
+            </details>
+
+            <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
+              {Object.entries(board.structuredJson as Record<string, unknown>).map(
+                ([key, value]) => (
+                  <div key={key} className="contents">
+                    <dt className="text-faint">{key}</dt>
+                    <dd className="font-medium">{renderStructuredValue(value)}</dd>
+                  </div>
+                ),
+              )}
+            </dl>
+
+            {board.redactions.length > 0 && (
+              <p className="text-xs text-faint">
+                {board.redactions.length} identifier
+                {board.redactions.length === 1 ? '' : 's'} masked before storage.
+              </p>
+            )}
+          </div>
+        </Card>
+      ))}
+    </>
+  );
+  const whiteboardsSection = (
+    <section className="space-y-3">
+      <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
+        Whiteboards
+      </h2>
+      {whiteboardsContent}
+    </section>
+  );
 
   return (
     <div className="space-y-8">
@@ -475,7 +678,10 @@ export default function MeetingDetailPage() {
         <div className="flex flex-wrap gap-2">
           {data.consentConfirmed && <Badge tone="ok">Consent confirmed</Badge>}
           {data.transferAcknowledged && <Badge tone="ok">Transfer acknowledged</Badge>}
-          <Badge tone={data.status === 'READY' ? 'ok' : 'warn'} dot>
+          <Badge
+            tone={data.status === 'READY' ? 'ok' : data.status === 'FAILED' ? 'danger' : 'warn'}
+            dot
+          >
             {data.status}
           </Badge>
         </div>
@@ -526,15 +732,11 @@ export default function MeetingDetailPage() {
         />
       </div>
 
-      {data.failureReason !== null && (
-        <ErrorNote>
-          Processing failed at <code className="font-mono">{data.failureReason}</code>. No
-          transcript was stored.
-        </ErrorNote>
-      )}
-
       {data.transcript === null ? (
-        <EmptyState title="No transcript" body="This meeting has no stored transcript." />
+        <>
+          <ProcessingStatus status={data.status} failureReason={data.failureReason} />
+          {whiteboardsSection}
+        </>
       ) : (
         <>
           <Card>
@@ -547,112 +749,172 @@ export default function MeetingDetailPage() {
             </p>
           </Card>
 
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
-              Final decisions
-            </h2>
-            {data.decisions.length === 0 ? (
-              <EmptyState
-                title="No decisions recorded"
-                body="The arbiter found no debated point to resolve, or this meeting predates the feature."
-              />
-            ) : (
-              <ul className="space-y-3">
-                {data.decisions.map((decision) => (
-                  <li key={decision.id}>
-                    <Card className="px-5 py-4">
-                      <p className="text-sm font-semibold">
-                        <RedactedText text={decision.topic} />
-                      </p>
-                      <p className="mt-1 text-sm text-muted">
-                        <RedactedText text={decision.decision} />
-                      </p>
-                      <p className="mt-2 text-xs leading-relaxed text-faint">
-                        <RedactedText text={decision.rationale} />
-                      </p>
-                    </Card>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          {(() => {
+            const hasKickoff =
+              data.transcript.projectKickoff !== null || data.transcript.followUps.length > 0;
 
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
-              Action items
-            </h2>
-            {data.actionItems.length === 0 ? (
-              <EmptyState
-                title="No action items"
-                body="Nothing was extracted as a follow-up task for this meeting."
-              />
-            ) : (
-              <Card>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[36rem] text-left text-sm">
-                    <thead className="border-b border-line text-xs uppercase tracking-wide text-faint">
-                      <tr>
-                        <th scope="col" className="px-5 py-2.5 font-medium">
-                          Owner
-                        </th>
-                        <th scope="col" className="px-5 py-2.5 font-medium">
-                          Task
-                        </th>
-                        <th scope="col" className="px-5 py-2.5 font-medium">
-                          Due
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-line">
-                      {data.actionItems.map((item) => (
-                        <tr key={item.id}>
-                          <td className="px-5 py-2.5 text-xs font-medium text-brand">
-                            <RedactedText text={item.owner} />
-                          </td>
-                          <td className="px-5 py-2.5 text-sm">
-                            <RedactedText text={item.task} />
-                          </td>
-                          <td className="whitespace-nowrap px-5 py-2.5 text-xs text-muted">
-                            {item.dueDate === null ? '—' : <RedactedText text={item.dueDate} />}
-                          </td>
-                        </tr>
+            /**
+             * Request: populated sections lead, empty ones fold into one
+             * clickable line at the bottom — decided per meeting from
+             * whether each actually has data, never a fixed order. Decisions,
+             * action items and kickoff are all new-meetings-only AI outputs
+             * (no backfill), so an older or demo meeting can easily have all
+             * three empty at once, each previously costing half a screen.
+             */
+            const extras: { key: string; label: string; hasData: boolean; content: ReactNode }[] = [
+              {
+                key: 'decisions',
+                label: 'Final decisions',
+                hasData: data.decisions.length > 0,
+                content:
+                  data.decisions.length === 0 ? (
+                    <EmptyState
+                      title="No decisions recorded"
+                      body="The arbiter found no debated point to resolve, or this meeting predates the feature."
+                    />
+                  ) : (
+                    <ul className="space-y-3">
+                      {data.decisions.map((decision) => (
+                        <li key={decision.id}>
+                          <Card className="px-5 py-4">
+                            <p className="text-sm font-semibold">
+                              <RedactedText text={decision.topic} />
+                            </p>
+                            <p className="mt-1 text-sm text-muted">
+                              <RedactedText text={decision.decision} />
+                            </p>
+                            <p className="mt-2 text-xs leading-relaxed text-faint">
+                              <RedactedText text={decision.rationale} />
+                            </p>
+                          </Card>
+                        </li>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            )}
-          </section>
+                    </ul>
+                  ),
+              },
+              {
+                key: 'actionItems',
+                label: 'Action items',
+                hasData: data.actionItems.length > 0,
+                content:
+                  data.actionItems.length === 0 ? (
+                    <EmptyState
+                      title="No action items"
+                      body="Nothing was extracted as a follow-up task for this meeting."
+                    />
+                  ) : (
+                    <Card>
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[36rem] text-left text-sm">
+                          <thead className="border-b border-line text-xs uppercase tracking-wide text-faint">
+                            <tr>
+                              <th scope="col" className="px-5 py-2.5 font-medium">
+                                Owner
+                              </th>
+                              <th scope="col" className="px-5 py-2.5 font-medium">
+                                Task
+                              </th>
+                              <th scope="col" className="px-5 py-2.5 font-medium">
+                                Due
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-line">
+                            {data.actionItems.map((item) => (
+                              <tr key={item.id}>
+                                <td className="px-5 py-2.5 text-xs font-medium text-brand">
+                                  <RedactedText text={item.owner} />
+                                </td>
+                                <td className="px-5 py-2.5 text-sm">
+                                  <RedactedText text={item.task} />
+                                </td>
+                                <td className="whitespace-nowrap px-5 py-2.5 text-xs text-muted">
+                                  {item.dueDate === null ? (
+                                    '—'
+                                  ) : (
+                                    <RedactedText text={item.dueDate} />
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+                  ),
+              },
+              {
+                key: 'kickoff',
+                label: 'Project kickoff',
+                hasData: hasKickoff,
+                content: !hasKickoff ? (
+                  <EmptyState
+                    title="No kickoff draft"
+                    body="No project draft was generated for this meeting."
+                  />
+                ) : (
+                  <Card className="px-5 py-4">
+                    {data.transcript.projectKickoff !== null && (
+                      <p className="text-sm leading-relaxed">
+                        <RedactedText text={data.transcript.projectKickoff} />
+                      </p>
+                    )}
+                    {data.transcript.followUps.length > 0 && (
+                      <ul className="mt-3 space-y-1.5 border-t border-line pt-3">
+                        {data.transcript.followUps.map((line, index) => (
+                          <li key={index} className="flex gap-2 text-sm text-muted">
+                            <span className="text-faint">·</span>
+                            <RedactedText text={line} />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </Card>
+                ),
+              },
+              {
+                key: 'whiteboards',
+                label: 'Whiteboards',
+                hasData: whiteboardsHasData,
+                content: whiteboardsContent,
+              },
+            ];
 
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
-              Project kickoff
-            </h2>
-            {data.transcript.projectKickoff === null && data.transcript.followUps.length === 0 ? (
-              <EmptyState
-                title="No kickoff draft"
-                body="No project draft was generated for this meeting."
-              />
-            ) : (
-              <Card className="px-5 py-4">
-                {data.transcript.projectKickoff !== null && (
-                  <p className="text-sm leading-relaxed">
-                    <RedactedText text={data.transcript.projectKickoff} />
-                  </p>
+            const populated = extras.filter((section) => section.hasData);
+            const empty = extras.filter((section) => !section.hasData);
+
+            return (
+              <>
+                {populated.map((section) => (
+                  <section key={section.key} className="space-y-3">
+                    <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
+                      {section.label}
+                    </h2>
+                    {section.content}
+                  </section>
+                ))}
+
+                {empty.length > 0 && (
+                  <details className="rounded-lg border border-line bg-raised">
+                    <summary className="cursor-pointer list-none px-4 py-2.5 text-caption font-medium text-muted hover:text-text">
+                      ▸ {empty.length} empty section{empty.length === 1 ? '' : 's'} —{' '}
+                      {empty.map((section) => section.label).join(', ')}
+                    </summary>
+                    <div className="space-y-6 border-t border-line px-4 py-4">
+                      {empty.map((section) => (
+                        <div key={section.key}>
+                          <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-faint">
+                            {section.label}
+                          </h3>
+                          <div className="mt-2">{section.content}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
                 )}
-                {data.transcript.followUps.length > 0 && (
-                  <ul className="mt-3 space-y-1.5 border-t border-line pt-3">
-                    {data.transcript.followUps.map((line, index) => (
-                      <li key={index} className="flex gap-2 text-sm text-muted">
-                        <span className="text-faint">·</span>
-                        <RedactedText text={line} />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Card>
-            )}
-          </section>
+              </>
+            );
+          })()}
 
           <div className="grid gap-5 lg:grid-cols-5">
             <Card className="lg:col-span-3">
@@ -757,69 +1019,6 @@ export default function MeetingDetailPage() {
           })()}
         </>
       )}
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
-          Whiteboards
-        </h2>
-
-        {whiteboards.loading && <Spinner label="Loading whiteboards" />}
-        {whiteboards.error !== null && <ErrorNote>{whiteboards.error}</ErrorNote>}
-
-        {whiteboards.data?.whiteboards.length === 0 && (
-          <EmptyState
-            title="No whiteboard captured"
-            body="Attach a whiteboard photo when you capture a meeting and its diagram is extracted and redacted alongside the transcript."
-          />
-        )}
-
-        {whiteboards.data?.whiteboards.map((board) => (
-          <Card key={board.id}>
-            <CardHeader
-              title="Extracted diagram"
-              description={`Model ${board.modelId} · prompt ${board.promptVersion}`}
-            />
-            <div className="space-y-4 px-5 py-4">
-              <MermaidDiagram source={board.mermaid} />
-
-              {/*
-                The source stays reachable, collapsed. The drawing is what a
-                reviewer wants to look at; the source is what was actually
-                stored, and an auditor reconciling a redaction offset needs the
-                text rather than a picture of it.
-              */}
-              <details>
-                <summary className="cursor-pointer text-xs text-faint underline underline-offset-2">
-                  View stored source
-                </summary>
-                <pre className="mt-2 overflow-x-auto rounded-lg border border-line bg-raised p-4 text-xs leading-relaxed">
-                  <code>
-                    <RedactedText text={board.mermaid} />
-                  </code>
-                </pre>
-              </details>
-
-              <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
-                {Object.entries(board.structuredJson as Record<string, unknown>).map(
-                  ([key, value]) => (
-                    <div key={key} className="contents">
-                      <dt className="text-faint">{key}</dt>
-                      <dd className="font-medium">{renderStructuredValue(value)}</dd>
-                    </div>
-                  ),
-                )}
-              </dl>
-
-              {board.redactions.length > 0 && (
-                <p className="text-xs text-faint">
-                  {board.redactions.length} identifier
-                  {board.redactions.length === 1 ? '' : 's'} masked before storage.
-                </p>
-              )}
-            </div>
-          </Card>
-        ))}
-      </section>
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">

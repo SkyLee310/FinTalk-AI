@@ -329,35 +329,29 @@
 }
 
 /*
- * The Ask FinTalk AI panel fuses the two rules above rather than stacking
- * them: it needs slide-in-right's horizontal path and materialize's
- * blur+scale on the same element, and two simultaneous `animation-name`s that
- * both touch `transform` do not combine predictably across browsers. Writing
- * one keyframe pair says exactly what happens instead of relying on that.
+ * A dialog pops from its own centre, not from an edge — used by the
+ * screen-centred Ask FinTalk AI card, where nothing on screen "owns" the
+ * open direction the way a popover owns its trigger corner (pop-in, below).
  */
-@keyframes panel-in {
+@keyframes modal-in {
   from {
     opacity: 0;
-    transform: translateX(24px) scale(0.97);
-    backdrop-filter: blur(0);
+    transform: scale(0.95);
   }
   to {
     opacity: 1;
     transform: none;
-    backdrop-filter: blur(24px);
   }
 }
 
-@keyframes panel-out {
+@keyframes modal-out {
   from {
     opacity: 1;
     transform: none;
-    backdrop-filter: blur(24px);
   }
   to {
     opacity: 0;
-    transform: translateX(24px) scale(0.97);
-    backdrop-filter: blur(0);
+    transform: scale(0.95);
   }
 }
 

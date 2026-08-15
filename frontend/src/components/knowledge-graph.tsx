@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { GraphEdge, GraphNode, KnowledgeGraph } from '@/lib/api';
+import { Input } from './ui';
 
 /**
  * A force-directed graph of connected meetings, in plain SVG.
@@ -133,6 +134,7 @@ export function KnowledgeGraphView({
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
+  const [filter, setFilter] = useState('');
 
   const placed = useMemo(() => layout(graph.nodes, graph.edges), [graph]);
   const byId = useMemo(() => new Map(placed.map((p) => [p.node.meetingId, p])), [placed]);
@@ -153,6 +155,21 @@ export function KnowledgeGraphView({
   }
 
   const selectedNode = selected === null ? null : byId.get(selected)?.node ?? null;
+
+  // Shared between the graph and the list below, so typing here is the one
+  // filter both views answer to — matching a meeting's title or any of its
+  // topics is enough to keep it (and any edge touching it) in view.
+  const query = filter.trim().toLowerCase();
+  const nodeMatches = (node: GraphNode): boolean =>
+    query === '' ||
+    node.title.toLowerCase().includes(query) ||
+    node.topics.some((topic) => topic.toLowerCase().includes(query));
+  const edgeMatches = (edge: GraphEdge): boolean => {
+    const from = byId.get(edge.from)?.node;
+    const to = byId.get(edge.to)?.node;
+    return (from !== undefined && nodeMatches(from)) || (to !== undefined && nodeMatches(to));
+  };
+  const visibleEdges = query === '' ? graph.edges : graph.edges.filter(edgeMatches);
 
   return (
     <div className="space-y-3">
@@ -176,6 +193,15 @@ export function KnowledgeGraphView({
         </p>
       )}
 
+      <Input
+        type="text"
+        value={filter}
+        onChange={(event) => setFilter(event.target.value)}
+        placeholder="Filter meetings or topics…"
+        aria-label="Filter meetings or topics"
+        className="max-w-sm"
+      />
+
       <div className="overflow-x-auto rounded-xl border border-line bg-surface">
         <svg
           viewBox={`0 0 ${String(WIDTH)} ${String(HEIGHT)}`}
@@ -193,6 +219,7 @@ export function KnowledgeGraphView({
             if (from === undefined || to === undefined) return null;
             const active = selectedEdge?.from === edge.from && selectedEdge?.to === edge.to;
             const touchesSelection = selected === edge.from || selected === edge.to;
+            const dimmed = !edgeMatches(edge);
 
             return (
               <line
@@ -208,7 +235,7 @@ export function KnowledgeGraphView({
                     : 'cursor-pointer text-line-strong'
                 }
                 strokeWidth={1 + edge.strength * 3}
-                strokeOpacity={active || touchesSelection ? 0.9 : 0.45}
+                strokeOpacity={dimmed ? 0.1 : active || touchesSelection ? 0.9 : 0.45}
                 onClick={() => {
                   setSelectedEdge(edge);
                   setSelected(null);
@@ -226,7 +253,7 @@ export function KnowledgeGraphView({
             const isSelected = selected === node.meetingId;
 
             return (
-              <g key={node.meetingId}>
+              <g key={node.meetingId} opacity={nodeMatches(node) ? 1 : 0.25}>
                 <circle
                   cx={point.x}
                   cy={point.y}
@@ -339,18 +366,21 @@ export function KnowledgeGraphView({
         </div>
       )}
 
-      <details className="rounded-lg border border-line bg-raised">
+      <details className="rounded-lg border border-line bg-raised" open={query !== ''}>
         <summary className="cursor-pointer list-none px-4 py-2.5 text-caption font-medium text-muted hover:text-text">
-          ▸ Connections as a list ({graph.edges.length})
+          ▸ Connections as a list (
+          {query === '' ? graph.edges.length : `${visibleEdges.length} of ${graph.edges.length}`})
         </summary>
         <div className="border-t border-line px-4 py-3">
-          {graph.edges.length === 0 ? (
+          {visibleEdges.length === 0 ? (
             <p className="text-caption text-muted">
-              No two meetings share enough topics to be connected yet.
+              {query === ''
+                ? 'No two meetings share enough topics to be connected yet.'
+                : `No connections match "${filter.trim()}".`}
             </p>
           ) : (
             <ul className="space-y-2">
-              {graph.edges.map((edge) => (
+              {visibleEdges.map((edge) => (
                 <li key={`${edge.from}-${edge.to}`} className="text-caption">
                   <span className="font-medium">
                     {byId.get(edge.from)?.node.title ?? edge.from}

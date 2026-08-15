@@ -174,12 +174,12 @@ function statsFor(session: Session, data: HomeStatsData): Tile[] {
 function CaptureCallout() {
   return (
     <Link href="/record" className="block h-full">
-      <div className="flex h-full flex-col justify-between rounded-xl border border-line bg-surface px-4 py-3 transition hover:border-line-strong">
+      <div className="flex h-full flex-col justify-between rounded-xl border border-line bg-surface px-5 py-4 transition hover:-translate-y-px hover:border-line-strong">
         <div>
-          <p className="text-sm font-semibold tracking-tight">Start a new capture</p>
-          <p className="mt-0.5 text-caption text-muted">Record or upload a meeting.</p>
+          <p className="text-base font-semibold tracking-tight">Start a new capture</p>
+          <p className="mt-1 text-caption text-muted">Record or upload a meeting.</p>
         </div>
-        <span className="mt-2 text-caption font-medium text-brand">Go to Capture →</span>
+        <span className="mt-3 text-caption font-semibold text-brand">Go to Capture →</span>
       </div>
     </Link>
   );
@@ -231,8 +231,8 @@ export default function HomePage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((item) => (
           <Link key={item.href} href={item.href} className="block">
-            <Card className="h-full p-5 transition hover:-translate-y-px hover:border-line-strong">
-              <h2 className="text-base font-semibold tracking-tight">{item.label}</h2>
+            <Card className="h-full p-6 transition hover:-translate-y-px hover:border-line-strong">
+              <h2 className="text-lg font-bold tracking-tight">{item.label}</h2>
               <p className="mt-1.5 text-sm text-muted">{item.hint}</p>
             </Card>
           </Link>

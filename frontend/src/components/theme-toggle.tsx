@@ -8,7 +8,6 @@ import {
   setTheme as persistTheme,
   type Theme,
 } from '@/lib/theme';
-import { Button } from './ui';
 
 /**
  * Icon button for the public pages, where there is no Settings page to hold
@@ -42,15 +41,18 @@ export function ThemeToggle() {
     setThemeState(next);
   }
 
+  const targetLabel = theme === 'dark' ? 'Light' : 'Dark';
+
   return (
-    <Button
+    <button
       type="button"
-      variant="secondary"
       onClick={toggle}
-      aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+      aria-label={`Switch to ${targetLabel.toLowerCase()} theme`}
+      className="inline-flex items-center gap-1.5 rounded-full border border-line-strong bg-surface px-3.5 py-1.5 text-sm font-medium text-text transition hover:bg-raised active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
     >
       {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-    </Button>
+      {targetLabel}
+    </button>
   );
 }
 

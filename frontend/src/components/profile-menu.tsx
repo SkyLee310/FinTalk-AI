@@ -86,7 +86,7 @@ export function ProfileMenu({
           setClosing(false);
           setOpen(true);
         }}
-        className="flex items-center gap-2 rounded-lg border border-line-strong bg-surface px-2 py-1.5 text-sm transition hover:bg-raised active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        className="flex items-center gap-2 rounded-full border border-line-strong bg-surface py-1 pl-1 pr-3.5 text-sm transition hover:bg-raised active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         <span
           aria-hidden="true"
@@ -121,7 +121,7 @@ export function ProfileMenu({
           // a popover that grows out of the control makes the relationship
           // between the two obvious without an arrow to point it out.
           style={{ transformOrigin: 'top right' }}
-          className={`absolute right-0 top-[calc(100%+0.5rem)] z-30 w-64 overflow-hidden rounded-xl border border-line bg-surface shadow-lg ${
+          className={`absolute right-0 top-[calc(100%+0.5rem)] z-30 w-60 overflow-hidden rounded-xl border border-line bg-surface shadow-lg ${
             closing
               ? 'animate-[pop-out_140ms_ease-in_both]'
               : 'animate-[pop-in_140ms_var(--ease-out)_both]'

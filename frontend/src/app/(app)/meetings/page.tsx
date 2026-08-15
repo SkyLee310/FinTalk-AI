@@ -53,75 +53,70 @@ function MeetingRow({
 
   return (
     <li>
-      <div className="rounded-xl border border-line bg-surface px-5 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 gap-3">
-            <span className="shrink-0 text-sm font-medium tabular-nums text-faint">
-              {position}.
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{meeting.title}</p>
-              <p className="mt-0.5 text-xs text-faint">
-                {new Date(meeting.occurredAt).toLocaleString()}
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {meeting.shariahFlagCount > 0 && (
-              <Badge tone="warn" dot>
-                {meeting.shariahFlagCount} Shariah finding
-                {meeting.shariahFlagCount === 1 ? '' : 's'}
-              </Badge>
-            )}
-            {meeting.termSheetCount > 0 && (
-              <Badge tone="neutral">
-                {meeting.termSheetCount} term sheet
-                {meeting.termSheetCount === 1 ? '' : 's'}
-              </Badge>
-            )}
-            <Badge tone={STATUS_TONE[meeting.status]} dot>
-              {meeting.status}
-            </Badge>
-          </div>
+      <div className="grid grid-cols-[2rem_1fr] items-center gap-x-4 gap-y-3 rounded-xl border border-line bg-surface px-5 py-4 transition hover:border-line-strong sm:grid-cols-[2rem_1fr_auto_auto]">
+        <span className="text-center text-sm font-bold tabular-nums text-faint">{position}</span>
+        <div className="min-w-0">
+          <p className="truncate text-[15px] font-semibold">{meeting.title}</p>
+          <p className="mt-0.5 text-xs text-faint">
+            {new Date(meeting.occurredAt).toLocaleString()}
+          </p>
         </div>
-
-        {error !== null && (
-          <div className="mt-3">
-            <ErrorNote>{error}</ErrorNote>
-          </div>
-        )}
-
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+        <div className="col-span-2 flex flex-wrap items-center gap-2 sm:col-span-1 sm:justify-self-end">
+          {meeting.shariahFlagCount > 0 && (
+            <Badge tone="warn" dot>
+              {meeting.shariahFlagCount} Shariah finding
+              {meeting.shariahFlagCount === 1 ? '' : 's'}
+            </Badge>
+          )}
+          {meeting.termSheetCount > 0 && (
+            <Badge tone="neutral">
+              {meeting.termSheetCount} term sheet
+              {meeting.termSheetCount === 1 ? '' : 's'}
+            </Badge>
+          )}
+          <Badge tone={STATUS_TONE[meeting.status]} dot>
+            {meeting.status}
+          </Badge>
+        </div>
+        <div className="col-span-2 flex flex-wrap items-center gap-2 sm:col-span-1 sm:justify-self-end">
           <Link
             href={`/meetings/${meeting.id}`}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-3.5 py-2 text-sm font-medium tracking-tight text-text transition hover:bg-raised active:scale-[0.98]"
           >
             More Details
           </Link>
-          {canDelete && (confirming ? (
-            <>
-              <span className="text-sm text-danger">
-                Delete permanently? This can&apos;t be undone.
-              </span>
-              <Button
-                variant="danger"
-                disabled={busy}
-                onClick={() => {
-                  void remove();
-                }}
-              >
-                {busy ? 'Deleting…' : 'Yes, delete'}
-              </Button>
-              <Button variant="secondary" disabled={busy} onClick={() => setConfirming(false)}>
-                Cancel
-              </Button>
-            </>
-          ) : (
+          {canDelete && !confirming && (
             <Button variant="danger" onClick={() => setConfirming(true)}>
               Delete
             </Button>
-          ))}
+          )}
         </div>
+
+        {error !== null && (
+          <div className="col-span-2 sm:col-span-4">
+            <ErrorNote>{error}</ErrorNote>
+          </div>
+        )}
+
+        {canDelete && confirming && (
+          <div className="col-span-2 flex flex-wrap items-center gap-2 border-t border-line pt-3 sm:col-span-4">
+            <span className="text-sm text-danger">
+              Delete permanently? This can&apos;t be undone.
+            </span>
+            <Button
+              variant="danger"
+              disabled={busy}
+              onClick={() => {
+                void remove();
+              }}
+            >
+              {busy ? 'Deleting…' : 'Yes, delete'}
+            </Button>
+            <Button variant="secondary" disabled={busy} onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+          </div>
+        )}
       </div>
     </li>
   );

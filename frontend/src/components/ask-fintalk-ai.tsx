@@ -61,7 +61,11 @@ const MAX_HISTORY_TURNS = 10;
  */
 export function AskFinTalkAITrigger({ onClick }: { onClick: () => void }) {
   return (
-    <Button type="button" variant="secondary" onClick={onClick}>
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-2 rounded-full border border-line-strong bg-surface px-4 py-2 text-sm font-medium text-text transition hover:bg-raised active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+    >
       <svg
         viewBox="0 0 24 24"
         width="18"
@@ -76,7 +80,7 @@ export function AskFinTalkAITrigger({ onClick }: { onClick: () => void }) {
         <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
       </svg>
       Ask FinTalk AI
-    </Button>
+    </button>
   );
 }
 
@@ -85,7 +89,7 @@ function Bubble({ message }: { message: ChatMessage }) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[85%] rounded-lg px-4 py-2.5 text-body ${
+        className={`max-w-[85%] rounded-xl px-4 py-2.5 text-body ${
           isUser ? 'bg-brand text-canvas' : 'border border-line bg-raised'
         }`}
       >
@@ -215,7 +219,7 @@ export function AskFinTalkAI({
         type="button"
         aria-label="Close Ask FinTalk AI"
         onClick={onClose}
-        className={`absolute inset-0 bg-text/20 backdrop-blur-[1px] ${
+        className={`absolute inset-0 bg-black/70 backdrop-blur-sm ${
           closing
             ? 'animate-[fade-out_var(--dur-base)_var(--ease-out)_both]'
             : 'animate-[fade-in_var(--dur-base)_var(--ease-out)_both]'

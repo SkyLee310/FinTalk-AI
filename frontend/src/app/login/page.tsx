@@ -67,7 +67,7 @@ function LoginPageContent() {
           <h1 className="text-lg font-semibold tracking-tight">FinTalk AI</h1>
         </div>
 
-        <GlassPanel className="p-6">
+        <GlassPanel className="p-6 sm:p-8">
           <SuccessNote>
             Your request has been submitted. An administrator will review it and assign
             your access.
@@ -103,19 +103,14 @@ function LoginPageContent() {
         <span className="text-brand">
           <Logo />
         </span>
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">FinTalk AI</h1>
-          <p className="text-xs text-faint">
-            {mode === 'signin' ? 'Sign in to continue' : 'Request an account'}
-          </p>
-        </div>
+        <h1 className="text-lg font-semibold tracking-tight">FinTalk AI</h1>
       </div>
 
-      <GlassPanel className="p-6">
+      <GlassPanel className="p-6 sm:p-8">
         <div
           role="tablist"
           aria-label="Sign in or sign up"
-          className="mb-5 grid grid-cols-2 gap-1 rounded-lg border border-line-strong bg-raised p-1"
+          className="mb-6 grid grid-cols-2 gap-1 rounded-xl border border-line-strong bg-raised p-1"
         >
           <button
             type="button"
@@ -143,6 +138,17 @@ function LoginPageContent() {
           >
             Sign up
           </button>
+        </div>
+
+        <div className="mb-6">
+          <h2 className="text-[1.75rem] font-bold leading-tight tracking-[-0.02em] sm:text-[2rem]">
+            {mode === 'signin' ? 'Sign in' : 'Request access'}
+          </h2>
+          <p className="mt-1.5 text-sm text-muted">
+            {mode === 'signin'
+              ? 'Enter your credentials to continue.'
+              : 'Tell us who you are — an administrator will review and assign access.'}
+          </p>
         </div>
 
         {mode === 'signin' ? <SignInForm /> : <SignUpForm onSuccess={() => setRegistered(true)} />}

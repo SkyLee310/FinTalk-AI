@@ -464,8 +464,8 @@ export default function MeetingDetailPage() {
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight">{data.title}</h1>
-          <p className="mt-1 text-sm text-muted">
+          <h1 className="text-[1.75rem] font-bold tracking-[-0.02em] sm:text-3xl">{data.title}</h1>
+          <p className="mt-1.5 text-sm text-muted">
             {new Date(data.occurredAt).toLocaleString()}
             {data.transcript && ` · ${data.transcript.languages.join(', ')}`}
             {data.transcript?.processingMs != null

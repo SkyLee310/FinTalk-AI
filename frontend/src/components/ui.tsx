@@ -216,7 +216,7 @@ export function Button({
 }
 
 const CONTROL =
-  'w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-text placeholder:text-faint disabled:opacity-60';
+  'w-full rounded-xl border border-line-strong bg-surface px-4 py-2.5 text-sm text-text placeholder:text-faint disabled:opacity-60';
 
 export function Input({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${CONTROL} ${FOCUS} ${className}`} />;

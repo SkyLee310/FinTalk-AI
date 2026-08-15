@@ -86,7 +86,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       */}
       <header
         id="app-header"
-        className="sticky top-0 z-20 border-b border-line bg-canvas/85 backdrop-blur"
+        className="sticky top-0 z-20 border-b border-line bg-canvas/85 backdrop-blur-md"
       >
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
           <Link href="/home" className="flex items-center gap-2.5 rounded">
@@ -133,7 +133,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   // subtitles is a menu, not a nav bar. Each section's own page
                   // states its purpose in words that do not need hovering.
                   title={item.hint}
-                  className={`rounded-md px-2.5 py-1.5 text-caption transition sm:text-sm ${
+                  className={`rounded-md px-3.5 py-1.5 text-caption transition sm:text-sm ${
                     active
                       ? 'bg-brand-soft font-medium text-brand'
                       : 'text-muted hover:bg-raised hover:text-text'

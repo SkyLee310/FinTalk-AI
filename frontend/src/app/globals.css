@@ -40,8 +40,8 @@
 }
 
 @theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
+  --font-sans: var(--font-plus-jakarta-sans), ui-sans-serif, system-ui,
+    -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo,
     Consolas, monospace;
 
@@ -82,23 +82,32 @@
 }
 
 :root {
-  --canvas: #f5f7f9;
+  --canvas: #f8fafc;
   --surface: #ffffff;
-  --raised: #fbfcfd;
+  --raised: #f1f5f9;
 
-  --line: #e2e8ee;
-  --line-strong: #c8d3de;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
 
-  --text: #0e1a26;
-  --muted: #4c5d6e;
-  /* 4.6:1 on --canvas. `faint` is used at text-xs, so it must still clear
-     the 4.5:1 floor for small text rather than the 3:1 large-text one. */
-  --faint: #5f7286;
+  --text: #0f172a;
+  --muted: #475569;
+  /* 4.55:1 on --canvas, taken as-is from the reference mockup's text-dim.
+     `faint` is used at text-xs, so it must still clear the 4.5:1 floor for
+     small text rather than the 3:1 large-text one. */
+  --faint: #64748b;
 
-  /* Deep teal: reads as verified rather than promotional. */
+  /*
+   * Deep teal, unchanged from before this palette. The mockup's own accent
+   * (#10b981) is what dark theme adopts below, but at only 2.42:1 on white it
+   * fails AA for the small uppercase labels (panel-title, section-tag) that
+   * use --brand as text color — so light theme keeps this already-verified
+   * value rather than inheriting a color that reads fine on screenshots taken
+   * against a dark canvas and fails on this one.
+   */
   --brand: #077866;
   --brand-strong: #055a4d;
-  --brand-soft: #e4f5f1;
+  /* The mockup's own light nav-active-bg: a soft mint tint of the accent. */
+  --brand-soft: #d1fae5;
 
   --ok: #0f6b55;
   --ok-soft: #e3f5ef;
@@ -129,29 +138,35 @@
  */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --canvas: #060b11;
-    --surface: #0c141d;
-    --raised: #121d28;
+    --canvas: #070a10;
+    --surface: #090e17;
+    --raised: #0f1726;
 
-    --line: #1d2a37;
-    --line-strong: #2b3c4d;
+    --line: rgb(255 255 255 / 8%);
+    --line-strong: rgb(255 255 255 / 12%);
 
-    --text: #e8eff6;
-    --muted: #9db0c3;
-    --faint: #6f8499;
+    --text: #f8fafc;
+    --muted: #8e9bb0;
+    /*
+     * The mockup's own text-dim (#64748b) is only 4.16:1 on this canvas —
+     * short of the 4.5:1 floor `--faint` documents in the light block above.
+     * Nudged to the nearest step that clears it (4.59:1) while staying the
+     * same dim slate-blue the mockup intends.
+     */
+    --faint: #687c8f;
 
-    --brand: #2ecfa9;
-    --brand-strong: #74e3c8;
-    --brand-soft: #0a2a24;
+    --brand: #10b981;
+    --brand-strong: #34d399;
+    --brand-soft: rgb(16 185 129 / 15%);
 
-    --ok: #35d39f;
-    --ok-soft: #082721;
-    --warn: #e0b341;
-    --warn-soft: #2a2008;
-    --danger: #ff7a72;
-    --danger-soft: #2d1211;
+    --ok: #34d399;
+    --ok-soft: #0d2e25;
+    --warn: #f59e0b;
+    --warn-soft: rgb(245 158 11 / 15%);
+    --danger: #ef4444;
+    --danger-soft: rgb(239 68 68 / 15%);
 
-    --glass-bg: rgb(18 29 40 / 62%);
+    --glass-bg: rgb(15 23 38 / 62%);
     --glass-border: rgb(255 255 255 / 8%);
     --glass-highlight: rgb(255 255 255 / 6%);
   }
@@ -167,29 +182,29 @@
  * the same numbers.
  */
 :root[data-theme='dark'] {
-  --canvas: #060b11;
-  --surface: #0c141d;
-  --raised: #121d28;
+  --canvas: #070a10;
+  --surface: #090e17;
+  --raised: #0f1726;
 
-  --line: #1d2a37;
-  --line-strong: #2b3c4d;
+  --line: rgb(255 255 255 / 8%);
+  --line-strong: rgb(255 255 255 / 12%);
 
-  --text: #e8eff6;
-  --muted: #9db0c3;
-  --faint: #6f8499;
+  --text: #f8fafc;
+  --muted: #8e9bb0;
+  --faint: #687c8f;
 
-  --brand: #2ecfa9;
-  --brand-strong: #74e3c8;
-  --brand-soft: #0a2a24;
+  --brand: #10b981;
+  --brand-strong: #34d399;
+  --brand-soft: rgb(16 185 129 / 15%);
 
-  --ok: #35d39f;
-  --ok-soft: #082721;
-  --warn: #e0b341;
-  --warn-soft: #2a2008;
-  --danger: #ff7a72;
-  --danger-soft: #2d1211;
+  --ok: #34d399;
+  --ok-soft: #0d2e25;
+  --warn: #f59e0b;
+  --warn-soft: rgb(245 158 11 / 15%);
+  --danger: #ef4444;
+  --danger-soft: rgb(239 68 68 / 15%);
 
-  --glass-bg: rgb(18 29 40 / 62%);
+  --glass-bg: rgb(15 23 38 / 62%);
   --glass-border: rgb(255 255 255 / 8%);
   --glass-highlight: rgb(255 255 255 / 6%);
 }

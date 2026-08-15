@@ -79,6 +79,14 @@ function LevelMeter({ level, active }: { level: number; active: boolean }) {
   );
 }
 
+function MicIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z" />
+    </svg>
+  );
+}
+
 export default function RecordPage() {
   const router = useRouter();
   const session = useAsync<Session>(() => api.me(), 'session');
@@ -427,35 +435,84 @@ export default function RecordPage() {
           </fieldset>
 
           {mode === 'record' ? (
-            <>
+            <div className="rounded-xl border border-line bg-raised/60 p-6">
+              <div className="mb-6 flex items-center justify-between border-b border-line pb-4">
+                <div className="flex items-center gap-3">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
+                    <MicIcon />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold">Audio capture</p>
+                    <p className="font-mono text-xs text-faint">Real-time secure recording</p>
+                  </div>
+                </div>
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full border border-danger/20 bg-danger-soft px-2.5 py-1 text-xs font-bold tracking-wide text-danger ${
+                    recorder.state === 'recording' ? '' : 'invisible'
+                  }`}
+                >
+                  <span aria-hidden="true" className="size-1.5 animate-pulse rounded-full bg-danger" />
+                  REC
+                </span>
+              </div>
+
               {!recorder.supported && (
                 <ErrorNote>
                   This browser cannot record audio. Switch to &ldquo;Upload a
                   file&rdquo; above instead.
                 </ErrorNote>
               )}
-
               {recorder.error !== null && <ErrorNote>{recorder.error}</ErrorNote>}
 
-              <div className="flex flex-wrap items-center gap-4">
+              <div className="flex flex-col items-center gap-5">
+                {(recorder.state === 'idle' || recorder.state === 'requesting') && (
+                  <button
+                    type="button"
+                    disabled={!armed || !recorder.supported || recorder.state === 'requesting'}
+                    onClick={() => {
+                      void recorder.start();
+                    }}
+                    aria-label={
+                      recorder.state === 'requesting' ? 'Opening microphone' : 'Start recording'
+                    }
+                    className="grid size-[90px] place-items-center rounded-full border-4 border-danger/25 bg-danger/10 transition hover:scale-[1.04] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span aria-hidden="true" className="size-[22px] rounded-full bg-danger" />
+                  </button>
+                )}
+
+                {(recorder.state === 'recording' || recorder.state === 'paused') && (
+                  <button
+                    type="button"
+                    onClick={recorder.stop}
+                    aria-label="Stop recording"
+                    className="grid size-[90px] place-items-center rounded-full border-4 border-danger/25 bg-danger/10 transition hover:scale-[1.04] active:scale-[0.98]"
+                  >
+                    <span aria-hidden="true" className="size-5 rounded bg-danger" />
+                  </button>
+                )}
+
+                <LevelMeter level={recorder.level} active={recorder.state === 'recording'} />
+
                 <p
-                  className="font-mono text-3xl tabular-nums"
+                  className="font-mono text-[2.2rem] font-bold tabular-nums tracking-tight"
                   aria-label={`Elapsed ${formatElapsed(recorder.elapsedMs)}`}
                 >
                   {formatElapsed(recorder.elapsedMs)}
                 </p>
-                <LevelMeter level={recorder.level} active={recorder.state === 'recording'} />
+
                 {recorder.state === 'recording' && (
-                  <span className="flex items-center gap-2 text-sm font-medium text-danger">
-                    <span
-                      aria-hidden="true"
-                      className="size-2.5 animate-pulse rounded-full bg-danger"
-                    />
-                    Recording
-                  </span>
+                  <Button variant="secondary" onClick={recorder.pause}>
+                    Pause
+                  </Button>
                 )}
                 {recorder.state === 'paused' && (
-                  <span className="text-sm font-medium text-warn">Paused</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium text-warn">Paused</span>
+                    <Button variant="secondary" onClick={recorder.resume}>
+                      Resume
+                    </Button>
+                  </div>
                 )}
               </div>
 
@@ -474,46 +531,13 @@ export default function RecordPage() {
                       : ''}
               </p>
 
-              <div className="flex flex-wrap gap-2">
-                {(recorder.state === 'idle' || recorder.state === 'requesting') && (
-                  <Button
-                    disabled={!armed || !recorder.supported || recorder.state === 'requesting'}
-                    onClick={() => {
-                      void recorder.start();
-                    }}
-                  >
-                    {recorder.state === 'requesting' ? 'Opening microphone…' : 'Start recording'}
-                  </Button>
-                )}
-
-                {recorder.state === 'recording' && (
-                  <>
-                    <Button variant="secondary" onClick={recorder.pause}>
-                      Pause
-                    </Button>
-                    <Button variant="danger" onClick={recorder.stop}>
-                      Stop
-                    </Button>
-                  </>
-                )}
-
-                {recorder.state === 'paused' && (
-                  <>
-                    <Button onClick={recorder.resume}>Resume</Button>
-                    <Button variant="danger" onClick={recorder.stop}>
-                      Stop
-                    </Button>
-                  </>
-                )}
-              </div>
-
               {(recorder.state === 'recording' || recorder.state === 'paused') && (
-                <p className="text-xs text-faint">
+                <p className="mt-4 text-center text-xs text-faint">
                   Keep this tab open. The audio is only in this browser until you
                   upload it, so closing the tab loses the recording.
                 </p>
               )}
-            </>
+            </div>
           ) : (
             audioFile === null && (
               <Field label="Audio file" htmlFor="audioFile">

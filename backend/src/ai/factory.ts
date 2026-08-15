@@ -1,6 +1,8 @@
 import type { Env } from '../config/env.js';
 import { FakeTranscriptionProvider } from './fake.provider.js';
+import { FallbackTranscriptionProvider } from './fallback.provider.js';
 import { GeminiTranscriptionProvider } from './gemini.provider.js';
+import { OpenRouterProvider } from './openrouter.provider.js';
 import type { TranscriptionProvider } from './provider.js';
 
 /**
@@ -38,7 +40,7 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
           + 'GEMINI_MODEL_TRANSCRIBE, GEMINI_MODEL_TEXT and GEMINI_MODEL_VISION.',
         );
       }
-      return new GeminiTranscriptionProvider({
+      const gemini = new GeminiTranscriptionProvider({
         apiKey: GEMINI_API_KEY,
         transcribeModel: GEMINI_MODEL_TRANSCRIBE,
         textModel: GEMINI_MODEL_TEXT,
@@ -50,6 +52,22 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
          */
         embeddingModel: env.GEMINI_MODEL_EMBEDDING ?? '',
       });
+
+      /**
+       * OPENROUTER_API_KEY is the only switch for this. Unset, boot behaviour
+       * is byte-for-byte what it was before this fallback existed — Gemini
+       * alone. Set, every Gemini call gets one retry against OpenRouter
+       * before the caller ever sees a failure.
+       */
+      if (env.OPENROUTER_API_KEY === undefined || env.OPENROUTER_API_KEY === '') {
+        return gemini;
+      }
+      const openRouter = new OpenRouterProvider({
+        apiKey: env.OPENROUTER_API_KEY,
+        model: env.OPENROUTER_MODEL,
+        transcribeModel: env.OPENROUTER_MODEL_TRANSCRIBE,
+      });
+      return new FallbackTranscriptionProvider(gemini, openRouter);
     }
   }
 }

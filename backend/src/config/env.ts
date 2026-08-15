@@ -28,6 +28,22 @@ const base = z.object({
    */
   GEMINI_MODEL_EMBEDDING: z.string().optional(),
 
+  /**
+   * Optional automatic fallback. With TRANSCRIPTION_PROVIDER=gemini, setting
+   * OPENROUTER_API_KEY wraps Gemini so a failed call retries once against
+   * OpenRouter before the request fails. Leaving it unset leaves behavior
+   * exactly as it was before this fallback existed: Gemini only.
+   *
+   * The two model ids default to widely available OpenRouter models so
+   * setting the key alone is enough — no model research required to turn
+   * this on. embed() has no OpenRouter equivalent and is never a fallback
+   * target: two embedding models produce vectors that are not comparable,
+   * so mixing them would silently corrupt cross-meeting similarity.
+   */
+  OPENROUTER_API_KEY: z.string().optional(),
+  OPENROUTER_MODEL: z.string().default('openai/gpt-4o'),
+  OPENROUTER_MODEL_TRANSCRIBE: z.string().default('openai/whisper-large-v3'),
+
   JWT_ACCESS_SECRET: z.string().min(32, 'must be at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'must be at least 32 characters'),
   JWT_ACCESS_TTL: z.string().default('15m'),

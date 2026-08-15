@@ -12,7 +12,7 @@
  * capability the product did not have, which is worse than an honest gap.
  */
 
-export type ProviderName = 'gemini' | 'fake';
+export type ProviderName = 'gemini' | 'fake' | 'openrouter';
 
 /**
  * Below this, a segment is surfaced for a human to confirm or correct.

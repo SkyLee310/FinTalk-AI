@@ -403,9 +403,10 @@ Built for a hackathon submission (see [`Rubric/`](Rubric/) for the judging crite
 
 | Name | Role |
 |---|---|
-| Sky Lee ([@SkyLee310](https://github.com/SkyLee310)) | Maintainer |
-| _add your teammates here_ | |
-
+| Sky Lee ([@SkyLee310](https://github.com/SkyLee310)) | AI Engineer |
+| Tracia Ong | Tech Lead |
+| Jacqueline Lim | Product Manager |
+| Liew Hui Xuan | UIUX Designer |
 ---
 
 ## 📜 License

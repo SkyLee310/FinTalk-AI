@@ -223,6 +223,10 @@ export interface ProjectDraft {
 
 export interface GroundingExcerpt {
   readonly meetingId: string;
+  /** So the model can name the meeting in prose instead of falling back to `meetingId`. */
+  readonly title: string;
+  /** ISO timestamp. Prompted to render as a calendar date, not the raw ISO string. */
+  readonly occurredAt: string;
   /** Already redacted. Placeholders only. */
   readonly text: string;
 }

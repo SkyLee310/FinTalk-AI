@@ -280,6 +280,8 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
     if (transcript === undefined) return [];
     return [{
       meetingId: scored.meetingId,
+      title: transcript.meeting.title,
+      occurredAt: transcript.meeting.occurredAt.toISOString(),
       // Already redacted — the whole reason the vault is never touched.
       text: transcript.rawRedacted.slice(0, EXCERPT_CHARS),
     }];

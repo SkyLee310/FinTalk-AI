@@ -457,7 +457,9 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
     excerpts: readonly GroundingExcerpt[],
   ): Promise<GroundedAnswer> {
     const context = excerpts
-      .map((excerpt) => `<meeting id="${excerpt.meetingId}">\n${excerpt.text}\n</meeting>`)
+      .map((excerpt) =>
+        `<meeting id="${excerpt.meetingId}" title="${excerpt.title}" date="${excerpt.occurredAt}">\n`
+        + `${excerpt.text}\n</meeting>`)
       .join('\n\n');
 
     let raw: string;

@@ -556,6 +556,15 @@
 }
 
 /*
+ * The sidebar's manual collapse toggle (app-sidebar.tsx) resizes rather than
+ * snaps between its two fixed widths — no `auto` endpoint involved, so
+ * unlike details-content above this needs no interpolate-size trick.
+ */
+.sidebar-rail {
+  transition: width var(--dur-base) var(--ease-out);
+}
+
+/*
  * Terminal/technical texture for the app shell's main content area, and the
  * live-recording pulse used on Capture's record button and status dots —
  * both lifted from the reference. Kept as plain utility classes rather than

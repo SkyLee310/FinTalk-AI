@@ -76,11 +76,15 @@ export function AppSidebar({
     });
   }
 
-  const showLabels = collapsed ? 'hidden' : 'hidden md:block';
+  // Width (.sidebar-rail, globals.css) and this opacity both ride CSS
+  // transitions rather than snapping. Opacity resolves faster than the
+  // width so labels finish fading before the rail finishes resizing,
+  // instead of visibly smearing across the resize.
+  const labelVisibility = `transition-opacity duration-150 ${collapsed ? 'opacity-0' : 'opacity-0 md:opacity-100'}`;
 
   return (
     <aside
-      className={`sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-line bg-raised ${collapsed ? '' : 'md:w-64'}`}
+      className={`sidebar-rail sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-line bg-raised ${collapsed ? '' : 'md:w-64'}`}
     >
       <div className="flex h-16 items-center gap-2.5 border-b border-line px-4">
         <Link
@@ -88,7 +92,7 @@ export function AppSidebar({
           className="flex items-center gap-2.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
           <Logo className="size-8 shrink-0" />
-          <span className={`min-w-0 ${showLabels}`}>
+          <span className={`min-w-0 ${labelVisibility}`}>
             <span className="block truncate text-sm font-semibold tracking-tight">
               FinTalk AI
             </span>
@@ -100,7 +104,9 @@ export function AppSidebar({
       </div>
 
       <nav aria-label="Primary" className="flex-1 space-y-1 p-2 md:p-3">
-        <p className={`px-2 pb-1 font-mono text-[0.62rem] tracking-widest text-faint uppercase ${showLabels}`}>
+        <p
+          className={`truncate px-2 pb-1 font-mono text-[0.62rem] tracking-widest text-faint uppercase ${labelVisibility}`}
+        >
           Workspace
         </p>
         {items.map((item, index) => {
@@ -145,7 +151,7 @@ export function AppSidebar({
                   className={`size-[1.125rem] shrink-0 ${active ? 'text-brand' : 'text-faint group-hover:text-text'}`}
                 />
               )}
-              <span className={`min-w-0 flex-1 ${showLabels}`}>
+              <span className={`min-w-0 flex-1 ${labelVisibility}`}>
                 <span className="block truncate text-sm font-medium">{item.label}</span>
                 <span className="block truncate text-[0.7rem] text-faint">{item.hint}</span>
               </span>

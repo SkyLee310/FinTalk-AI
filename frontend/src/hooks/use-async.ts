@@ -6,6 +6,13 @@ import { ApiError } from '@/lib/api-client';
 export interface AsyncState<T> {
   data: T | null;
   error: string | null;
+  /**
+   * The HTTP status when `error` came from an ApiError; `null` for a
+   * network/parse failure, or when there is no error. Lets a caller tell a
+   * genuine 401 (session actually gone) apart from a transient failure
+   * (worth retrying) without re-deriving it from the error string.
+   */
+  errorStatus: number | null;
   loading: boolean;
   /**
    * `{ silent: true }` refetches without touching `loading` — for polling a
@@ -35,6 +42,7 @@ export function useAsync<T>(load: () => Promise<T>, key: string): AsyncState<T> 
 
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [nonce, setNonce] = useState(0);
   // Read by the effect below, which fires from the nonce change this sets in
@@ -53,6 +61,7 @@ export function useAsync<T>(load: () => Promise<T>, key: string): AsyncState<T> 
     const silent = silentRef.current;
     if (!silent) setLoading(true);
     setError(null);
+    setErrorStatus(null);
 
     loadRef
       .current()
@@ -60,7 +69,10 @@ export function useAsync<T>(load: () => Promise<T>, key: string): AsyncState<T> 
         if (!cancelled) setData(value);
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setError(describeError(cause));
+        if (!cancelled) {
+          setError(describeError(cause));
+          setErrorStatus(cause instanceof ApiError ? cause.status : null);
+        }
       })
       .finally(() => {
         if (!cancelled && !silent) setLoading(false);
@@ -72,5 +84,5 @@ export function useAsync<T>(load: () => Promise<T>, key: string): AsyncState<T> 
     };
   }, [key, nonce]);
 
-  return { data, error, loading, reload };
+  return { data, error, errorStatus, loading, reload };
 }

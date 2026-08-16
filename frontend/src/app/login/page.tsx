@@ -4,13 +4,49 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { type FormEvent, Suspense, useState } from 'react';
 import { GlassPanel } from '@/components/glass-panel';
 import { Logo } from '@/components/logo';
+import { toast } from '@/components/toast';
 import { Button, ErrorNote, Field, Input, Spinner, SuccessNote } from '@/components/ui';
 import { describeError } from '@/hooks/use-async';
 import { api } from '@/lib/api';
 import { ApiError } from '@/lib/api-client';
+import { visibleNav } from '@/lib/nav';
 import { navigateWithTransition } from '@/lib/view-transition';
 
 type Mode = 'signin' | 'signup';
+
+const DEMO_PASSWORD = 'Demo!2345';
+const DEMO_ACCOUNTS: readonly { readonly role: string; readonly email: string }[] = [
+  { role: 'Maker', email: 'maker@fintalk.test' },
+  { role: 'Checker', email: 'checker@fintalk.test' },
+  { role: 'Shariah', email: 'shariah@fintalk.test' },
+  { role: 'Oversight', email: 'oversight@fintalk.test' },
+  { role: 'Admin', email: 'admin@fintalk.test' },
+];
+
+/**
+ * The one sign-in path both the real form and the one-click demo buttons
+ * use — a demo button is not a shortcut around login, it is the same call
+ * with the credentials pre-filled. Lands each role on the first section its
+ * own nav contains (visibleNav) rather than a fixed page, so a role without
+ * Capture never opens on a capability error; /settings is the fallback for
+ * the one session with no visible section at all (an OVERSIGHT account with
+ * neither view flag set).
+ */
+async function performSignIn(
+  router: ReturnType<typeof useRouter>,
+  email: string,
+  password: string,
+): Promise<string | null> {
+  try {
+    const session = await api.login(email, password);
+    const destination = visibleNav(session)[0];
+    toast(destination ? `Signed in — opening ${destination.label}` : 'Signed in', 'ok');
+    navigateWithTransition(() => router.push(destination?.href ?? '/settings'));
+    return null;
+  } catch (cause) {
+    return describeError(cause);
+  }
+}
 
 /**
  * `useSearchParams` opts a statically-prerendered client page into
@@ -48,11 +84,29 @@ export default function LoginPage() {
  * history entry behind switching a tab.
  */
 function LoginPageContent() {
+  const router = useRouter();
   const params = useSearchParams();
   const [mode, setMode] = useState<Mode>(
     params.get('mode') === 'signup' ? 'signup' : 'signin',
   );
   const [registered, setRegistered] = useState(false);
+
+  // Lifted out of SignInForm so a demo-account click can drive the same
+  // visible fields and the same submit path as typing them in by hand — the
+  // point is to watch the credentials appear and then submit, not to sign
+  // in through some parallel, invisible route.
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function signIn(signInEmail: string, signInPassword: string): Promise<void> {
+    setBusy(true);
+    setError(null);
+    const failure = await performSignIn(router, signInEmail, signInPassword);
+    if (failure !== null) setError(failure);
+    setBusy(false);
+  }
 
   if (registered) {
     return (
@@ -151,7 +205,19 @@ function LoginPageContent() {
           </p>
         </div>
 
-        {mode === 'signin' ? <SignInForm /> : <SignUpForm onSuccess={() => setRegistered(true)} />}
+        {mode === 'signin' ? (
+          <SignInForm
+            email={email}
+            password={password}
+            onEmailChange={setEmail}
+            onPasswordChange={setPassword}
+            error={error}
+            busy={busy}
+            onSubmit={() => void signIn(email, password)}
+          />
+        ) : (
+          <SignUpForm onSuccess={() => setRegistered(true)} />
+        )}
       </GlassPanel>
 
       {/*
@@ -160,56 +226,46 @@ function LoginPageContent() {
         Sign-in only: someone signing up has no seeded account to use.
       */}
       {mode === 'signin' && (
-        <div className="mt-5 rounded-lg border border-line bg-raised px-4 py-3 text-xs text-muted">
-          <p className="font-medium text-text">Demo accounts — synthetic data only</p>
-          <p className="mt-1">
-            <code className="font-mono">maker@fintalk.test</code>,{' '}
-            <code className="font-mono">checker@fintalk.test</code>,{' '}
-            <code className="font-mono">shariah@fintalk.test</code>,{' '}
-            <code className="font-mono">oversight@fintalk.test</code> and{' '}
-            <code className="font-mono">admin@fintalk.test</code>.
-          </p>
-          <p className="mt-1">
-            Password <code className="font-mono">Demo!2345</code>. Run{' '}
-            <code className="font-mono">npm run db:seed</code> in{' '}
-            <code className="font-mono">backend/</code> first.
-          </p>
-        </div>
+        <DemoAccounts
+          busy={busy}
+          onSelect={(account) => {
+            setEmail(account.email);
+            setPassword(DEMO_PASSWORD);
+            void signIn(account.email, DEMO_PASSWORD);
+          }}
+        />
       )}
     </main>
   );
 }
 
-/** Today's exact sign-in fields and flow, unchanged except the redirect now transitions. */
-function SignInForm() {
-  const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function submit(event: FormEvent): Promise<void> {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      // Login's own response carries the session, so this skips a second
-      // /auth/me round trip. Land on /record — Capture, the first stage of
-      // the work — rather than guessing which of this role's other sections
-      // it wants first.
-      await api.login(email, password);
-      navigateWithTransition(() => router.push('/record'));
-    } catch (cause) {
-      setError(describeError(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
-
+/**
+ * Controlled by LoginPageContent, not self-contained: a demo-account click
+ * has to land in these same fields and go through this same submit, so
+ * there is exactly one sign-in path with two ways to fill it in.
+ */
+function SignInForm({
+  email,
+  password,
+  onEmailChange,
+  onPasswordChange,
+  error,
+  busy,
+  onSubmit,
+}: {
+  email: string;
+  password: string;
+  onEmailChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
+  error: string | null;
+  busy: boolean;
+  onSubmit: () => void;
+}) {
   return (
     <form
-      onSubmit={(event) => {
-        void submit(event);
+      onSubmit={(event: FormEvent) => {
+        event.preventDefault();
+        onSubmit();
       }}
       className="space-y-4"
       noValidate
@@ -224,7 +280,7 @@ function SignInForm() {
           autoComplete="username"
           required
           value={email}
-          onChange={(event) => setEmail(event.target.value)}
+          onChange={(event) => onEmailChange(event.target.value)}
         />
       </Field>
 
@@ -236,7 +292,7 @@ function SignInForm() {
           autoComplete="current-password"
           required
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={(event) => onPasswordChange(event.target.value)}
         />
       </Field>
 
@@ -244,6 +300,47 @@ function SignInForm() {
         {busy ? 'Signing in…' : 'Sign in'}
       </Button>
     </form>
+  );
+}
+
+/**
+ * One click, straight into that role's account — for pitching, where typing
+ * out credentials between roles breaks the flow. `onSelect` fills the real
+ * form fields and submits through the same `signIn` the manual form uses
+ * (LoginPageContent), so a viewer watching the screen sees the email and
+ * password actually appear before it signs in, not a login that happens
+ * out of nowhere.
+ */
+function DemoAccounts({
+  busy,
+  onSelect,
+}: {
+  busy: boolean;
+  onSelect: (account: { role: string; email: string }) => void;
+}) {
+  return (
+    <div className="mt-5 rounded-lg border border-line bg-raised px-4 py-3 text-xs text-muted">
+      <p className="font-medium text-text">Demo accounts — synthetic data only</p>
+      <p className="mt-1">Click a role to fill in its credentials and sign in.</p>
+      <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Demo accounts">
+        {DEMO_ACCOUNTS.map((account) => (
+          <button
+            key={account.email}
+            type="button"
+            disabled={busy}
+            onClick={() => onSelect(account)}
+            className="rounded-md border border-line-strong bg-surface px-2.5 py-1 font-mono text-[0.7rem] font-medium text-text transition hover:bg-canvas focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {account.role}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-faint">
+        Manual sign-in uses the same password, <code className="font-mono">Demo!2345</code>. Run{' '}
+        <code className="font-mono">npm run db:seed</code> in <code className="font-mono">backend/</code>{' '}
+        first.
+      </p>
+    </div>
   );
 }
 

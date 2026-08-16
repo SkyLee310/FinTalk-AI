@@ -307,6 +307,16 @@
   }
 }
 
+/** For a surface that arrives outside #main's automatic `rise` — e.g. a toast. */
+.animate-materialize {
+  animation: materialize var(--dur-base) var(--ease-out) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-materialize {
+    animation: none;
+  }
+}
+
 /* Panels enter and leave along the same edge they are anchored to. */
 @keyframes slide-in-right {
   from {

@@ -6,14 +6,20 @@ import {
   Landmark,
   type LucideIcon,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings2,
   ShieldCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { Logo } from '@/components/logo';
 import { type NavItem, isActive } from '@/lib/nav';
 import { navigateWithTransition } from '@/lib/view-transition';
+
+/** Manual override of the automatic narrow-viewport collapse, remembered across visits. */
+const COLLAPSE_KEY = 'fintalk-sidebar-collapsed';
 
 /**
  * Icons keyed by href rather than folded into NavItem itself.
@@ -44,15 +50,45 @@ export function AppSidebar({
   const router = useRouter();
   const currentIndex = items.findIndex((item) => isActive(pathname, item));
 
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Read after mount, not as useState's initializer: server and the first
+  // client render must agree (both false) or hydration mismatches. A stored
+  // `true` then applies a moment later, same trade the theme toggle makes
+  // everywhere except the pre-paint script reserved for theme's own flash.
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(COLLAPSE_KEY) === 'true') setCollapsed(true);
+    } catch {
+      // Storage blocked (private mode) — default expanded stands.
+    }
+  }, []);
+
+  function toggleCollapsed(): void {
+    setCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(COLLAPSE_KEY, String(next));
+      } catch {
+        // Storage blocked — the toggle still works for the rest of this visit.
+      }
+      return next;
+    });
+  }
+
+  const showLabels = collapsed ? 'hidden' : 'hidden md:block';
+
   return (
-    <aside className="sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-line bg-raised md:w-64">
+    <aside
+      className={`sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-line bg-raised ${collapsed ? '' : 'md:w-64'}`}
+    >
       <div className="flex h-16 items-center gap-2.5 border-b border-line px-4">
         <Link
           href={items[0]?.href ?? '/record'}
           className="flex items-center gap-2.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
           <Logo className="size-8 shrink-0" />
-          <span className="hidden min-w-0 md:block">
+          <span className={`min-w-0 ${showLabels}`}>
             <span className="block truncate text-sm font-semibold tracking-tight">
               FinTalk AI
             </span>
@@ -64,7 +100,7 @@ export function AppSidebar({
       </div>
 
       <nav aria-label="Primary" className="flex-1 space-y-1 p-2 md:p-3">
-        <p className="hidden px-2 pb-1 font-mono text-[0.62rem] tracking-widest text-faint uppercase md:block">
+        <p className={`px-2 pb-1 font-mono text-[0.62rem] tracking-widest text-faint uppercase ${showLabels}`}>
           Workspace
         </p>
         {items.map((item, index) => {
@@ -109,12 +145,14 @@ export function AppSidebar({
                   className={`size-[1.125rem] shrink-0 ${active ? 'text-brand' : 'text-faint group-hover:text-text'}`}
                 />
               )}
-              <span className="hidden min-w-0 flex-1 md:block">
+              <span className={`min-w-0 flex-1 ${showLabels}`}>
                 <span className="block truncate text-sm font-medium">{item.label}</span>
                 <span className="block truncate text-[0.7rem] text-faint">{item.hint}</span>
               </span>
               {badgeCount > 0 && (
-                <span className="hidden shrink-0 rounded-full bg-warn-soft px-1.5 py-0.5 font-mono text-[0.65rem] font-semibold text-warn md:inline">
+                <span
+                  className={`shrink-0 rounded-full bg-warn-soft px-1.5 py-0.5 font-mono text-[0.65rem] font-semibold text-warn ${collapsed ? 'hidden' : 'hidden md:inline'}`}
+                >
                   {badgeCount}
                 </span>
               )}
@@ -124,7 +162,23 @@ export function AppSidebar({
       </nav>
 
       <div className="border-t border-line p-3">
-        <div className="mx-auto size-2 rounded-full bg-ok shadow-[0_0_8px_var(--ok)] md:hidden" />
+        <div
+          className={`mx-auto size-2 rounded-full bg-ok shadow-[0_0_8px_var(--ok)] ${collapsed ? '' : 'md:hidden'}`}
+        />
+        {/* Below md the automatic breakpoint already forces icon-only, so the manual toggle has nothing to do there. */}
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="mt-2 hidden w-full items-center justify-center rounded-md py-1.5 text-faint transition hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand md:flex"
+        >
+          {collapsed ? (
+            <PanelLeftOpen aria-hidden="true" className="size-4" />
+          ) : (
+            <PanelLeftClose aria-hidden="true" className="size-4" />
+          )}
+        </button>
       </div>
     </aside>
   );

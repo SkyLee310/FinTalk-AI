@@ -302,14 +302,35 @@ export function EmptyState({ title, body }: { title: string; body: string }) {
   );
 }
 
-/** role="alert" so a failure is announced, not merely coloured. */
-export function ErrorNote({ children }: { children: ReactNode }) {
+/**
+ * role="alert" so a failure is announced, not merely coloured.
+ *
+ * `onRetry` is optional so every existing caller (a static failure message)
+ * is unaffected — only a caller that actually has something to re-run, like
+ * a failed data load, passes it.
+ */
+export function ErrorNote({
+  children,
+  onRetry,
+}: {
+  children: ReactNode;
+  onRetry?: () => void;
+}) {
   return (
     <div
       role="alert"
-      className="rounded-lg border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger"
+      className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 rounded-lg border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger"
     >
-      {children}
+      <span>{children}</span>
+      {onRetry !== undefined && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className={`shrink-0 rounded font-medium underline underline-offset-2 hover:no-underline ${FOCUS}`}
+        >
+          Retry
+        </button>
+      )}
     </div>
   );
 }

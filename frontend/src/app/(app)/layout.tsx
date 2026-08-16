@@ -23,7 +23,13 @@ import { isActive, visibleNav } from '@/lib/nav';
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { data: session, error, loading } = useAsync<Session>(() => api.me(), 'session');
+  const {
+    data: session,
+    error,
+    errorStatus,
+    loading,
+    reload,
+  } = useAsync<Session>(() => api.me(), 'session');
 
   // Lives here, not inside AskFinTalkAI, so a page navigation does not
   // clear the conversation. Both still reset for free: this whole layout
@@ -47,11 +53,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     (user) => user.accountStatus === 'PENDING',
   ).length ?? 0;
 
-  // An expired or absent session sends the user to sign in rather than leaving
-  // them on a shell full of empty panels.
+  // Only a genuine 401 means the session is actually gone. Anything else —
+  // a network blip, a 500 — is worth retrying rather than bouncing someone
+  // straight back to sign-in as though they had been logged out.
+  const sessionExpired = errorStatus === 401;
+
   useEffect(() => {
-    if (!loading && error !== null) router.replace('/login');
-  }, [loading, error, router]);
+    if (!loading && sessionExpired) router.replace('/login');
+  }, [loading, sessionExpired, router]);
 
   if (loading) {
     return (
@@ -61,10 +70,20 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  if (session === null) {
+  if (sessionExpired) {
     return (
       <main id="main" className="mx-auto max-w-md px-5 py-16">
         <ErrorNote>Your session has ended. Redirecting you to sign in.</ErrorNote>
+      </main>
+    );
+  }
+
+  if (session === null) {
+    return (
+      <main id="main" className="mx-auto max-w-md px-5 py-16">
+        <ErrorNote onRetry={() => reload()}>
+          {error ?? 'Could not load your session.'}
+        </ErrorNote>
       </main>
     );
   }

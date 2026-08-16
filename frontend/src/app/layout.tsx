@@ -3,6 +3,7 @@ import { Geist_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { SiteFooter } from '@/components/site-footer';
 import { ThemeWatcher } from '@/components/theme-watcher';
+import { Toaster } from '@/components/toast';
 import './globals.css';
 
 /**
@@ -63,6 +64,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           once and then the page is static.
         */}
         <ThemeWatcher />
+        <Toaster />
 
         <a
           href="#main"

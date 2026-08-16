@@ -89,7 +89,7 @@ function Bubble({ message }: { message: ChatMessage }) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[85%] rounded-xl px-4 py-2.5 text-body ${
+        className={`max-w-[85%] rounded-lg px-4 py-2.5 text-body ${
           isUser ? 'bg-brand text-canvas' : 'border border-line bg-raised'
         }`}
       >

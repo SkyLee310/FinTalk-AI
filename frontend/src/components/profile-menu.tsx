@@ -121,7 +121,7 @@ export function ProfileMenu({
           // a popover that grows out of the control makes the relationship
           // between the two obvious without an arrow to point it out.
           style={{ transformOrigin: 'top right' }}
-          className={`absolute right-0 top-[calc(100%+0.5rem)] z-30 w-60 overflow-hidden rounded-xl border border-line bg-surface shadow-lg ${
+          className={`absolute right-0 top-[calc(100%+0.5rem)] z-30 w-60 overflow-hidden rounded-lg border border-line bg-surface shadow-lg ${
             closing
               ? 'animate-[pop-out_140ms_ease-in_both]'
               : 'animate-[pop-in_140ms_var(--ease-out)_both]'

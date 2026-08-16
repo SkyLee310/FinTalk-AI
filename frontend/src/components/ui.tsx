@@ -90,20 +90,46 @@ export function Section({
   );
 }
 
-/** A single figure with its label. Value first, because that is what gets scanned. */
+const STAT_TONE = {
+  neutral: 'text-text',
+  brand: 'text-brand',
+  ok: 'text-ok',
+  warn: 'text-warn',
+  danger: 'text-danger',
+} as const;
+
+/**
+ * A single figure with its label. Value first, because that is what gets
+ * scanned. `icon` and `tone` are optional so existing label/value/hint
+ * callers are unaffected — only the Capture/Decide-style metric tiles that
+ * want the reference's richer treatment need to pass them.
+ */
 export function Stat({
   label,
   value,
   hint,
+  icon,
+  tone = 'neutral',
 }: {
   label: string;
   value: ReactNode;
   hint?: string;
+  icon?: ReactNode;
+  tone?: keyof typeof STAT_TONE;
 }) {
   return (
-    <div className="rounded-xl border border-line bg-surface px-4 py-3">
-      <p className="text-xl font-semibold tabular-nums tracking-tight">{value}</p>
-      <p className="mt-0.5 text-caption text-muted">{label}</p>
+    <div className="rounded-lg border border-line bg-surface/80 px-4 py-3 backdrop-blur-sm">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-caption font-medium uppercase tracking-wide text-muted">{label}</p>
+        {icon !== undefined && (
+          <span aria-hidden="true" className={`[&>svg]:size-4 ${STAT_TONE[tone]}`}>
+            {icon}
+          </span>
+        )}
+      </div>
+      <p className={`mt-1.5 font-mono text-xl font-semibold tabular-nums tracking-tight ${STAT_TONE[tone]}`}>
+        {value}
+      </p>
       {hint !== undefined && <p className="mt-1 text-caption text-faint">{hint}</p>}
     </div>
   );
@@ -216,7 +242,7 @@ export function Button({
 }
 
 const CONTROL =
-  'w-full rounded-xl border border-line-strong bg-surface px-4 py-2.5 text-sm text-text placeholder:text-faint disabled:opacity-60';
+  'w-full rounded-md border border-line-strong bg-surface px-4 py-2.5 text-sm text-text placeholder:text-faint disabled:opacity-60';
 
 export function Input({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${CONTROL} ${FOCUS} ${className}`} />;
@@ -269,7 +295,7 @@ export function Spinner({ label = 'Loading' }: { label?: string }) {
 
 export function EmptyState({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-xl border border-dashed border-line-strong px-6 py-12 text-center">
+    <div className="rounded-lg border border-dashed border-line-strong px-6 py-12 text-center">
       <p className="text-sm font-medium">{title}</p>
       <p className="mx-auto mt-1 max-w-md text-sm text-muted">{body}</p>
     </div>

@@ -216,7 +216,7 @@ export default async function HomePage() {
             </div>
             <div className="mt-6 space-y-4">
               {OVERVIEW_STATS.map((stat) => (
-                <div key={stat.title} className="rounded-xl bg-raised p-4">
+                <div key={stat.title} className="rounded-lg bg-raised p-4">
                   <p className="text-sm font-semibold">{stat.title}</p>
                   <p className="mt-1.5 text-caption text-muted">{stat.body}</p>
                 </div>

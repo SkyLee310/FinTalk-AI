@@ -147,7 +147,7 @@ export function KnowledgeGraphView({
 
   if (graph.nodes.length === 0) {
     return (
-      <p className="rounded-xl border border-line bg-raised px-4 py-6 text-center text-caption text-muted">
+      <p className="rounded-lg border border-line bg-raised px-4 py-6 text-center text-caption text-muted">
         No processed meetings yet. Capture one, and connections appear here as the
         corpus grows.
       </p>
@@ -202,7 +202,7 @@ export function KnowledgeGraphView({
         className="max-w-sm"
       />
 
-      <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         <svg
           viewBox={`0 0 ${String(WIDTH)} ${String(HEIGHT)}`}
           className="h-auto w-full min-w-[640px]"

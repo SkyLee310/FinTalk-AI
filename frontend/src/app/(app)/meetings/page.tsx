@@ -53,7 +53,7 @@ function MeetingRow({
 
   return (
     <li>
-      <div className="grid grid-cols-[2rem_1fr] items-center gap-x-4 gap-y-3 rounded-xl border border-line bg-surface px-5 py-4 transition hover:border-line-strong sm:grid-cols-[2rem_1fr_auto_auto]">
+      <div className="grid grid-cols-[2rem_1fr] items-center gap-x-4 gap-y-3 rounded-lg border border-line bg-surface px-5 py-4 transition hover:border-line-strong sm:grid-cols-[2rem_1fr_auto_auto]">
         <span className="text-center text-sm font-bold tabular-nums text-faint">{position}</span>
         <div className="min-w-0">
           <p className="truncate text-[15px] font-semibold">{meeting.title}</p>

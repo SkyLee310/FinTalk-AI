@@ -22,7 +22,7 @@ export function GlassPanel({
   return (
     <div
       {...props}
-      className={`rounded-3xl border border-glass-border bg-glass-bg shadow-[inset_0_1px_0_0_var(--glass-highlight)] backdrop-blur-xl ${className}`}
+      className={`rounded-lg border border-glass-border bg-glass-bg shadow-[inset_0_1px_0_0_var(--glass-highlight)] backdrop-blur-xl ${className}`}
     >
       {children}
     </div>

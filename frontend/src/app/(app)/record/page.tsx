@@ -435,7 +435,7 @@ export default function RecordPage() {
           </fieldset>
 
           {mode === 'record' ? (
-            <div className="rounded-xl border border-line bg-raised/60 p-6">
+            <div className="rounded-lg border border-line bg-raised/60 p-6">
               <div className="mb-6 flex items-center justify-between border-b border-line pb-4">
                 <div className="flex items-center gap-3">
                   <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
@@ -451,7 +451,7 @@ export default function RecordPage() {
                     recorder.state === 'recording' ? '' : 'invisible'
                   }`}
                 >
-                  <span aria-hidden="true" className="size-1.5 animate-pulse rounded-full bg-danger" />
+                  <span aria-hidden="true" className="size-1.5 animate-pulse-ring rounded-full bg-danger" />
                   REC
                 </span>
               </div>

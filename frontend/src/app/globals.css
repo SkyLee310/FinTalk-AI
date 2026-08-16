@@ -40,10 +40,16 @@
 }
 
 @theme {
-  --font-sans: var(--font-plus-jakarta-sans), ui-sans-serif, system-ui,
-    -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo,
-    Consolas, monospace;
+  /*
+   * One family for both roles. The approved redesign runs monospace
+   * throughout — labels, body copy, numerals — not just in code/hash
+   * contexts, so --font-sans and --font-mono deliberately resolve to the
+   * same stack rather than pairing a display face with a mono accent.
+   */
+  --font-sans: var(--font-geist-mono), ui-monospace, 'SFMono-Regular',
+    'JetBrains Mono', Menlo, Consolas, monospace;
+  --font-mono: var(--font-geist-mono), ui-monospace, 'SFMono-Regular',
+    'JetBrains Mono', Menlo, Consolas, monospace;
 
   /*
    * A type scale, because the app effectively had one size.
@@ -86,8 +92,13 @@
   --surface: #ffffff;
   --raised: #f1f5f9;
 
-  --line: #e2e8f0;
-  --line-strong: #cbd5e1;
+  /*
+   * Nudged toward the new reference's blue-gray border (#c8d8e8) rather than
+   * a neutral slate, so panel edges read as part of the same accent family
+   * as --brand below instead of a leftover from the old teal palette.
+   */
+  --line: #dce8f2;
+  --line-strong: #c8d8e8;
 
   --text: #0f172a;
   --muted: #475569;
@@ -97,17 +108,17 @@
   --faint: #64748b;
 
   /*
-   * Deep teal, unchanged from before this palette. The mockup's own accent
-   * (#10b981) is what dark theme adopts below, but at only 2.42:1 on white it
-   * fails AA for the small uppercase labels (panel-title, section-tag) that
-   * use --brand as text color — so light theme keeps this already-verified
-   * value rather than inheriting a color that reads fine on screenshots taken
-   * against a dark canvas and fails on this one.
+   * Vivid blue, matching the new team-approved reference exactly (its own
+   * --primary: #1268d8) rather than darkening it — at ~4.93:1 on --canvas
+   * (hand-checked via WCAG relative luminance) it already clears 4.5:1 for
+   * the small uppercase labels (panel-title, section-tag) that use --brand
+   * as text color, unlike the old teal palette's mockup accent, which
+   * needed darkening for the same reason (see the dark block below).
    */
-  --brand: #077866;
-  --brand-strong: #055a4d;
-  /* The mockup's own light nav-active-bg: a soft mint tint of the accent. */
-  --brand-soft: #d1fae5;
+  --brand: #1268d8;
+  --brand-strong: #0d52ad;
+  /* A pale tint of the new blue, same construction as the old mint value it replaces. */
+  --brand-soft: #dbeafe;
 
   --ok: #0f6b55;
   --ok-soft: #e3f5ef;
@@ -155,9 +166,17 @@
      */
     --faint: #687c8f;
 
-    --brand: #10b981;
-    --brand-strong: #34d399;
-    --brand-soft: rgb(16 185 129 / 15%);
+    /*
+     * The new reference's dark --primary (#2b8bff) exactly — ~5.87:1 on
+     * this canvas (hand-checked via WCAG relative luminance), comfortably
+     * clear of 4.5:1 as a text color. --brand-strong is a lightened step of
+     * the same hue for hover/emphasis; the reference has no equivalent
+     * token, so this follows the existing brand/brand-strong relationship
+     * the old teal pair had.
+     */
+    --brand: #2b8bff;
+    --brand-strong: #5aa3ff;
+    --brand-soft: rgb(43 139 255 / 15%);
 
     --ok: #34d399;
     --ok-soft: #0d2e25;
@@ -193,9 +212,10 @@
   --muted: #8e9bb0;
   --faint: #687c8f;
 
-  --brand: #10b981;
-  --brand-strong: #34d399;
-  --brand-soft: rgb(16 185 129 / 15%);
+  /* Matches the media-query dark block above — see its comment for the new blue's contrast check. */
+  --brand: #2b8bff;
+  --brand-strong: #5aa3ff;
+  --brand-soft: rgb(43 139 255 / 15%);
 
   --ok: #34d399;
   --ok-soft: #0d2e25;
@@ -522,6 +542,40 @@
 
   details[open]::details-content {
     height: auto;
+  }
+}
+
+/*
+ * Terminal/technical texture for the app shell's main content area, and the
+ * live-recording pulse used on Capture's record button and status dots —
+ * both lifted from the reference. Kept as plain utility classes rather than
+ * tokens: neither is a color or spacing decision other components need to
+ * share, just a one-off treatment for the two places that use them.
+ */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--text) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--text) 4%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 40%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.animate-pulse-ring {
+  animation: pulse-ring 2s infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-ring {
+    animation: none;
   }
 }
 

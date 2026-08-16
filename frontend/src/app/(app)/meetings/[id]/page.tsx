@@ -460,7 +460,7 @@ function ProcessingStatus({
 
   if (failed) {
     return (
-      <div className="rounded-xl border border-danger/30 bg-danger-soft/50 px-5 py-4">
+      <div className="rounded-lg border border-danger/30 bg-danger-soft/50 px-5 py-4">
         <div className="flex items-start gap-3">
           <svg
             viewBox="0 0 24 24"
@@ -503,7 +503,7 @@ function ProcessingStatus({
   const pct = Math.min(92, (elapsedMs / (3 * 60 * 1000)) * 100);
 
   return (
-    <div className="rounded-xl border border-line bg-raised px-5 py-4">
+    <div className="rounded-lg border border-line bg-raised px-5 py-4">
       <Button variant="secondary" disabled>
         <span
           aria-hidden="true"

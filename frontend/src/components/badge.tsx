@@ -33,9 +33,14 @@ export function Badge({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium tracking-tight ${TONE_CLASS[tone]}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[0.7rem] font-medium uppercase tracking-wide ${TONE_CLASS[tone]}`}
     >
-      {dot && <span aria-hidden="true" className={`size-1.5 rounded-full ${DOT_CLASS[tone]}`} />}
+      {dot && (
+        <span
+          aria-hidden="true"
+          className={`size-1.5 rounded-full shadow-[0_0_6px_currentColor] ${DOT_CLASS[tone]}`}
+        />
+      )}
       {children}
     </span>
   );

@@ -8,8 +8,8 @@ import { can, type Capability, type Session } from './api';
  * meant. These five are the stages of the actual process: capture it, review it,
  * decide on it, look across all of it, administer who may do any of that.
  *
- * This lives in lib rather than in the layout because /home, the post-login
- * chooser, renders a card per entry this file yields. Sending someone to a page
+ * This lives in lib rather than in the layout because both AppSidebar and the
+ * shell's landing-page choice read the same list. Sending someone to a page
  * their own nav does not contain strands them: an ADMIN landed on /meetings,
  * could read the list, and then had no link back after navigating away. One
  * list, every consumer, no drift.
@@ -65,7 +65,7 @@ export const NAV: readonly NavItem[] = [
   /**
    * Reference, not a stage of the process — positioned last for that reason.
    * `meeting:read` is the one capability every active role holds, so Islamic
-   * Banking shows for everyone (and earns a /home chooser card automatically).
+   * Banking shows for everyone in the sidebar automatically.
    */
   {
     href: '/islamic-banking',

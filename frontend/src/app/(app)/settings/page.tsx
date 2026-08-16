@@ -21,10 +21,9 @@ import { readStoredPreference, setTheme, type ThemePreference } from '@/lib/them
 /**
  * Personal settings — not a sixth section.
  *
- * Deliberately absent from lib/nav.ts. Those five entries are stages of the
- * work and each is capability-gated; this page is preferences, applies to
- * everyone, and is reached from the profile menu. Adding it to the nav would
- * also have dropped a Settings card among the five work stages on /home.
+ * Deliberately absent from lib/nav.ts. Those entries are stages of the work
+ * and each is capability-gated; this page is preferences, applies to
+ * everyone, and is reached from the profile menu, not the sidebar.
  */
 
 const APPEARANCE: readonly {

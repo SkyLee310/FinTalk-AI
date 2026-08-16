@@ -110,7 +110,7 @@ function LoginPageContent() {
         <div
           role="tablist"
           aria-label="Sign in or sign up"
-          className="mb-6 grid grid-cols-2 gap-1 rounded-xl border border-line-strong bg-raised p-1"
+          className="mb-6 grid grid-cols-2 gap-1 rounded-lg border border-line-strong bg-raised p-1"
         >
           <button
             type="button"
@@ -194,10 +194,11 @@ function SignInForm() {
     setError(null);
     try {
       // Login's own response carries the session, so this skips a second
-      // /auth/me round trip. Land on /home — the chooser — rather than
-      // guessing which of this role's sections it wants first.
+      // /auth/me round trip. Land on /record — Capture, the first stage of
+      // the work — rather than guessing which of this role's other sections
+      // it wants first.
       await api.login(email, password);
-      navigateWithTransition(() => router.push('/home'));
+      navigateWithTransition(() => router.push('/record'));
     } catch (cause) {
       setError(describeError(cause));
     } finally {

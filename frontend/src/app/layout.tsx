@@ -1,13 +1,18 @@
 import type { Metadata, Viewport } from 'next';
-import { Plus_Jakarta_Sans } from 'next/font/google';
+import { Geist_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { SiteFooter } from '@/components/site-footer';
 import { ThemeWatcher } from '@/components/theme-watcher';
 import './globals.css';
 
-const plusJakartaSans = Plus_Jakarta_Sans({
+/**
+ * One family, both --font-sans and --font-mono (globals.css) — the
+ * terminal-fintech visual direction the team approved runs monospace
+ * throughout, not just in numeric/code contexts.
+ */
+const geistMono = Geist_Mono({
   subsets: ['latin'],
-  variable: '--font-plus-jakarta-sans',
+  variable: '--font-geist-mono',
   display: 'swap',
 });
 
@@ -25,7 +30,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning className={plusJakartaSans.variable}>
+    <html lang="en" suppressHydrationWarning className={geistMono.variable}>
       <head>
         {/*
           Runs before first paint so a stored theme choice never flashes the

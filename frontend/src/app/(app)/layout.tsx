@@ -1,24 +1,24 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
+import { AppSidebar } from '@/components/app-sidebar';
 import { AskFinTalkAI, AskFinTalkAITrigger, type ChatMessage } from '@/components/ask-fintalk-ai';
-import { Badge } from '@/components/badge';
-import { Logo } from '@/components/logo';
 import { ProfileMenu } from '@/components/profile-menu';
 import { ErrorNote, Spinner } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { api, can, type Session } from '@/lib/api';
 import { isActive, visibleNav } from '@/lib/nav';
-import { navigateWithTransition } from '@/lib/view-transition';
 
 /**
  * The signed-in shell.
  *
  * The navigation itself lives in lib/nav.ts, because the post-login landing page is
  * derived from the same list — sending someone to a page their nav does not contain
- * strands them there.
+ * strands them there. AppSidebar owns rendering that nav and the real-routing +
+ * transition-direction bookkeeping the old top-nav header used to; this file still
+ * owns session loading, the pending-user count, and the Ask FinTalk AI modal's
+ * state, since a page navigation must not reset any of those.
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -70,89 +70,27 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }
 
   const visible = visibleNav(session);
-  /**
-   * Where in the sequence we currently are, so a click can tell forward from
-   * back. -1 when no section owns this path (/settings, for one) — treated as
-   * forward, because arriving somewhere outside the sequence is not a return.
-   */
-  const currentIndex = visible.findIndex((item) => isActive(pathname, item));
+  const active = visible.find((item) => isActive(pathname, item));
 
   return (
-    <div className="flex min-h-screen flex-col">
-      {/*
-        The id is load-bearing, not decoration: globals.css gives it its own
-        view-transition-name so the header holds still while the content slides.
-        It cannot select on `header`, because PageHeader is one too.
-      */}
-      <header
-        id="app-header"
-        className="sticky top-0 z-20 border-b border-line bg-canvas/85 backdrop-blur-md"
-      >
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
-          <Link href="/home" className="flex items-center gap-2.5 rounded">
-            <Logo className="size-7" />
-            <span className="text-sm font-semibold tracking-tight">FinTalk AI</span>
-          </Link>
+    <div className="flex min-h-screen">
+      <AppSidebar items={visible} pathname={pathname} pendingUserCount={pendingUserCount} />
 
-          <nav aria-label="Main" className="flex items-center gap-1">
-            {visible.map((item, index) => {
-              const active = isActive(pathname, item);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? 'page' : undefined}
-                  /**
-                   * Still a real link — only plain left-clicks are taken over.
-                   *
-                   * Cmd/Ctrl/Shift/Alt-click and middle-click fall through
-                   * untouched, so opening a section in a new tab keeps working
-                   * and Next.js keeps prefetching on hover. Replacing these
-                   * with buttons to get the transition would have cost both.
-                   *
-                   * The direction goes on the document because CSS is what
-                   * reads it: the five sections are a sequence, so moving
-                   * deeper slides one way and coming back mirrors it.
-                   */
-                  onClick={(event) => {
-                    if (
-                      event.metaKey
-                      || event.ctrlKey
-                      || event.shiftKey
-                      || event.altKey
-                      || event.button !== 0
-                    ) {
-                      return;
-                    }
-                    event.preventDefault();
-                    document.documentElement.dataset.nav =
-                      currentIndex === -1 || index > currentIndex ? 'forward' : 'back';
-                    navigateWithTransition(() => router.push(item.href));
-                  }}
-                  // The hint is a title rather than visible text: five labels with
-                  // subtitles is a menu, not a nav bar. Each section's own page
-                  // states its purpose in words that do not need hovering.
-                  title={item.hint}
-                  className={`rounded-md px-3.5 py-1.5 text-caption transition sm:text-sm ${
-                    active
-                      ? 'bg-brand-soft font-medium text-brand'
-                      : 'text-muted hover:bg-raised hover:text-text'
-                  }`}
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    {item.label}
-                    {item.href === '/admin' && pendingUserCount > 0 && (
-                      <Badge tone="warn" dot>
-                        {pendingUserCount}
-                      </Badge>
-                    )}
-                  </span>
-                </Link>
-              );
-            })}
-          </nav>
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/*
+          The id is load-bearing, not decoration: globals.css gives it its own
+          view-transition-name so the header holds still while the content slides.
+          It cannot select on `header`, because PageHeader is one too.
+        */}
+        <header
+          id="app-header"
+          className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-line bg-canvas/85 px-5 backdrop-blur-md"
+        >
+          <span className="truncate text-sm font-semibold tracking-tight">
+            {active?.label ?? 'FinTalk AI'}
+          </span>
 
-          <div className="ml-auto flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             {/*
               Gated on transcript:read, deliberately: the assistant reads the
               redacted transcript corpus, and ADMIN holds every other broad
@@ -179,12 +117,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               }}
             />
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-5 py-8">
-        {children}
-      </main>
+        <main id="main" className="bg-grid flex-1 px-5 py-8">
+          {children}
+        </main>
+      </div>
 
       <AskFinTalkAI
         open={chatOpen}

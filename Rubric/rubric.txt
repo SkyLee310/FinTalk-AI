@@ -1,0 +1,53 @@
+Detailed Scoring Grid (1–5 Scale)
+Core Functionality & Feature Execution (30%)
+•    1 - Unsatisfactory: Prototype fails to run live; relies entirely on static screenshots or non-functional mockups.
+
+•    2 - Marginal: Only minor non-critical features work; primary workflow is broken or heavily hardcoded/simulated.
+
+•    3 - Competent: Core workflow functions end-to-end with real dynamic data, but minor secondary features fail.
+
+•    4 - Advanced: All promised core features function seamlessly during the live demonstration with real data inputs.
+
+•    5 - Exceptional: Outstanding functional execution; handles dynamic real-time inputs effortlessly beyond basic scope.
+Technical Depth & Architecture (25%)
+•    1 - Unsatisfactory: Trivial technical implementation (e.g., basic HTML template without dynamic backend logic or processing).
+
+•    2 - Marginal: Uses basic, disconnected components; minimal integration between frontend, backend, or data stores.
+
+•    3 - Competent: Well-integrated system architecture; appropriate choice of stack, working APIs, and functional database/model integration.
+
+•    4 - Advanced: High technical complexity; optimized data pipeline, robust backend logic, and clean architectural separation.
+
+•    5 - Exceptional: Complex technical implementation; demonstrates advanced algorithmic engineering, custom ML/AI pipelines, or low-level optimizations achieved within time constraints.
+User Experience (UX) & Interface Usability (20%)
+•    1 - Unsatisfactory: Interface is unnavigable, broken, or nonexistent; user flow is completely unclear.
+
+•    2 - Marginal: Poor layout and confusing navigation; requires manual team intervention for a user to perform an action.
+
+•    3 - Competent: Clean, functional UI; user can navigate through the primary user path without confusion.
+
+•    4 - Advanced: Polished, responsive UI/UX; logical component hierarchy and smooth visual feedback during interactions.
+
+•    5 - Exceptional: Production-grade UI/UX design; seamless user interaction, excellent feedback states, and highly accessible controls.
+Technical Innovation & Creativity (15%)
+•    1 - Unsatisfactory: Boilerplate solution with direct copy-paste template usage and zero technical effort.
+
+•    2 - Marginal: Standard technical approach using readily available off-the-shelf tools without novel application.
+
+•    3 - Competent: Creative assembly of technologies or clever utilization of open-source tools/APIs to address a problem.
+
+•    4 - Advanced: Highly innovative technical approach; custom logic or novel architectural integration of multiple complex tools.
+
+•    5 - Exceptional: Groundbreaking technical implementation; novel use of algorithms/hardware/APIs that pushes typical hackathon constraints.
+
+System Stability & Error Handling (10%)
+•    1 - Unsatisfactory: Prototype crashes immediately during execution or live input.
+
+•    2 - Marginal: Frequent runtime errors/unhandled exceptions; requires manual system restarts during the demo.
+
+•    3 - Competent: Stable through the primary demo path; minor unhandled console errors that do not break execution.
+
+•    4 - Advanced: Highly stable throughout live testing; handles typical bad inputs gracefully with error feedback.
+
+•    5 - Exceptional: Fully resilient execution; robust input validation, fallback logic, and zero runtime crashes under live testing.
+The Submission deadline is 21st August 2026 at 11:59 PM. The submission link will be shared here in the future! Stay tune!

@@ -252,10 +252,11 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
     }
 
     return {
+      kind: result.data.kind,
       mermaid: result.data.mermaid,
       structured: result.data.structured,
       modelId: this.config.visionModel,
-      promptVersion: 'gemini-whiteboard-v1',
+      promptVersion: 'gemini-whiteboard-v2',
     };
   }
 

@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
+import * as mammoth from 'mammoth';
 import type { ImageInput, TranscriptionProvider } from '../ai/provider.js';
 import { requireAuth, requireCapability } from '../auth/middleware.js';
 import { sendProblem } from '../http/problem.js';
@@ -12,17 +13,25 @@ import {
 import { storeWhiteboard } from '../pdpa/whiteboard-store.js';
 
 /**
- * Whiteboard capture.
+ * Visual/document capture: a meeting can carry any number of these, each one
+ * a whiteboard photo, a slide, a PDF, or a Word document.
  *
- * The image is held in memory for the request and never written to disk, for the
+ * The file is held in memory for the request and never written to disk, for the
  * same reason audio is not: spec §2, and a temp file is storage — one that
  * survives a crash and lands in a backup.
  *
- * Unlike audio this runs inside the request. Vision extraction on one still
- * image takes seconds, not the minutes transcription takes, so it stays well
- * inside the platform's 300-second ceiling and the caller gets the result
- * directly instead of an id to poll.
+ * Extraction runs inside the request rather than a background job. Vision
+ * extraction on one file, or text extraction from one document, takes seconds,
+ * not the minutes transcription takes, so it stays well inside the platform's
+ * 300-second ceiling and the caller gets the result directly instead of an id
+ * to poll. A meeting with several attachments means several requests — one per
+ * file — not one request carrying many; that keeps this endpoint's contract
+ * identical to before, and keeps one slow or oversized file from failing every
+ * other file alongside it.
  */
+
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const LEGACY_DOC_MIME = 'application/msword';
 
 export interface WhiteboardRouteDeps {
   readonly prisma: PrismaClient;
@@ -31,84 +40,6 @@ export interface WhiteboardRouteDeps {
 }
 
 const SEPARATOR = '\n';
-
-export function registerWhiteboardRoutes(
-  app: FastifyInstance,
-  deps: WhiteboardRouteDeps,
-): void {
-  const { prisma, provider, vaultKey } = deps;
-
-  app.post<{ Params: { id: string } }>(
-    '/meetings/:id/whiteboards',
-    { preHandler: [requireAuth, requireCapability('meeting:create')] },
-    async (request, reply) => {
-      const actor = request.authUser;
-      if (actor === undefined) {
-        return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
-      }
-
-      /**
-       * Captured once and bound. A separate `undefined` check on the optional
-       * method does not narrow it at the call site, and an unbound reference
-       * would lose `this` when invoked.
-       */
-      const extract = provider.extractWhiteboard?.bind(provider);
-      if (extract === undefined) {
-        return sendProblem(
-          reply,
-          501,
-          'Not supported',
-          'The configured transcription provider has no vision model.',
-        );
-      }
-
-      const meeting = await prisma.meeting.findUnique({
-        where: { id: request.params.id },
-        select: { id: true },
-      });
-      if (meeting === null) {
-        return sendProblem(reply, 404, 'Not found', 'No meeting exists with that id.');
-      }
-
-      let image: ImageInput | undefined;
-      try {
-        for await (const part of request.parts()) {
-          if (part.type === 'file') {
-            if (part.fieldname !== 'image') {
-              // Drain unexpected files rather than leaving the stream stalled.
-              part.file.resume();
-              continue;
-            }
-            image = { bytes: await part.toBuffer(), mimeType: part.mimetype };
-          }
-        }
-      } catch {
-        return sendProblem(
-          reply,
-          413,
-          'Upload rejected',
-          'The upload was malformed or exceeded the size limit.',
-        );
-      }
-
-      if (image === undefined || image.bytes.byteLength === 0) {
-        return sendProblem(
-          reply,
-          400,
-          'Invalid request',
-          'An image file is required in the "image" field.',
-        );
-      }
-
-      const extraction = await extract(image);
-
-      /**
-       * One context across both fields, so an identifier written once on the
-       * board gets one placeholder whether it surfaces in the diagram, the
-       * structured fields, or both.
-       */
-      const context = createRedactionContext();
-      const mermaid = redact(extraction.mermaid, vaultKey, context);
 
 /**
  * Recursively quotes primitive numbers/booleans in structured payloads before redaction.
@@ -130,6 +61,140 @@ function quotePrimitives(val: unknown): unknown {
   return String(val);
 }
 
+export function registerWhiteboardRoutes(
+  app: FastifyInstance,
+  deps: WhiteboardRouteDeps,
+): void {
+  const { prisma, provider, vaultKey } = deps;
+
+  app.post<{ Params: { id: string } }>(
+    '/meetings/:id/whiteboards',
+    { preHandler: [requireAuth, requireCapability('meeting:create')] },
+    async (request, reply) => {
+      const actor = request.authUser;
+      if (actor === undefined) {
+        return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
+      }
+
+      const meeting = await prisma.meeting.findUnique({
+        where: { id: request.params.id },
+        select: { id: true },
+      });
+      if (meeting === null) {
+        return sendProblem(reply, 404, 'Not found', 'No meeting exists with that id.');
+      }
+
+      let file: ImageInput | undefined;
+      try {
+        for await (const part of request.parts()) {
+          if (part.type === 'file') {
+            if (part.fieldname !== 'file') {
+              // Drain unexpected files rather than leaving the stream stalled.
+              part.file.resume();
+              continue;
+            }
+            file = { bytes: await part.toBuffer(), mimeType: part.mimetype };
+          }
+        }
+      } catch {
+        return sendProblem(
+          reply,
+          413,
+          'Upload rejected',
+          'The upload was malformed or exceeded the size limit.',
+        );
+      }
+
+      if (file === undefined || file.bytes.byteLength === 0) {
+        return sendProblem(
+          reply,
+          400,
+          'Invalid request',
+          'A file is required in the "file" field.',
+        );
+      }
+
+      if (file.mimeType === LEGACY_DOC_MIME) {
+        return sendProblem(
+          reply,
+          415,
+          'Unsupported file type',
+          'Legacy .doc files are not supported — save as .docx, or as PDF, and upload that instead.',
+        );
+      }
+
+      const isVisual = file.mimeType.startsWith('image/') || file.mimeType === 'application/pdf';
+      if (!isVisual && file.mimeType !== DOCX_MIME) {
+        return sendProblem(
+          reply,
+          415,
+          'Unsupported file type',
+          'Upload an image, a PDF, or a .docx document.',
+        );
+      }
+
+      /**
+       * One context per request either way, so an identifier written once in
+       * the file gets one placeholder wherever it recurs.
+       */
+      const context = createRedactionContext();
+
+      if (!isVisual) {
+        // .docx: no vision model involved. mammoth reads the document's own
+        // paragraph text directly — the same kind of raw, unredacted content
+        // a photographed whiteboard's transcription would be, so it goes
+        // through the same redact() call before anything is stored.
+        let extractedText: string;
+        try {
+          const result = await mammoth.extractRawText({ buffer: Buffer.from(file.bytes) });
+          extractedText = result.value.trim();
+        } catch {
+          return sendProblem(
+            reply,
+            400,
+            'Invalid request',
+            'The .docx file could not be read — it may be corrupted or password-protected.',
+          );
+        }
+
+        if (extractedText === '') {
+          return sendProblem(reply, 400, 'Invalid request', 'The document contained no text.');
+        }
+
+        const redacted = redact(extractedText, vaultKey, context);
+        const whiteboardId = await storeWhiteboard(prisma, {
+          meetingId: meeting.id,
+          kind: 'DOCUMENT',
+          rawRedacted: redacted.text,
+          mermaid: null,
+          structuredJson: {},
+          modelId: 'local-docx-extract',
+          promptVersion: 'docx-extract-v1',
+          redactions: redacted.records,
+          actor,
+        });
+
+        return reply.code(201).send({ whiteboardId, redactionCount: redacted.records.length });
+      }
+
+      /**
+       * Captured once and bound. A separate `undefined` check on the optional
+       * method does not narrow it at the call site, and an unbound reference
+       * would lose `this` when invoked.
+       */
+      const extract = provider.extractWhiteboard?.bind(provider);
+      if (extract === undefined) {
+        return sendProblem(
+          reply,
+          501,
+          'Not supported',
+          'The configured transcription provider has no vision model.',
+        );
+      }
+
+      const extraction = await extract(file);
+
+      const mermaid = redact(extraction.mermaid, vaultKey, context);
       const structured = redact(
         JSON.stringify(quotePrimitives(extraction.structured)),
         vaultKey,
@@ -153,8 +218,12 @@ function quotePrimitives(val: unknown): unknown {
 
       const whiteboardId = await storeWhiteboard(prisma, {
         meetingId: meeting.id,
+        kind: extraction.kind,
         rawRedacted: joinRedacted([mermaid.text, structured.text], SEPARATOR),
-        mermaid: mermaid.text,
+        // Empty string means the model found no diagram — store that as
+        // absent rather than an empty-but-present RedactedText, so the
+        // frontend can tell "no diagram" from "diagram not yet loaded".
+        mermaid: mermaid.text === '' ? null : mermaid.text,
         // Reparsing the redacted JSON is what guarantees structuredJson holds
         // only redacted values. Placeholders replace digits inside string
         // values, so the document is still valid JSON.
@@ -196,6 +265,7 @@ function quotePrimitives(val: unknown): unknown {
       return reply.send({
         whiteboards: boards.map((board) => ({
           id: board.id,
+          kind: board.kind,
           rawRedacted: board.rawRedacted,
           mermaid: board.mermaid,
           structuredJson: board.structuredJson,

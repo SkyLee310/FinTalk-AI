@@ -106,7 +106,7 @@ export default function RecordPage() {
    */
   const [mode, setMode] = useState<CaptureMode>('record');
   const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [boardFile, setBoardFile] = useState<File | null>(null);
+  const [boardFiles, setBoardFiles] = useState<File[]>([]);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -220,15 +220,32 @@ export default function RecordPage() {
        * failed would lose the more valuable half of the capture.
        */
       let boardNote = '';
-      if (boardFile !== null) {
-        setProgress('Recording accepted. Extracting the whiteboard…');
-        const boardForm = new FormData();
-        boardForm.set('image', boardFile);
-        try {
-          const extracted = await api.uploadWhiteboard(meetingId, boardForm);
-          boardNote = ` Whiteboard extracted, ${String(extracted.redactionCount)} identifier(s) masked.`;
-        } catch (cause) {
-          boardNote = ` The recording was accepted, but the whiteboard failed: ${describeError(cause)}`;
+      if (boardFiles.length > 0) {
+        setProgress(
+          boardFiles.length === 1
+            ? 'Recording accepted. Extracting the attachment…'
+            : `Recording accepted. Extracting ${String(boardFiles.length)} attachments…`,
+        );
+        let extractedCount = 0;
+        let maskedCount = 0;
+        const failures: string[] = [];
+        for (const attachment of boardFiles) {
+          const boardForm = new FormData();
+          boardForm.set('file', attachment);
+          try {
+            const extracted = await api.uploadWhiteboard(meetingId, boardForm);
+            extractedCount += 1;
+            maskedCount += extracted.redactionCount;
+          } catch (cause) {
+            failures.push(`${attachment.name} (${describeError(cause)})`);
+          }
+        }
+        if (extractedCount > 0) {
+          boardNote = ` ${String(extractedCount)} attachment${extractedCount === 1 ? '' : 's'}`
+            + ` extracted, ${String(maskedCount)} identifier(s) masked.`;
+        }
+        if (failures.length > 0) {
+          boardNote += ` ${String(failures.length)} failed: ${failures.join('; ')}.`;
         }
       }
 
@@ -552,27 +569,46 @@ export default function RecordPage() {
             )
           )}
 
-          {boardFile === null ? (
-            <Field
-              label="Whiteboard photo"
-              htmlFor="boardFile"
-              hint="Optional. A photo of any whiteboard or flipchart used."
-            >
-              <Input
-                id="boardFile"
-                type="file"
-                accept="image/*"
-                disabled={busy}
-                onChange={(event) => setBoardFile(event.target.files?.[0] ?? null)}
-              />
-            </Field>
-          ) : (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-raised px-3 py-2">
-              <p className="truncate text-sm">{boardFile.name}</p>
-              <Button variant="secondary" disabled={busy} onClick={() => setBoardFile(null)}>
-                Remove
-              </Button>
-            </div>
+          <Field
+            label="Whiteboards, slides, PDFs or documents"
+            htmlFor="boardFile"
+            hint="Optional, any number. Images, PDFs and .docx documents are all read and redacted the same way."
+          >
+            <Input
+              id="boardFile"
+              type="file"
+              accept="image/*,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              multiple
+              disabled={busy}
+              onChange={(event) => {
+                const chosen = Array.from(event.target.files ?? []);
+                if (chosen.length > 0) setBoardFiles((prev) => [...prev, ...chosen]);
+                // Cleared so picking the same file again (after removing it below)
+                // still fires onChange — a file input does not fire on a value it
+                // already holds.
+                event.target.value = '';
+              }}
+            />
+          </Field>
+
+          {boardFiles.length > 0 && (
+            <ul className="space-y-2">
+              {boardFiles.map((attachment, index) => (
+                <li
+                  key={`${attachment.name}-${String(index)}`}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-line bg-raised px-3 py-2"
+                >
+                  <p className="truncate text-sm">{attachment.name}</p>
+                  <Button
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={() => setBoardFiles((prev) => prev.filter((_, i) => i !== index))}
+                  >
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
           )}
 
           {readyBlob !== null && previewUrl !== null && (

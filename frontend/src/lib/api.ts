@@ -136,11 +136,15 @@ export interface RedactionRow {
   confidence: number;
 }
 
+export type WhiteboardKind = 'WHITEBOARD' | 'SLIDE' | 'DOCUMENT';
+
 export interface WhiteboardRow {
   id: string;
+  kind: WhiteboardKind;
   /** The canonical redacted text. Redaction offsets index into this. */
   rawRedacted: string;
-  mermaid: string;
+  /** Null for a DOCUMENT capture — a Word file has no diagram to draw. */
+  mermaid: string | null;
   structuredJson: unknown;
   modelId: string;
   promptVersion: string;

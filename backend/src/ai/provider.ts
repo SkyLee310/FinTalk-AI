@@ -39,14 +39,20 @@ export interface ImageInput {
   readonly mimeType: string;
 }
 
+/** What kind of capture a whiteboard row represents. Mirrors Prisma's WhiteboardKind. */
+export type WhiteboardKind = 'WHITEBOARD' | 'SLIDE' | 'DOCUMENT';
+
 /**
  * A whiteboard as the vision model read it.
  *
  * `mermaid` and `structured` are raw model output — unredacted by construction,
  * exactly like SegmentDraft.text. Neither may reach the database before passing
- * through redact().
+ * through redact(). `mermaid` is empty when the model found no diagram to
+ * transcribe — a text-only page, for instance — which is a valid result, not
+ * a failure.
  */
 export interface WhiteboardExtraction {
+  readonly kind: WhiteboardKind;
   readonly mermaid: string;
   readonly structured: Record<string, unknown>;
   readonly modelId: string;

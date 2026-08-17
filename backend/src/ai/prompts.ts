@@ -176,17 +176,22 @@ export const AnswerSchema = z.object({
  * not a plan.
  */
 export const WHITEBOARD_PROMPT =
-  'This is a photograph of a whiteboard from a credit meeting. Return JSON with '
-  + 'two keys. "mermaid": a Mermaid flowchart of the diagram, using graph TD '
-  + 'syntax, transcribing every label verbatim including any numbers. Wrap '
-  + 'every node label in double quotes, and write any double quote inside a '
-  + 'label as #quot;. "structured": an object of the facts written on the '
-  + 'board, one key per labelled value. Transcribe what is written. Do not '
-  + 'infer, complete or correct anything, and do not add keys that are not on '
-  + 'the board.';
+  'This is a visual attachment from a credit meeting: a photograph of a '
+  + 'physical whiteboard, a presentation slide, or a scanned or exported '
+  + 'document page. Return JSON with three keys. "kind": whichever of '
+  + '"WHITEBOARD", "SLIDE" or "DOCUMENT" this most resembles. "mermaid": if '
+  + 'there is a diagram to transcribe, a Mermaid flowchart of it using graph '
+  + 'TD syntax, transcribing every label verbatim including any numbers, '
+  + 'with every node label wrapped in double quotes and any double quote '
+  + 'inside a label written as #quot;. If there is no diagram to draw — a '
+  + 'text document, for instance — return an empty string. "structured": an '
+  + 'object of the facts written or printed on the page, one key per '
+  + 'labelled value. Transcribe what is there. Do not infer, complete or '
+  + 'correct anything, and do not add keys that are not present.';
 
 export const WhiteboardSchema = z.object({
-  mermaid: z.string().min(1),
+  kind: z.enum(['WHITEBOARD', 'SLIDE', 'DOCUMENT']),
+  mermaid: z.string(),
   structured: z.record(z.string(), z.unknown()),
 });
 

@@ -111,6 +111,16 @@ enum FeedbackCategory {
   OTHER
 }
 
+/// Whiteboard now covers more than photographs of a physical board: a slide
+/// or a scanned/exported document carries the same kind of meeting context.
+/// The vision model classifies which on capture; a Word document (no
+/// diagram to draw) is classified DOCUMENT directly, without a model call.
+enum WhiteboardKind {
+  WHITEBOARD
+  SLIDE
+  DOCUMENT
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -413,12 +423,14 @@ model PiiVault {
 
 /// The source image is never persisted — only derived artifacts.
 model Whiteboard {
-  id        String @id @default(cuid())
+  id        String         @id @default(cuid())
   meetingId String
+  kind      WhiteboardKind @default(WHITEBOARD)
   /// The canonical redacted text. Redaction offsets index into this field, the
   /// same contract Transcript.rawRedacted carries.
-  rawRedacted    String
-  mermaid        String
+  rawRedacted String
+  /// Null for a DOCUMENT capture — a Word file has no diagram to draw.
+  mermaid        String?
   structuredJson Json
   modelId        String
   promptVersion  String

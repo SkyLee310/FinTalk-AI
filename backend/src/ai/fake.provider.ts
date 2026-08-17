@@ -116,6 +116,7 @@ export class FakeTranscriptionProvider implements TranscriptionProvider {
    */
   extractWhiteboard(): Promise<WhiteboardExtraction> {
     return Promise.resolve({
+      kind: 'WHITEBOARD',
       mermaid:
         'graph TD;\n'
         + '  A[Applicant 880101-14-5678] --> B[Murabahah 500k];\n'
@@ -132,7 +133,7 @@ export class FakeTranscriptionProvider implements TranscriptionProvider {
         settlementAccount: 1_234_567_890,
       },
       modelId: 'fake-vision',
-      promptVersion: 'fake-whiteboard-v1',
+      promptVersion: 'fake-whiteboard-v2',
     });
   }
 

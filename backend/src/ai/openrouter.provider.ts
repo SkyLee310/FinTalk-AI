@@ -205,6 +205,7 @@ export class OpenRouterProvider implements TranscriptionProvider {
     }
 
     return {
+      kind: parsed.data.kind,
       mermaid: parsed.data.mermaid,
       structured: parsed.data.structured,
       modelId: this.config.model,

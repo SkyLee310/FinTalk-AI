@@ -6,9 +6,11 @@ import { sealedToRow } from './vault.js';
 
 export interface StoreWhiteboardInput {
   readonly meetingId: string;
+  readonly kind: 'WHITEBOARD' | 'SLIDE' | 'DOCUMENT';
   /** The canonical document. Every record's offsets index into this. */
   readonly rawRedacted: RedactedText;
-  readonly mermaid: RedactedText;
+  /** Null for a DOCUMENT capture — a Word file has no diagram to draw. */
+  readonly mermaid: RedactedText | null;
   /** Already-redacted structured fields, safe to persist as JSON. */
   readonly structuredJson: unknown;
   readonly modelId: string;
@@ -38,6 +40,7 @@ export async function storeWhiteboard(
     const board = await tx.whiteboard.create({
       data: {
         meetingId: input.meetingId,
+        kind: input.kind,
         rawRedacted: input.rawRedacted,
         mermaid: input.mermaid,
         structuredJson: input.structuredJson as never,

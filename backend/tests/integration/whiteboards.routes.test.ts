@@ -1,4 +1,5 @@
 import type { Role } from '@prisma/client';
+import JSZip from 'jszip';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { FakeTranscriptionProvider } from '../../src/ai/fake.provider.js';
 import { verifyChain } from '../../src/audit/chain.js';
@@ -53,7 +54,7 @@ function multipart(file: { filename: string; contentType: string; body: Buffer }
   const boundary = '----FinTalkWhiteboardBoundary';
   const chunks = [
     Buffer.from(
-      `--${boundary}\r\nContent-Disposition: form-data; name="image"; `
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; `
       + `filename="${file.filename}"\r\nContent-Type: ${file.contentType}\r\n\r\n`,
     ),
     file.body,
@@ -71,6 +72,44 @@ const IMAGE = {
   contentType: 'image/png',
   body: Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]),
 };
+
+const UNSUPPORTED = {
+  filename: 'archive.zip',
+  contentType: 'application/zip',
+  body: Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+};
+
+/** Builds a minimal but genuinely valid .docx — just enough for mammoth to read it. */
+async function buildDocx(paragraphText: string): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file(
+    '[Content_Types].xml',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    + '<Default Extension="xml" ContentType="application/xml"/>'
+    + '<Override PartName="/word/document.xml" '
+    + 'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+    + '</Types>',
+  );
+  zip.file(
+    '_rels/.rels',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + '<Relationship Id="rId1" '
+    + 'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+    + 'Target="word/document.xml"/>'
+    + '</Relationships>',
+  );
+  zip.file(
+    'word/document.xml',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+    + `<w:body><w:p><w:r><w:t>${paragraphText}</w:t></w:r></w:p></w:body>`
+    + '</w:document>',
+  );
+  return zip.generateAsync({ type: 'nodebuffer' });
+}
 
 /** A meeting owned by the MAKER that sessionFor has already created. */
 async function meetingForMaker(): Promise<string> {
@@ -143,6 +182,7 @@ describe('POST /meetings/:id/whiteboards — the capture round trip', () => {
       include: { redactions: { include: { vault: true } } },
     });
 
+    expect(board.kind).toBe('WHITEBOARD');
     expect(board.rawRedacted).toContain('[NRIC_1]');
     expect(board.rawRedacted).not.toMatch(/\d{6}-\d{2}-\d{4}/);
     expect(board.mermaid).not.toMatch(/\d{6}-\d{2}-\d{4}/);
@@ -262,7 +302,7 @@ describe('POST /meetings/:id/whiteboards — the capture round trip', () => {
     expect(await prisma.whiteboard.count()).toBe(0);
   });
 
-  it('rejects a request carrying no image', async () => {
+  it('rejects a request carrying no file', async () => {
     const cookie = await sessionFor('MAKER');
     const meetingId = await meetingForMaker();
 
@@ -275,6 +315,68 @@ describe('POST /meetings/:id/whiteboards — the capture round trip', () => {
 
     expect(response.statusCode).toBe(400);
     expect(await prisma.whiteboard.count()).toBe(0);
+  });
+
+  it('rejects an unsupported file type before touching any provider', async () => {
+    const cookie = await sessionFor('MAKER');
+    const meetingId = await meetingForMaker();
+    const { payload, headers } = multipart(UNSUPPORTED);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/meetings/${meetingId}/whiteboards`,
+      headers: { ...headers, cookie },
+      payload,
+    });
+
+    expect(response.statusCode).toBe(415);
+    expect(await prisma.whiteboard.count()).toBe(0);
+  });
+
+  /**
+   * The .docx path never calls the vision model — mammoth reads the
+   * document's own paragraph text. Same anti-vacuity shape as the image
+   * fixture: the NRIC must round-trip through redact() for this to mean
+   * anything.
+   */
+  it('extracts, redacts and stores a .docx as a DOCUMENT with no diagram', async () => {
+    const cookie = await sessionFor('MAKER');
+    const meetingId = await meetingForMaker();
+    const docxBody = await buildDocx(
+      'Facility approved for director 880101-14-5678 pending final sign-off.',
+    );
+    const { payload, headers } = multipart({
+      filename: 'term-sheet.docx',
+      contentType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      body: docxBody,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/meetings/${meetingId}/whiteboards`,
+      headers: { ...headers, cookie },
+      payload,
+    });
+
+    expect(response.statusCode).toBe(201);
+
+    const board = await prisma.whiteboard.findFirstOrThrow({
+      include: { redactions: { include: { vault: true } } },
+    });
+
+    expect(board.kind).toBe('DOCUMENT');
+    expect(board.mermaid).toBeNull();
+    expect(board.rawRedacted).toContain('[NRIC_1]');
+    expect(board.rawRedacted).toContain('Facility approved for director');
+    expect(board.rawRedacted).not.toMatch(/\d{6}-\d{2}-\d{4}/);
+    expect(board.modelId).toBe('local-docx-extract');
+
+    expect(board.redactions.length).toBeGreaterThan(0);
+    expect(board.redactions.some((r) => r.piiType === 'NRIC')).toBe(true);
+    for (const redaction of board.redactions) {
+      expect(redaction.vault).not.toBeNull();
+    }
   });
 });
 

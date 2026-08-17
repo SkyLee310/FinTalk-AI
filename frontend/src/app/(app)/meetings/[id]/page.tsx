@@ -30,6 +30,7 @@ import {
   type ShariahFlagRow,
   type ShariahStatus,
   timecode,
+  type WhiteboardKind,
 } from '@/lib/api';
 import { formatDuration } from '@/lib/duration';
 import { computeParticipation, participationNudge } from '@/lib/participation';
@@ -123,6 +124,12 @@ const ISSUE_LABEL: Record<string, string> = {
   HARAM_SECTOR: 'a prohibited business sector',
   CONTRACT_MISMATCH: 'a mismatch between the contract named and the terms described',
   LATE_PAYMENT_PENALTY: 'a late-payment penalty that may function as interest',
+};
+
+const WHITEBOARD_KIND_LABEL: Record<WhiteboardKind, string> = {
+  WHITEBOARD: 'Whiteboard',
+  SLIDE: 'Slide',
+  DOCUMENT: 'Document',
 };
 
 /**
@@ -596,41 +603,59 @@ export default function MeetingDetailPage() {
   const whiteboardsHasData = (whiteboards.data?.whiteboards.length ?? 0) > 0;
   const whiteboardsContent = (
     <>
-      {whiteboards.loading && <Spinner label="Loading whiteboards" />}
+      {whiteboards.loading && <Spinner label="Loading attachments" />}
       {whiteboards.error !== null && <ErrorNote>{whiteboards.error}</ErrorNote>}
 
       {whiteboards.data?.whiteboards.length === 0 && (
         <EmptyState
-          title="No whiteboard captured"
-          body="Attach a whiteboard photo when you capture a meeting and its diagram is extracted and redacted alongside the transcript."
+          title="No attachments captured"
+          body="Attach a whiteboard photo, a slide, a PDF or a document when you capture a meeting, and it's extracted and redacted alongside the transcript."
         />
       )}
 
       {whiteboards.data?.whiteboards.map((board) => (
         <Card key={board.id}>
           <CardHeader
-            title="Extracted diagram"
+            title={board.mermaid !== null ? 'Extracted diagram' : 'Extracted text'}
             description={`Model ${board.modelId} · prompt ${board.promptVersion}`}
+            action={<Badge>{WHITEBOARD_KIND_LABEL[board.kind]}</Badge>}
           />
           <div className="space-y-4 px-5 py-4">
-            <MermaidDiagram source={board.mermaid} />
+            {board.mermaid !== null ? (
+              <>
+                <MermaidDiagram source={board.mermaid} />
 
-            {/*
-              The source stays reachable, collapsed. The drawing is what a
-              reviewer wants to look at; the source is what was actually
-              stored, and an auditor reconciling a redaction offset needs the
-              text rather than a picture of it.
-            */}
-            <details>
-              <summary className="cursor-pointer text-xs text-faint underline underline-offset-2">
-                View stored source
-              </summary>
-              <pre className="mt-2 overflow-x-auto rounded-lg border border-line bg-raised p-4 text-xs leading-relaxed">
-                <code>
-                  <RedactedText text={board.mermaid} />
-                </code>
-              </pre>
-            </details>
+                {/*
+                  The source stays reachable, collapsed. The drawing is what a
+                  reviewer wants to look at; the source is what was actually
+                  stored, and an auditor reconciling a redaction offset needs the
+                  text rather than a picture of it.
+                */}
+                <details>
+                  <summary className="cursor-pointer text-xs text-faint underline underline-offset-2">
+                    View stored source
+                  </summary>
+                  <pre className="mt-2 overflow-x-auto rounded-lg border border-line bg-raised p-4 text-xs leading-relaxed">
+                    <code>
+                      <RedactedText text={board.mermaid} />
+                    </code>
+                  </pre>
+                </details>
+              </>
+            ) : (
+              // A DOCUMENT capture has no diagram — its own extracted text is
+              // the thing to show, so it renders open rather than collapsed.
+              <details open>
+                <summary className="cursor-pointer text-xs text-faint underline underline-offset-2">
+                  Extracted text
+                </summary>
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg border border-line bg-raised p-4 text-xs leading-relaxed">
+                  <code>
+                    <RedactedText text={board.rawRedacted} />
+                  </code>
+                </pre>
+              </details>
+            )}
 
             <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
               {Object.entries(board.structuredJson as Record<string, unknown>).map(
@@ -657,7 +682,7 @@ export default function MeetingDetailPage() {
   const whiteboardsSection = (
     <section className="space-y-3">
       <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
-        Whiteboards
+        Attachments
       </h2>
       {whiteboardsContent}
     </section>
@@ -1064,7 +1089,7 @@ export default function MeetingDetailPage() {
               },
               {
                 key: 'whiteboards',
-                label: 'Whiteboards',
+                label: 'Attachments',
                 hasData: whiteboardsHasData,
                 content: whiteboardsContent,
               },

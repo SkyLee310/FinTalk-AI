@@ -75,9 +75,10 @@ describe('FakeTranscriptionProvider.extractWhiteboard', () => {
   it('returns a diagram and structured fields with provenance', async () => {
     const result = await provider.extractWhiteboard();
 
+    expect(result.kind).toBe('WHITEBOARD');
     expect(result.mermaid).toContain('graph TD');
     expect(result.modelId).toBe('fake-vision');
-    expect(result.promptVersion).toBe('fake-whiteboard-v1');
+    expect(result.promptVersion).toBe('fake-whiteboard-v2');
     expect(Object.keys(result.structured).length).toBeGreaterThan(0);
   });
 

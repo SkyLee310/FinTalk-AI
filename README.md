@@ -55,7 +55,7 @@ Credit committee meetings at Malaysian banks — especially Islamic banks — pr
 **FinTalk AI turns that meeting into a governed, auditable record**, end to end:
 
 1. A **maker** records or uploads the meeting (and optionally photographs the whiteboard), after confirming consent and a cross-border data disclosure.
-2. Audio goes to Gemini for transcription — **held in memory only, never written to disk.**
+2. Audio goes to Gemini for transcription — a plain API key locally, or Vertex AI's GCP service-account auth in production — **held in memory only, never written to disk.**
 3. Before anything touches the database, every identifier (NRIC, bank account, phone, email, card number) is **redacted and sealed into an encrypted vault**; the rest of the system only ever sees placeholders.
 4. The redacted transcript is screened by a **deterministic, bilingual Shariah rule engine** (English + Bahasa Rojak) for six issue types — every finding is advisory, and only a human holding the `SHARIAH` role can clear or confirm one.
 5. The same redacted text drives **AI meeting intelligence**: the final decision each debated point reached, a who/what/when action list, and an instant project-kickoff draft — each independently re-verified for leaked PII before it's stored.
@@ -105,7 +105,7 @@ flowchart TD
     subgraph Capture["1 · Capture"]
         A["Maker records or uploads audio<br/>+ optional whiteboard photo"] --> B{"Consent confirmed?"}
         B -- "no" --> B1["422 — blocked before<br/>audio is even inspected"]
-        B -- "yes" --> C["Transcription provider<br/>Gemini → OpenRouter fallback"]
+        B -- "yes" --> C["Transcription provider<br/>Gemini/Vertex AI → OpenRouter fallback"]
     end
 
     subgraph Protect["2 · Protect"]
@@ -164,7 +164,7 @@ Full request-time behavior: [`backend/src/pipeline/process-meeting.ts`](backend/
 | | Argon2id | Password hashing |
 | | `jose` (JWT) | Access/refresh token pair, separate secrets |
 | | Vitest | Unit + integration tests (real Postgres in CI) |
-| **AI** | Google Gemini (`@google/genai`) | Transcription, summarization, Shariah-safe generation, embeddings |
+| **AI** | Google Gemini (`@google/genai`) | Transcription, summarization, Shariah-safe generation, embeddings — API key locally, Vertex AI service account in production |
 | | OpenRouter | Automatic one-retry fallback if Gemini fails |
 | **Infra** | Vercel | Frontend hosting/CI |
 | | Railway | Backend + Postgres hosting, migration-gated deploys |
@@ -185,7 +185,7 @@ FinTalk-AI/
 ├── backend/                     # Fastify API
 │   ├── src/routes/              #   auth, meetings, whiteboards, knowledge, compliance, users, feedback
 │   ├── src/pipeline/            #   process-meeting.ts — the capture pipeline
-│   ├── src/ai/                  #   provider interface, gemini/openrouter/fallback/fake implementations
+│   ├── src/ai/                  #   provider interface, gemini (API key or Vertex AI) / openrouter / fallback / fake
 │   ├── src/pdpa/                #   PII detectors, redactor, encrypted vault
 │   ├── src/shariah/             #   rule engine (6 issue types)
 │   ├── src/audit/                #   hash-chained append-only log
@@ -287,10 +287,12 @@ Never commit a real `.env` — both are gitignored, and CI fails the build if on
 |---|---|
 | `NODE_ENV`, `PORT`, `CORS_ORIGIN` | Server basics |
 | `DATABASE_URL` | Postgres connection string (Railway injects this in production) |
-| `TRANSCRIPTION_PROVIDER` | `gemini` \| `openrouter` \| `fake` — `fake` needs no API key and is what CI runs on |
-| `GEMINI_API_KEY`, `GEMINI_MODEL_TRANSCRIBE`, `GEMINI_MODEL_VISION`, `GEMINI_MODEL_TEXT` | Required only when the provider is `gemini` |
-| `GEMINI_MODEL_EMBEDDING` | Optional — without it, the knowledge graph falls back to topic-only connections and Ask FinTalk AI reports itself unavailable, rather than failing at boot |
-| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_MODEL_TRANSCRIBE` | Optional automatic fallback for Gemini — leave blank and Gemini behaves exactly as before |
+| `TRANSCRIPTION_PROVIDER` | `gemini` \| `vertex` \| `fake` — `fake` needs no API key and is what CI runs on |
+| `GEMINI_API_KEY`, `GEMINI_MODEL_TRANSCRIBE`, `GEMINI_MODEL_VISION`, `GEMINI_MODEL_TEXT` | Required only when the provider is `gemini` (API-key auth against the Gemini Developer API) |
+| `GEMINI_MODEL_EMBEDDING` | Optional, `gemini` mode only — without it, the knowledge graph falls back to topic-only connections and Ask FinTalk AI reports itself unavailable, rather than failing at boot |
+| `VERTEX_PROJECT_ID`, `VERTEX_LOCATION`, `GCP_SERVICE_ACCOUNT_KEY`, `VERTEX_MODEL_TRANSCRIBE`, `VERTEX_MODEL_VISION`, `VERTEX_MODEL_TEXT` | Required only when the provider is `vertex` — the same Gemini models, reached through a GCP service account's IAM identity instead of an API key. **This is what production runs.** |
+| `VERTEX_MODEL_EMBEDDING` | Optional, `vertex` mode only — same degrade behavior as `GEMINI_MODEL_EMBEDDING` |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_MODEL_TRANSCRIBE` | Optional automatic fallback, wraps whichever provider is active — leave blank and it behaves exactly as before |
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL` | Session tokens — secrets must be ≥ 32 chars (`openssl rand -base64 48`) |
 | `PII_VAULT_KEY` | AES-256-GCM key for the PII vault — exactly 32 bytes, base64 (`openssl rand -base64 32`) |
 | `MEETING_RETENTION_DAYS` | PDPA retention window (defaults to a placeholder — see [Limitations](#-limitations)) |
@@ -364,7 +366,7 @@ Stated plainly, matching the project's own [regulatory gap analysis](docs/compli
 - **The default data-retention window (90 days) is a placeholder**, not a deliberate policy — it's shorter than Malaysia's AMLA record-retention floor for some record types and needs a real decision before production use.
 - **Cross-meeting similarity search is an in-process cosine loop**, not a vector index — fine at demo scale, with a documented ceiling beyond it.
 - **No self-service password reset yet.**
-- **No on-device or local transcription option.** A `local` provider was carried as a stub and withdrawn on 2026-08-10 — it named a capability the product didn't actually have. Every transcription call leaves the host for Gemini, or its OpenRouter fallback.
+- **No on-device or local transcription option.** A `local` provider was carried as a stub and withdrawn on 2026-08-10 — it named a capability the product didn't actually have. Every transcription call leaves the host for Gemini (API key or Vertex AI), or its OpenRouter fallback.
 - **This is a hackathon-stage build.** It has not been reviewed by a Malaysian-qualified lawyer or a registered Shariah adviser — see the compliance doc's own framing.
 
 ---
@@ -383,7 +385,7 @@ Stated plainly, matching the project's own [regulatory gap analysis](docs/compli
 - [x] Hash-chained, trigger-enforced audit log
 - [x] Simulated settlement with DB-enforced fakery
 - [x] Self-service sign-up + admin approval
-- [x] Automatic Gemini → OpenRouter fallback
+- [x] Automatic Gemini/Vertex AI → OpenRouter fallback
 - [x] CI with real-Postgres integration tests + secret scanning
 
 **Planned** — from the compliance review's own prioritized list

@@ -41,15 +41,14 @@
 
 @theme {
   /*
-   * One family for both roles. The approved redesign runs monospace
-   * throughout — labels, body copy, numerals — not just in code/hash
-   * contexts, so --font-sans and --font-mono deliberately resolve to the
-   * same stack rather than pairing a display face with a mono accent.
+   * One family for both roles, so no component has to choose between two
+   * faces — --font-sans and --font-mono deliberately resolve to the same
+   * stack.
    */
-  --font-sans: var(--font-geist-mono), ui-monospace, 'SFMono-Regular',
-    'JetBrains Mono', Menlo, Consolas, monospace;
-  --font-mono: var(--font-geist-mono), ui-monospace, 'SFMono-Regular',
-    'JetBrains Mono', Menlo, Consolas, monospace;
+  --font-sans: var(--font-plus-jakarta-sans), ui-sans-serif, system-ui,
+    -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: var(--font-plus-jakarta-sans), ui-sans-serif, system-ui,
+    -apple-system, 'Segoe UI', Roboto, sans-serif;
 
   /*
    * A type scale, because the app effectively had one size.

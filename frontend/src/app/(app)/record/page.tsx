@@ -1,7 +1,9 @@
 'use client';
 
+import { FileText, Image as ImageIcon, type LucideIcon, Presentation, Upload } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { Badge } from '@/components/badge';
 import {
   isFullyAcknowledged,
   NO_ACKNOWLEDGEMENT,
@@ -20,7 +22,8 @@ import {
 } from '@/components/ui';
 import { describeError, useAsync } from '@/hooks/use-async';
 import { formatElapsed, recordingFilename, useRecorder } from '@/hooks/use-recorder';
-import { api, can, type Session } from '@/lib/api';
+import { guessAttachmentKind, isKindFixed } from '@/lib/attachment-kind';
+import { api, can, type Session, type WhiteboardKind, WHITEBOARD_KIND_LABEL } from '@/lib/api';
 
 /**
  * Record a meeting in the browser.
@@ -44,6 +47,21 @@ const EMPTY_PARTICIPANT: Participant = { name: '', role: '' };
 
 /** How the audio for this capture is being obtained. */
 type CaptureMode = 'record' | 'upload';
+
+/** A chosen attachment, tagged with the kind shown on its clickable badge. */
+interface Attachment {
+  readonly file: File;
+  readonly kind: WhiteboardKind;
+}
+
+const KIND_ICON: Record<WhiteboardKind, LucideIcon> = {
+  WHITEBOARD: ImageIcon,
+  SLIDE: Presentation,
+  DOCUMENT: FileText,
+};
+
+/** The order a click on a tag cycles through. */
+const KIND_CYCLE: readonly WhiteboardKind[] = ['WHITEBOARD', 'SLIDE', 'DOCUMENT'];
 
 /** Local time in the format a datetime-local input expects. */
 function localDateTimeValue(date: Date): string {
@@ -106,7 +124,8 @@ export default function RecordPage() {
    */
   const [mode, setMode] = useState<CaptureMode>('record');
   const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [boardFiles, setBoardFiles] = useState<File[]>([]);
+  const [boardFiles, setBoardFiles] = useState<Attachment[]>([]);
+  const [dragging, setDragging] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -184,6 +203,26 @@ export default function RecordPage() {
     );
   }
 
+  /** Tags each new file with a first guess, which the person can correct below. */
+  function addFiles(chosen: readonly File[]): void {
+    if (chosen.length === 0) return;
+    setBoardFiles((prev) => [
+      ...prev,
+      ...chosen.map((file) => ({ file, kind: guessAttachmentKind(file) })),
+    ]);
+  }
+
+  /** Steps one attachment's tag to the next kind. A .docx has nothing to cycle to. */
+  function cycleKind(index: number): void {
+    setBoardFiles((prev) =>
+      prev.map((attachment, i) => {
+        if (i !== index || isKindFixed(attachment.file)) return attachment;
+        const next = KIND_CYCLE[(KIND_CYCLE.indexOf(attachment.kind) + 1) % KIND_CYCLE.length]!;
+        return { ...attachment, kind: next };
+      }),
+    );
+  }
+
   async function submit(): Promise<void> {
     if (readyBlob === null) return;
 
@@ -231,13 +270,14 @@ export default function RecordPage() {
         const failures: string[] = [];
         for (const attachment of boardFiles) {
           const boardForm = new FormData();
-          boardForm.set('file', attachment);
+          boardForm.set('file', attachment.file);
+          boardForm.set('kind', attachment.kind);
           try {
             const extracted = await api.uploadWhiteboard(meetingId, boardForm);
             extractedCount += 1;
             maskedCount += extracted.redactionCount;
           } catch (cause) {
-            failures.push(`${attachment.name} (${describeError(cause)})`);
+            failures.push(`${attachment.file.name} (${describeError(cause)})`);
           }
         }
         if (extractedCount > 0) {
@@ -569,47 +609,87 @@ export default function RecordPage() {
             )
           )}
 
-          <Field
-            label="Whiteboards, slides, PDFs or documents"
-            htmlFor="boardFile"
-            hint="Optional, any number. Images, PDFs and .docx documents are all read and redacted the same way."
-          >
-            <Input
-              id="boardFile"
-              type="file"
-              accept="image/*,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              multiple
-              disabled={busy}
-              onChange={(event) => {
-                const chosen = Array.from(event.target.files ?? []);
-                if (chosen.length > 0) setBoardFiles((prev) => [...prev, ...chosen]);
-                // Cleared so picking the same file again (after removing it below)
-                // still fires onChange — a file input does not fire on a value it
-                // already holds.
-                event.target.value = '';
+          <div>
+            <label
+              htmlFor="boardFile"
+              className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed px-6 py-8 text-center transition-colors ${
+                dragging
+                  ? 'border-brand bg-brand-soft/40'
+                  : 'border-line-strong bg-raised/40 hover:bg-raised/60'
+              } ${busy ? 'pointer-events-none opacity-60' : ''}`}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragging(true);
               }}
-            />
-          </Field>
+              onDragLeave={() => setDragging(false)}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDragging(false);
+                addFiles(Array.from(event.dataTransfer.files));
+              }}
+            >
+              <Upload aria-hidden="true" className="size-6 text-faint" />
+              <span className="text-sm font-medium">
+                Drop whiteboards, slides, PDFs or documents
+              </span>
+              <span className="text-xs text-faint">Or click to browse. Optional, any number.</span>
+              <input
+                id="boardFile"
+                type="file"
+                className="sr-only"
+                accept="image/*,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                multiple
+                disabled={busy}
+                onChange={(event) => {
+                  addFiles(Array.from(event.target.files ?? []));
+                  // Cleared so picking the same file again (after removing it
+                  // below) still fires onChange — a file input does not fire
+                  // on a value it already holds.
+                  event.target.value = '';
+                }}
+              />
+            </label>
 
-          {boardFiles.length > 0 && (
-            <ul className="space-y-2">
-              {boardFiles.map((attachment, index) => (
-                <li
-                  key={`${attachment.name}-${String(index)}`}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-line bg-raised px-3 py-2"
-                >
-                  <p className="truncate text-sm">{attachment.name}</p>
-                  <Button
-                    variant="secondary"
-                    disabled={busy}
-                    onClick={() => setBoardFiles((prev) => prev.filter((_, i) => i !== index))}
-                  >
-                    Remove
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
+            {boardFiles.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <ul className="space-y-2">
+                  {boardFiles.map((attachment, index) => {
+                    const Icon = KIND_ICON[attachment.kind];
+                    const fixed = isKindFixed(attachment.file);
+                    return (
+                      <li
+                        key={`${attachment.file.name}-${String(index)}`}
+                        className="flex items-center gap-3 rounded-lg border border-line bg-raised px-3 py-2"
+                      >
+                        <Icon aria-hidden="true" className="size-4 shrink-0 text-faint" />
+                        <p className="min-w-0 flex-1 truncate text-sm">{attachment.file.name}</p>
+                        <button
+                          type="button"
+                          disabled={busy || fixed}
+                          onClick={() => cycleKind(index)}
+                          title={fixed ? 'Always a document' : 'Click to change'}
+                          className="disabled:cursor-default"
+                        >
+                          <Badge tone="brand">{WHITEBOARD_KIND_LABEL[attachment.kind]}</Badge>
+                        </button>
+                        <Button
+                          variant="secondary"
+                          disabled={busy}
+                          onClick={() => setBoardFiles((prev) => prev.filter((_, i) => i !== index))}
+                        >
+                          Remove
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="text-xs text-faint">
+                  Type auto-detected — click a tag to change it. Images, PDFs and .docx
+                  documents are all read and redacted the same way.
+                </p>
+              </div>
+            )}
+          </div>
 
           {readyBlob !== null && previewUrl !== null && (
             <div className="space-y-3 rounded-lg border border-line bg-raised p-4">

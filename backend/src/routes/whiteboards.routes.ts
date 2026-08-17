@@ -33,6 +33,12 @@ import { storeWhiteboard } from '../pdpa/whiteboard-store.js';
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const LEGACY_DOC_MIME = 'application/msword';
 
+const WHITEBOARD_KINDS = ['WHITEBOARD', 'SLIDE', 'DOCUMENT'] as const;
+type WhiteboardKindValue = (typeof WHITEBOARD_KINDS)[number];
+function isWhiteboardKind(value: string): value is WhiteboardKindValue {
+  return (WHITEBOARD_KINDS as readonly string[]).includes(value);
+}
+
 export interface WhiteboardRouteDeps {
   readonly prisma: PrismaClient;
   readonly provider: TranscriptionProvider;
@@ -85,6 +91,12 @@ export function registerWhiteboardRoutes(
       }
 
       let file: ImageInput | undefined;
+      /**
+       * A human's own classification, from the capture UI's editable tag.
+       * Only meaningful for the vision path below — a .docx is always a
+       * DOCUMENT, and nothing the caller sends can make it otherwise.
+       */
+      let kindOverride: WhiteboardKindValue | undefined;
       try {
         for await (const part of request.parts()) {
           if (part.type === 'file') {
@@ -94,6 +106,9 @@ export function registerWhiteboardRoutes(
               continue;
             }
             file = { bytes: await part.toBuffer(), mimeType: part.mimetype };
+          } else if (part.type === 'field' && part.fieldname === 'kind') {
+            const value = String(part.value);
+            if (isWhiteboardKind(value)) kindOverride = value;
           }
         }
       } catch {
@@ -218,7 +233,10 @@ export function registerWhiteboardRoutes(
 
       const whiteboardId = await storeWhiteboard(prisma, {
         meetingId: meeting.id,
-        kind: extraction.kind,
+        // A human's own tag, chosen before upload, is trusted over the
+        // model's guess — the same "AI proposes, a person confirms"
+        // pattern as everywhere else a model's read of a capture is used.
+        kind: kindOverride ?? extraction.kind,
         rawRedacted: joinRedacted([mermaid.text, structured.text], SEPARATOR),
         // Empty string means the model found no diagram — store that as
         // absent rather than an empty-but-present RedactedText, so the

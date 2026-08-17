@@ -49,10 +49,20 @@ async function sessionFor(
   return `${ACCESS_COOKIE}=${cookies.find((c) => c.name === ACCESS_COOKIE)!.value}`;
 }
 
-/** Builds a multipart body without pulling in a form-data dependency. */
-function multipart(file: { filename: string; contentType: string; body: Buffer }) {
+/**
+ * Builds a multipart body without pulling in a form-data dependency.
+ * `fields` are plain text parts, sent ahead of the file — the "kind" tag the
+ * capture UI sends alongside its file field.
+ */
+function multipart(
+  file: { filename: string; contentType: string; body: Buffer },
+  fields: Record<string, string> = {},
+) {
   const boundary = '----FinTalkWhiteboardBoundary';
   const chunks = [
+    ...Object.entries(fields).flatMap(([name, value]) => [
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`),
+    ]),
     Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="file"; `
       + `filename="${file.filename}"\r\nContent-Type: ${file.contentType}\r\n\r\n`,
@@ -377,6 +387,62 @@ describe('POST /meetings/:id/whiteboards — the capture round trip', () => {
     for (const redaction of board.redactions) {
       expect(redaction.vault).not.toBeNull();
     }
+  });
+
+  /**
+   * The capture UI lets a person tag a file before upload (attachment-kind.ts's
+   * guessAttachmentKind), and that tag is trusted over the model's own read —
+   * the same "AI proposes, a person confirms" shape used everywhere else a
+   * model's classification of a capture is used. The fake provider always
+   * classifies an image as WHITEBOARD, so a stored SLIDE here can only have
+   * come from the override.
+   */
+  it('stores the client-supplied kind tag over the provider\'s own classification', async () => {
+    const cookie = await sessionFor('MAKER');
+    const meetingId = await meetingForMaker();
+    const { payload, headers } = multipart(IMAGE, { kind: 'SLIDE' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/meetings/${meetingId}/whiteboards`,
+      headers: { ...headers, cookie },
+      payload,
+    });
+
+    expect(response.statusCode).toBe(201);
+    const board = await prisma.whiteboard.findFirstOrThrow();
+    expect(board.kind).toBe('SLIDE');
+  });
+
+  /**
+   * A .docx never reaches a classifier — mammoth only ever extracts text — so
+   * there is nothing for a tag to override. A kind field sent alongside one
+   * must be ignored rather than silently accepted.
+   */
+  it('ignores a kind field sent alongside a .docx and stores DOCUMENT regardless', async () => {
+    const cookie = await sessionFor('MAKER');
+    const meetingId = await meetingForMaker();
+    const docxBody = await buildDocx('Facility summary with no identifiers.');
+    const { payload, headers } = multipart(
+      {
+        filename: 'term-sheet.docx',
+        contentType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        body: docxBody,
+      },
+      { kind: 'SLIDE' },
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/meetings/${meetingId}/whiteboards`,
+      headers: { ...headers, cookie },
+      payload,
+    });
+
+    expect(response.statusCode).toBe(201);
+    const board = await prisma.whiteboard.findFirstOrThrow();
+    expect(board.kind).toBe('DOCUMENT');
   });
 });
 

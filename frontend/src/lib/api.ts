@@ -138,6 +138,13 @@ export interface RedactionRow {
 
 export type WhiteboardKind = 'WHITEBOARD' | 'SLIDE' | 'DOCUMENT';
 
+/** Shared with the capture flow, so an attachment is tagged the same word throughout. */
+export const WHITEBOARD_KIND_LABEL: Record<WhiteboardKind, string> = {
+  WHITEBOARD: 'Whiteboard',
+  SLIDE: 'Slide',
+  DOCUMENT: 'Document',
+};
+
 export interface WhiteboardRow {
   id: string;
   kind: WhiteboardKind;

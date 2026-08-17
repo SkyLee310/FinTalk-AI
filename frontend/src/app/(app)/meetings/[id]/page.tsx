@@ -30,7 +30,7 @@ import {
   type ShariahFlagRow,
   type ShariahStatus,
   timecode,
-  type WhiteboardKind,
+  WHITEBOARD_KIND_LABEL,
 } from '@/lib/api';
 import { formatDuration } from '@/lib/duration';
 import { computeParticipation, participationNudge } from '@/lib/participation';
@@ -124,12 +124,6 @@ const ISSUE_LABEL: Record<string, string> = {
   HARAM_SECTOR: 'a prohibited business sector',
   CONTRACT_MISMATCH: 'a mismatch between the contract named and the terms described',
   LATE_PAYMENT_PENALTY: 'a late-payment penalty that may function as interest',
-};
-
-const WHITEBOARD_KIND_LABEL: Record<WhiteboardKind, string> = {
-  WHITEBOARD: 'Whiteboard',
-  SLIDE: 'Slide',
-  DOCUMENT: 'Document',
 };
 
 /**

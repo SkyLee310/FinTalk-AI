@@ -30,7 +30,9 @@ export type ComplianceErrorCode =
   | 'question-too-short'
   | 'question-contains-personal-data'
   | 'assistant-unavailable'
-  | 'answer-contains-personal-data';
+  | 'answer-contains-personal-data'
+  // Term sheet suggestion (Phase 6).
+  | 'suggestion-unavailable';
 
 export class ComplianceError extends Error {
   readonly code: ComplianceErrorCode;

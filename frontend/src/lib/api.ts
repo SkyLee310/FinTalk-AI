@@ -407,6 +407,24 @@ export interface DraftTermSheetBody {
   islamicContract?: string | null;
 }
 
+/**
+ * A model's read of a meeting's redacted transcript and whiteboards, for a
+ * maker to review before drafting — never a term sheet itself. Every field
+ * but modelId/promptVersion is optional: the meeting may never have settled
+ * a given fact, and an absent key means exactly that, not zero or "".
+ */
+export interface TermSheetSuggestion {
+  applicantName?: string;
+  /** Whole ringgit, as a string — see the module note. */
+  principalMyr?: string;
+  tenureMonths?: number;
+  facilityKind?: FacilityKind;
+  rateBps?: number;
+  islamicContract?: string;
+  modelId: string;
+  promptVersion: string;
+}
+
 const json = (body: unknown): RequestInit => ({
   method: 'POST',
   body: JSON.stringify(body),
@@ -496,6 +514,17 @@ export const api = {
 
   reviewFlag: (flagId: string, status: ShariahStatus, note: string) =>
     apiFetch<ShariahFlagRow>(`/shariah-flags/${flagId}/review`, json({ status, note })),
+
+  /**
+   * A model's read of the meeting's redacted transcript and whiteboards, for
+   * a maker to review before drafting. Never stored, never submitted on its
+   * own — see applySuggestion in lib/term-sheet-suggestion.ts for how a
+   * maker's already-typed fields are merged with it.
+   */
+  suggestTermSheet: (meetingId: string) =>
+    apiFetch<TermSheetSuggestion>(`/meetings/${meetingId}/term-sheets/suggestion`, {
+      method: 'POST',
+    }),
 
   draftTermSheet: (meetingId: string, body: DraftTermSheetBody) =>
     apiFetch<TermSheetRow>(`/meetings/${meetingId}/term-sheets`, json(body)),

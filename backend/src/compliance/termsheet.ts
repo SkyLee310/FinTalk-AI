@@ -97,7 +97,7 @@ export function validateFacility(input: FacilityInput): string | null {
   return null;
 }
 
-function assertRole(actor: Actor, required: Role, action: string): void {
+export function assertRole(actor: Actor, required: Role, action: string): void {
   if (actor.role !== required) {
     throw new ComplianceError(
       'forbidden-role',

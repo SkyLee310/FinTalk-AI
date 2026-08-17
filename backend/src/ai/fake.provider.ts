@@ -4,6 +4,7 @@ import {
   type DecisionDraft,
   type GroundedAnswer,
   type GroundingExcerpt,
+  type TermSheetSuggestion,
   type TopicDraft,
   TranscriptionError,
   type TranscriptionProvider,
@@ -230,6 +231,27 @@ export class FakeTranscriptionProvider implements TranscriptionProvider {
         'Confirm the Murabahah profit rate with the Shariah officer.',
         'Re-submit the term sheet once pricing is agreed.',
       ],
+    });
+  }
+
+  /**
+   * The same demo facility every other fixture in this file tells: RM 50,000
+   * over five years, Islamic, Murabahah, quoted at 800 bps. Clean on purpose —
+   * a provider-level test proving the redaction fail-closed path uses its own
+   * one-off `TranscriptionProvider`, the same way meetings.routes.test.ts's
+   * DirtyIntelligenceProvider proves it for arbitrateDecisions, rather than
+   * baking a risky value into the shared fixture every other test also reads.
+   */
+  suggestTermSheet(): Promise<TermSheetSuggestion> {
+    return Promise.resolve({
+      applicantName: 'Tech Solutions Sdn Bhd',
+      principalMyr: 50_000,
+      tenureMonths: 60,
+      facilityKind: 'ISLAMIC',
+      rateBps: 800,
+      islamicContract: 'MURABAHAH',
+      modelId: FAKE_MODEL_ID,
+      promptVersion: FAKE_PROMPT_VERSION,
     });
   }
 

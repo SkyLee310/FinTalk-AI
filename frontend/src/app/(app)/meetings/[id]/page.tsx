@@ -35,6 +35,7 @@ import {
 import { formatDuration } from '@/lib/duration';
 import { computeParticipation, participationNudge } from '@/lib/participation';
 import { guidanceFor } from '@/lib/shariah-guidance';
+import { applySuggestion, type TermSheetSuggestedField } from '@/lib/term-sheet-suggestion';
 
 const FLAG_TONE: Record<ShariahStatus, Tone> = {
   FLAGGED: 'warn',
@@ -52,6 +53,10 @@ const CONTRACTS = [
   'ISTISNA',
   'SALAM',
 ];
+
+const SUGGESTED_HINT = 'Suggested from the meeting — edit to override.';
+/** Additive box-shadow, not a border color — CONTROL already owns border-color. */
+const SUGGESTED_RING = 'ring-2 ring-brand/40';
 
 /** Renders redaction placeholders as visible chips, so masking is evident. */
 function RedactedText({ text }: { text: string }) {
@@ -251,11 +256,62 @@ function TermSheetForm({
   const [rateBps, setRateBps] = useState('800');
   const [contract, setContract] = useState('MURABAHAH');
   const [busy, setBusy] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestedFields, setSuggestedFields] = useState<TermSheetSuggestedField[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
 
   const islamic = facilityKind === 'ISLAMIC';
   const blocked = blockedBy.length > 0;
+
+  /** Clears a field's AI-suggested marker the moment a person edits it directly. */
+  function clearSuggested(field: TermSheetSuggestedField): void {
+    setSuggestedFields((prev) => (prev.includes(field) ? prev.filter((f) => f !== field) : prev));
+  }
+
+  function withSuggestedHint(field: TermSheetSuggestedField, base?: string): string | undefined {
+    if (!suggestedFields.includes(field)) return base;
+    return base === undefined ? SUGGESTED_HINT : `${base} ${SUGGESTED_HINT}`;
+  }
+
+  function suggestedRing(field: TermSheetSuggestedField): string | undefined {
+    return suggestedFields.includes(field) ? SUGGESTED_RING : undefined;
+  }
+
+  /**
+   * Fills the form from the meeting's own transcript and whiteboards. A
+   * maker reviews and can edit every field before Draft and submit does
+   * anything real — this never drafts or submits on its own.
+   */
+  async function suggest(): Promise<void> {
+    setError(null);
+    setResult(null);
+    setSuggesting(true);
+    try {
+      const suggestion = await api.suggestTermSheet(meetingId);
+      const applied = applySuggestion(
+        { applicantName, amount, tenureMonths, facilityKind, rateBps, contract },
+        suggestion,
+      );
+      setApplicantName(applied.fields.applicantName);
+      setAmount(applied.fields.amount);
+      setTenureMonths(applied.fields.tenureMonths);
+      setFacilityKind(applied.fields.facilityKind);
+      setRateBps(applied.fields.rateBps);
+      setContract(applied.fields.contract);
+      setSuggestedFields(applied.suggested);
+      setResult(
+        applied.suggested.length > 0
+          ? `Filled ${String(applied.suggested.length)} field(s) from the meeting. Review `
+            + 'each before submitting.'
+          : 'The meeting did not clearly state any of these fields, so nothing was filled in.',
+      );
+    } catch (cause) {
+      setError(describeError(cause));
+    } finally {
+      setSuggesting(false);
+    }
+  }
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -334,45 +390,85 @@ function TermSheetForm({
       {error && <ErrorNote>{error}</ErrorNote>}
       {result && <SuccessNote>{result}</SuccessNote>}
 
-      <Field label="Applicant" htmlFor="applicant">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-raised px-3.5 py-2.5">
+        <p className="text-xs text-faint">
+          Fill these fields from what the meeting and any whiteboard captures actually said.
+        </p>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => {
+            void suggest();
+          }}
+          disabled={busy || suggesting}
+        >
+          {suggesting ? 'Reading meeting…' : 'Suggest from meeting'}
+        </Button>
+      </div>
+
+      <Field
+        label="Applicant"
+        htmlFor="applicant"
+        hint={withSuggestedHint('applicantName')}
+      >
         <Input
           id="applicant"
           required
           value={applicantName}
-          onChange={(event) => setApplicantName(event.target.value)}
+          onChange={(event) => {
+            setApplicantName(event.target.value);
+            clearSuggested('applicantName');
+          }}
           placeholder="Tech Solutions Sdn Bhd"
+          className={suggestedRing('applicantName')}
         />
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Principal (MYR)" htmlFor="amount" hint="Whole ringgit.">
+        <Field
+          label="Principal (MYR)"
+          htmlFor="amount"
+          hint={withSuggestedHint('amount', 'Whole ringgit.')}
+        >
           <Input
             id="amount"
             required
             inputMode="numeric"
             value={amount}
-            onChange={(event) => setAmount(event.target.value)}
+            onChange={(event) => {
+              setAmount(event.target.value);
+              clearSuggested('amount');
+            }}
             placeholder="50000"
+            className={suggestedRing('amount')}
           />
         </Field>
 
-        <Field label="Tenure (months)" htmlFor="tenure">
+        <Field label="Tenure (months)" htmlFor="tenure" hint={withSuggestedHint('tenureMonths')}>
           <Input
             id="tenure"
             required
             inputMode="numeric"
             value={tenureMonths}
-            onChange={(event) => setTenureMonths(event.target.value)}
+            onChange={(event) => {
+              setTenureMonths(event.target.value);
+              clearSuggested('tenureMonths');
+            }}
+            className={suggestedRing('tenureMonths')}
           />
         </Field>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Facility kind" htmlFor="kind">
+        <Field label="Facility kind" htmlFor="kind" hint={withSuggestedHint('facilityKind')}>
           <Select
             id="kind"
             value={facilityKind}
-            onChange={(event) => setFacilityKind(event.target.value as FacilityKind)}
+            onChange={(event) => {
+              setFacilityKind(event.target.value as FacilityKind);
+              clearSuggested('facilityKind');
+            }}
+            className={suggestedRing('facilityKind')}
           >
             <option value="ISLAMIC">Islamic</option>
             <option value="CONVENTIONAL">Conventional</option>
@@ -382,24 +478,32 @@ function TermSheetForm({
         <Field
           label={islamic ? 'Profit rate (bps)' : 'Interest rate (bps)'}
           htmlFor="rate"
-          hint="800 bps is 8.00%."
+          hint={withSuggestedHint('rateBps', '800 bps is 8.00%.')}
         >
           <Input
             id="rate"
             required
             inputMode="numeric"
             value={rateBps}
-            onChange={(event) => setRateBps(event.target.value)}
+            onChange={(event) => {
+              setRateBps(event.target.value);
+              clearSuggested('rateBps');
+            }}
+            className={suggestedRing('rateBps')}
           />
         </Field>
       </div>
 
       {islamic && (
-        <Field label="Shariah contract" htmlFor="contract">
+        <Field label="Shariah contract" htmlFor="contract" hint={withSuggestedHint('contract')}>
           <Select
             id="contract"
             value={contract}
-            onChange={(event) => setContract(event.target.value)}
+            onChange={(event) => {
+              setContract(event.target.value);
+              clearSuggested('contract');
+            }}
+            className={suggestedRing('contract')}
           >
             {CONTRACTS.map((name) => (
               <option key={name} value={name}>

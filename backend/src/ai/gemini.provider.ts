@@ -8,6 +8,7 @@ import {
   type GroundingExcerpt,
   type ImageInput,
   type ProjectDraft,
+  type TermSheetSuggestion,
   type TopicDraft,
   TranscriptionError,
   type TranscriptionProvider,
@@ -26,6 +27,8 @@ import {
   ProjectDraftSchema,
   ResponseSchema,
   SUMMARY_PROMPT,
+  TERM_SHEET_PROMPT,
+  TermSheetSuggestionSchema,
   TOPICS_PROMPT,
   TopicsSchema,
   TRANSCRIBE_PROMPT,
@@ -53,6 +56,7 @@ import {
 const PROMPT_VERSION = 'gemini-transcribe-v2';
 const SUMMARY_PROMPT_VERSION = 'gemini-summary-v1';
 const ANSWER_PROMPT_VERSION = 'gemini-answer-v1';
+const TERM_SHEET_PROMPT_VERSION = 'gemini-termsheet-v1';
 
 /**
  * Two ways to authenticate against the same model family. `api-key` is the
@@ -501,6 +505,47 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       unanswerable: parsed.data.unanswerable,
       modelId: this.config.textModel,
       promptVersion: ANSWER_PROMPT_VERSION,
+    };
+  }
+
+  /**
+   * Proposed term sheet fields from a meeting's already-redacted transcript
+   * and attachment text. Every field is optional on the way in, and a
+   * response that fails the schema is treated the same as one that named
+   * nothing — an empty suggestion, not a thrown error, on the same
+   * best-effort reasoning as arbitrateDecisions above.
+   */
+  async suggestTermSheet(redactedContext: string): Promise<TermSheetSuggestion> {
+    const empty = { modelId: this.config.textModel, promptVersion: TERM_SHEET_PROMPT_VERSION };
+    if (redactedContext.trim() === '') return empty;
+
+    let raw: string;
+    try {
+      const response = await this.client.models.generateContent({
+        model: this.config.textModel,
+        contents: [
+          { role: 'user', parts: [{ text: TERM_SHEET_PROMPT }, { text: redactedContext }] },
+        ],
+        config: { responseMimeType: 'application/json', temperature: 0 },
+      });
+      raw = response.text ?? '';
+    } catch (cause) {
+      logApiErrorStatus('suggestTermSheet', cause);
+      throw new TranscriptionError(
+        'gemini',
+        cause instanceof Error
+          ? `term sheet suggestion failed (${cause.name})`
+          : 'term sheet suggestion failed',
+      );
+    }
+
+    const parsed = TermSheetSuggestionSchema.safeParse(parseJsonLoosely(raw));
+    if (!parsed.success) return empty;
+
+    return {
+      ...parsed.data,
+      modelId: this.config.textModel,
+      promptVersion: TERM_SHEET_PROMPT_VERSION,
     };
   }
 

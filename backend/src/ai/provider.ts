@@ -178,6 +178,16 @@ export interface TranscriptionProvider {
     question: string,
     excerpts: readonly GroundingExcerpt[],
   ): Promise<GroundedAnswer>;
+
+  /**
+   * Optional term sheet field suggestion from a meeting's redacted transcript
+   * and attachments, for a maker to review before drafting — never trusted
+   * enough to draft or submit on its own. Every field the model is not
+   * confident about is simply absent, the same "left unresolved" discipline
+   * as arbitrateDecisions, so a maker sees exactly what the meeting supports
+   * and nothing invented to fill a gap.
+   */
+  suggestTermSheet?(redactedContext: string): Promise<TermSheetSuggestion>;
 }
 
 /** A topic as the extractor read it. Raw model output — unredacted by construction. */
@@ -244,6 +254,25 @@ export interface GroundedAnswer {
   readonly citedMeetingIds: readonly string[];
   /** True when the model reports the corpus does not answer the question. */
   readonly unanswerable: boolean;
+  readonly modelId: string;
+  readonly promptVersion: string;
+}
+
+/**
+ * A term sheet's fields as the model read them from a meeting's transcript
+ * and attachments. Raw model output — unredacted by construction, exactly
+ * like SegmentDraft.text — except every field is optional: the model is
+ * asked to state a value only where the meeting actually gives it one, not
+ * to invent a default no one said. `facilityKind` and `islamicContract`
+ * mirror Prisma's enums of the same name.
+ */
+export interface TermSheetSuggestion {
+  readonly applicantName?: string | undefined;
+  readonly principalMyr?: number | undefined;
+  readonly tenureMonths?: number | undefined;
+  readonly facilityKind?: 'ISLAMIC' | 'CONVENTIONAL' | undefined;
+  readonly rateBps?: number | undefined;
+  readonly islamicContract?: string | undefined;
   readonly modelId: string;
   readonly promptVersion: string;
 }

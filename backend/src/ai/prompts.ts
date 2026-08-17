@@ -195,6 +195,39 @@ export const WhiteboardSchema = z.object({
   structured: z.record(z.string(), z.unknown()),
 });
 
+/**
+ * Every field is optional in both the instruction and the schema below, on
+ * purpose: a maker reviews whatever comes back, so a field the meeting never
+ * settled is better left absent than filled with a guess presented as fact.
+ */
+export const TERM_SHEET_PROMPT =
+  'This is a redacted transcript of a credit committee meeting, followed by '
+  + 'the redacted text of anything captured alongside it — a whiteboard, a '
+  + 'slide, a document. Personal data has already been replaced with '
+  + 'placeholders like [NRIC_1]; never copy a placeholder into any field, and '
+  + 'never treat one as a name. Return JSON with these keys, every one '
+  + 'optional: omit a key entirely rather than guess if the meeting does not '
+  + 'clearly give it. "applicantName": the borrower company\'s name, never a '
+  + 'person\'s name. "principalMyr": the facility amount in whole ringgit, a '
+  + 'plain number with no currency symbol or thousands separator. '
+  + '"tenureMonths": the tenure in whole months. "facilityKind": "ISLAMIC" or '
+  + '"CONVENTIONAL", only if the meeting says which. "rateBps": the quoted '
+  + 'rate in basis points — convert a percentage yourself, so 8% becomes '
+  + '800. "islamicContract": one of MURABAHAH, TAWARRUQ, IJARAH, MUSHARAKAH, '
+  + 'MUDHARABAH, ISTISNA or SALAM, only when facilityKind is ISLAMIC and a '
+  + 'contract was actually named.';
+
+export const TermSheetSuggestionSchema = z.object({
+  applicantName: z.string().min(1).max(200).optional(),
+  principalMyr: z.number().positive().optional(),
+  tenureMonths: z.number().int().positive().optional(),
+  facilityKind: z.enum(['ISLAMIC', 'CONVENTIONAL']).optional(),
+  rateBps: z.number().int().min(0).optional(),
+  islamicContract: z
+    .enum(['MURABAHAH', 'TAWARRUQ', 'IJARAH', 'MUSHARAKAH', 'MUDHARABAH', 'ISTISNA', 'SALAM'])
+    .optional(),
+});
+
 /** Models sometimes wrap JSON in a markdown fence even when asked not to. */
 export function parseJsonLoosely(raw: string): unknown {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(raw);

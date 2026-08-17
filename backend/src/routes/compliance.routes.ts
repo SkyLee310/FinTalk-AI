@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import type { TermSheetSuggestion, TranscriptionProvider } from '../ai/provider.js';
 import { appendAudit, verifyChain } from '../audit/chain.js';
 import { requireAuth, requireCapability } from '../auth/middleware.js';
 import { ComplianceError } from '../compliance/errors.js';
@@ -11,6 +12,7 @@ import {
   draftTermSheet,
   submitForApproval,
 } from '../compliance/termsheet.js';
+import { suggestTermSheet } from '../compliance/termsheet-suggestion.js';
 import { buildPaymentCsv, minorToDecimal } from '../export/pain001.js';
 import { sendProblem } from '../http/problem.js';
 import { settleMock } from '../payments/mock-settlement.js';
@@ -101,10 +103,25 @@ function serialiseTermSheet(sheet: {
   };
 }
 
+/** A suggestion leaves this service with money as a string, like a term sheet does. */
+function serialiseSuggestion(suggestion: TermSheetSuggestion) {
+  return {
+    ...suggestion,
+    principalMyr:
+      suggestion.principalMyr === undefined ? undefined : String(suggestion.principalMyr),
+  };
+}
+
+export interface ComplianceRouteDeps {
+  readonly prisma: PrismaClient;
+  readonly provider: TranscriptionProvider;
+}
+
 export function registerComplianceRoutes(
   app: FastifyInstance,
-  prisma: PrismaClient,
+  deps: ComplianceRouteDeps,
 ): void {
+  const { prisma, provider } = deps;
   /**
    * Segment review, gated on `transcript:read`.
    *
@@ -266,6 +283,34 @@ export function registerComplianceRoutes(
           reviewedAt: flag.reviewedAt?.toISOString() ?? null,
           reviewNote: flag.reviewNote,
         });
+      } catch (error) {
+        return handleComplianceError(reply, error);
+      }
+    },
+  );
+
+  /**
+   * A model's read of the meeting's redacted transcript and whiteboards, for
+   * a maker to review before drafting — never stored, never submitted on its
+   * own. Same `termsheet:draft` gate as the route below: this is a
+   * preparatory step in that same action, not a distinct capability.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/meetings/:id/term-sheets/suggestion',
+    { preHandler: [requireAuth, requireCapability('termsheet:draft')] },
+    async (request, reply) => {
+      const actor = request.authUser;
+      if (actor === undefined) {
+        return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
+      }
+
+      try {
+        const suggestion = await suggestTermSheet(
+          { prisma, provider },
+          actor,
+          request.params.id,
+        );
+        return reply.send(serialiseSuggestion(suggestion));
       } catch (error) {
         return handleComplianceError(reply, error);
       }

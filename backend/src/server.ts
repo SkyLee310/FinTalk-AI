@@ -68,7 +68,7 @@ export function buildServer(deps?: Partial<ServerDeps>) {
   registerAuthRoutes(app, prisma);
   registerMeetingRoutes(app, { prisma, provider, vaultKey, jobs });
   registerWhiteboardRoutes(app, { prisma, provider, vaultKey });
-  registerComplianceRoutes(app, prisma);
+  registerComplianceRoutes(app, { prisma, provider });
   registerUserRoutes(app, prisma);
   registerKnowledgeRoutes(app, { prisma, provider });
   registerFeedbackRoutes(app, prisma);

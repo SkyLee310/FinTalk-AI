@@ -1,6 +1,11 @@
 import type { Role } from '@prisma/client';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { FakeTranscriptionProvider } from '../../src/ai/fake.provider.js';
+import type {
+  TermSheetSuggestion,
+  TranscriptionProvider,
+  TranscriptionResult,
+} from '../../src/ai/provider.js';
 import { verifyChain } from '../../src/audit/chain.js';
 import { ACCESS_COOKIE } from '../../src/auth/middleware.js';
 import { hashPassword } from '../../src/auth/password.js';
@@ -312,6 +317,151 @@ describe('term sheet validation', () => {
       },
     });
     expect(response.statusCode).toBe(403);
+  });
+});
+
+describe('term sheet suggestion', () => {
+  function suggest(meetingId: string, role: Role = 'MAKER') {
+    return app.inject({
+      method: 'POST',
+      url: `/meetings/${meetingId}/term-sheets/suggestion`,
+      headers: { cookie: as(role) },
+    });
+  }
+
+  it('drafts field suggestions from the captured meeting, money as a string', async () => {
+    const meetingId = await capturedMeeting();
+    const response = await suggest(meetingId);
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<{
+      applicantName?: string;
+      principalMyr?: string;
+      tenureMonths?: number;
+      facilityKind?: string;
+      rateBps?: number;
+      islamicContract?: string;
+      modelId: string;
+      promptVersion: string;
+    }>();
+
+    expect(body.applicantName).toBe('Tech Solutions Sdn Bhd');
+    expect(body.principalMyr).toBe('50000');
+    expect(body.tenureMonths).toBe(60);
+    expect(body.facilityKind).toBe('ISLAMIC');
+    expect(body.rateBps).toBe(800);
+    expect(body.islamicContract).toBe('MURABAHAH');
+    expect(body.modelId).toBeTruthy();
+    expect(body.promptVersion).toBeTruthy();
+  });
+
+  it('refuses a non-maker role', async () => {
+    const meetingId = await capturedMeeting();
+    expect((await suggest(meetingId, 'CHECKER')).statusCode).toBe(403);
+  });
+
+  it('refuses an unauthenticated request', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/meetings/does-not-matter/term-sheets/suggestion',
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('answers 404 for an unknown meeting', async () => {
+    expect((await suggest('does-not-exist')).statusCode).toBe(404);
+  });
+
+  /** Implements only what capture needs — no suggestTermSheet at all. */
+  class NoSuggestionProvider implements TranscriptionProvider {
+    readonly name = 'fake' as const;
+
+    transcribe(): Promise<TranscriptionResult> {
+      return new FakeTranscriptionProvider().transcribe({
+        bytes: new Uint8Array([1, 2, 3, 4]),
+        mimeType: 'audio/wav',
+      });
+    }
+  }
+
+  it('answers 501 when the configured provider has no suggestion model', async () => {
+    const bareApp = buildServer({ prisma, provider: new NoSuggestionProvider() });
+    try {
+      const meetingId = await capturedMeeting();
+      const response = await bareApp.inject({
+        method: 'POST',
+        url: `/meetings/${meetingId}/term-sheets/suggestion`,
+        headers: { cookie: as('MAKER') },
+      });
+      expect(response.statusCode).toBe(501);
+    } finally {
+      await bareApp.backgroundJobs.drain();
+      await bareApp.close();
+    }
+  });
+
+  /**
+   * A provider that implements only suggestTermSheet, and answers with a
+   * fresh NRIC-shaped applicantName its input never contained. The same
+   * technique meetings.routes.test.ts's DirtyIntelligenceProvider uses to
+   * prove a fail-closed path actually runs, not to describe anything a real
+   * model would do.
+   */
+  class DirtyTermSheetProvider implements TranscriptionProvider {
+    readonly name = 'fake' as const;
+
+    transcribe(): Promise<TranscriptionResult> {
+      return new FakeTranscriptionProvider().transcribe({
+        bytes: new Uint8Array([1, 2, 3, 4]),
+        mimeType: 'audio/wav',
+      });
+    }
+
+    suggestTermSheet(): Promise<TermSheetSuggestion> {
+      return Promise.resolve({
+        applicantName: 'Contact IC 770202-08-2222 directly',
+        principalMyr: 75_000,
+        tenureMonths: 36,
+        facilityKind: 'CONVENTIONAL',
+        rateBps: 650,
+        modelId: 'dirty-model',
+        promptVersion: 'dirty-v1',
+      });
+    }
+  }
+
+  it('drops a leaked applicant name but keeps the rest of the suggestion', async () => {
+    const dirtyApp = buildServer({ prisma, provider: new DirtyTermSheetProvider() });
+    try {
+      const meetingId = await capturedMeeting();
+      const response = await dirtyApp.inject({
+        method: 'POST',
+        url: `/meetings/${meetingId}/term-sheets/suggestion`,
+        headers: { cookie: as('MAKER') },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).not.toContain('770202-08-2222');
+
+      const body = response.json<{
+        applicantName?: string;
+        principalMyr?: string;
+        tenureMonths?: number;
+        facilityKind?: string;
+      }>();
+      expect(body.applicantName).toBeUndefined();
+      expect(body.principalMyr).toBe('75000');
+      expect(body.tenureMonths).toBe(36);
+      expect(body.facilityKind).toBe('CONVENTIONAL');
+
+      const entry = await prisma.auditEntry.findFirstOrThrow({
+        where: { action: 'termsheet.suggestion-requested', entityId: meetingId },
+      });
+      expect(entry.payload).toMatchObject({ nameRedacted: true });
+    } finally {
+      await dirtyApp.backgroundJobs.drain();
+      await dirtyApp.close();
+    }
   });
 });
 

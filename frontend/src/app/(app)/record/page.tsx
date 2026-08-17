@@ -24,6 +24,7 @@ import { describeError, useAsync } from '@/hooks/use-async';
 import { formatElapsed, recordingFilename, useRecorder } from '@/hooks/use-recorder';
 import { guessAttachmentKind, isKindFixed } from '@/lib/attachment-kind';
 import { api, can, type Session, type WhiteboardKind, WHITEBOARD_KIND_LABEL } from '@/lib/api';
+import { measureDurationMs } from '@/lib/audio-duration';
 
 /**
  * Record a meeting in the browser.
@@ -246,6 +247,17 @@ export default function RecordPage() {
       readyBlob,
       mode === 'record' ? recordingFilename(readyBlob) : audioFile?.name,
     );
+
+    /**
+     * Ground truth for the server's timestamp correction (see
+     * backend/src/ai/timestamps.ts) — a MediaRecorder capture in particular
+     * self-reports no duration in its container, so the transcription
+     * provider has no real length to check its own segment timestamps
+     * against without this. Best-effort: an unmeasurable blob just omits
+     * the field rather than blocking the upload.
+     */
+    const durationMs = await measureDurationMs(readyBlob);
+    if (durationMs !== undefined) form.set('durationMs', String(Math.round(durationMs)));
 
     try {
       const { meetingId } = await api.uploadMeeting(form);

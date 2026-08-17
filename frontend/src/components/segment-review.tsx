@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Badge } from '@/components/badge';
 import { Button, ErrorNote, Textarea } from '@/components/ui';
 import { describeError } from '@/hooks/use-async';
+import { formatDateTime } from '@/lib/format';
 import {
   api,
   LOW_CONFIDENCE_THRESHOLD,
@@ -111,7 +112,7 @@ export function SegmentReview({
           className="rounded-lg border border-ok/40 bg-ok-soft/50 px-3 py-2"
         >
           <p className="text-xs font-medium text-ok">
-            Reviewer&apos;s version · {new Date(correction.editedAt).toLocaleString()}
+            Reviewer&apos;s version · {formatDateTime(correction.editedAt)}
           </p>
           <p className="mt-1 text-sm leading-relaxed">{correction.humanValue}</p>
         </div>

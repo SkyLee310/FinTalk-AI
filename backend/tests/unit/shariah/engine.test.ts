@@ -144,7 +144,9 @@ describe('findings are advisory, never rulings', () => {
         'confidence',
         'detectedBy',
         'excerpt',
+        'highlights',
         'issueType',
+        'matchStart',
         'reference',
       ]);
     }
@@ -206,8 +208,40 @@ describe('excerpts and hygiene', () => {
   });
 
   it('caps repeated matches so one noisy transcript cannot flood the review queue', () => {
-    const text = redacted(Array.from({ length: 40 }, () => 'interest rate').join(' '));
+    // One sentence per repetition — 40 distinct sentences, not 40 matches
+    // crammed into one — so the cap is still exercised now that matches
+    // within a single sentence collapse into one finding.
+    const text = redacted(
+      Array.from({ length: 40 }, (_, i) => `Point ${i}, interest rate.`).join(' '),
+    );
     const riba = analyseTranscript(text).filter((f) => f.issueType === 'RIBA');
-    expect(riba.length).toBeLessThanOrEqual(5);
+    expect(riba).toHaveLength(5);
+  });
+});
+
+describe('deduplicating matches within a sentence', () => {
+  it('collapses two trigger phrases in the same sentence into one finding', () => {
+    const findings = analyseTranscript(
+      redacted('we quote fixed interest rate of 8% per annum lah'),
+    );
+    const riba = findings.filter((f) => f.issueType === 'RIBA');
+    expect(riba).toHaveLength(1);
+    expect(riba[0]!.highlights).toEqual(['interest rate', '8% per annum']);
+  });
+
+  it('keeps matches in different sentences as separate findings', () => {
+    const findings = analyseTranscript(
+      redacted('The interest rate is high. Separately, we quote 8% per annum.'),
+    );
+    const riba = findings.filter((f) => f.issueType === 'RIBA');
+    expect(riba).toHaveLength(2);
+  });
+
+  it('reports the anchor offset for jump-to-transcript', () => {
+    const text = redacted('brewery. interest rate of 8% per annum.');
+    const findings = analyseTranscript(text);
+    const riba = findings.find((f) => f.issueType === 'RIBA')!;
+    expect(text.slice(riba.matchStart, riba.matchStart + 'interest rate'.length))
+      .toBe('interest rate');
   });
 });

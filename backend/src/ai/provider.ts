@@ -32,6 +32,14 @@ export const LOW_CONFIDENCE_THRESHOLD = 0.6;
 export interface AudioInput {
   readonly bytes: Uint8Array;
   readonly mimeType: string;
+  /**
+   * The recording's real playback length, measured client-side from the
+   * captured blob — ground truth for correcting a transcription provider's
+   * self-reported segment timestamps (see rescaleSegmentTimestamps in
+   * timestamps.ts). `undefined` when the client could not measure it, in
+   * which case no correction runs and the provider's own timestamps stand.
+   */
+  readonly durationMs?: number | undefined;
 }
 
 export interface ImageInput {

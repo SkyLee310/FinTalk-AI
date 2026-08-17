@@ -33,8 +33,9 @@ import {
   WHITEBOARD_KIND_LABEL,
 } from '@/lib/api';
 import { formatDuration } from '@/lib/duration';
+import { formatDateTime } from '@/lib/format';
 import { computeParticipation, participationNudge } from '@/lib/participation';
-import { guidanceFor } from '@/lib/shariah-guidance';
+import { guidanceFor, SHARIAH_ISSUE_ORDER } from '@/lib/shariah-guidance';
 import { applySuggestion, type TermSheetSuggestedField } from '@/lib/term-sheet-suggestion';
 
 const FLAG_TONE: Record<ShariahStatus, Tone> = {
@@ -76,6 +77,50 @@ function RedactedText({ text }: { text: string }) {
           part
         ),
       )}
+    </>
+  );
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Renders a Shariah excerpt with two independent overlays: PII placeholders
+ * get the same redaction chip as RedactedText, and phrases the engine
+ * actually matched (`highlights`) get a highlight mark — so a reviewer sees,
+ * at a glance, which words in the quote are what tripped the rule.
+ */
+function ShariahExcerpt({ text, highlights }: { text: string; highlights: readonly string[] }) {
+  const highlightPatterns = highlights.filter((phrase) => phrase.length > 0).map(escapeRegExp);
+  const patterns = ['\\[[A-Z_]+_\\d+\\]', ...highlightPatterns];
+  const splitter = new RegExp(`(${patterns.join('|')})`, 'g');
+  const placeholderTest = /^\[[A-Z_]+_\d+\]$/;
+  const highlightSet = new Set(highlights);
+
+  return (
+    <>
+      {text.split(splitter).map((part, index) => {
+        if (placeholderTest.test(part)) {
+          return (
+            <span
+              key={`${part}-${String(index)}`}
+              title="Personal data, redacted before storage"
+              className="mx-0.5 rounded border border-brand/40 bg-brand-soft px-1 font-mono text-xs text-brand"
+            >
+              {part}
+            </span>
+          );
+        }
+        if (highlightSet.has(part)) {
+          return (
+            <mark key={`${part}-${String(index)}`} className="rounded bg-warn-soft px-0.5 text-inherit">
+              {part}
+            </mark>
+          );
+        }
+        return part;
+      })}
     </>
   );
 }
@@ -143,7 +188,7 @@ const ISSUE_LABEL: Record<string, string> = {
  * Yes and no are equally prominent and neither is preselected. A default answer
  * to a compliance question is an answer nobody gave.
  */
-function ReviewForm({ flag, onDone }: { flag: ShariahFlagRow; onDone: () => void }) {
+function ReviewForm({ flags, onDone }: { flags: ShariahFlagRow[]; onDone: () => void }) {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState<ShariahStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -152,7 +197,10 @@ function ReviewForm({ flag, onDone }: { flag: ShariahFlagRow; onDone: () => void
     setBusy(status);
     setError(null);
     try {
-      await api.reviewFlag(flag.id, status, note);
+      // Every occurrence gets the same verdict and reasoning in one action —
+      // they are the same rule's reading of the same issue type, repeated
+      // across sentences, not N separate judgement calls for one reviewer.
+      await Promise.all(flags.map((flag) => api.reviewFlag(flag.id, status, note)));
       onDone();
     } catch (cause) {
       setError(describeError(cause));
@@ -161,8 +209,10 @@ function ReviewForm({ flag, onDone }: { flag: ShariahFlagRow; onDone: () => void
     }
   }
 
-  const described = ISSUE_LABEL[flag.issueType] ?? flag.issueType;
+  const primary = flags[0]!;
+  const described = ISSUE_LABEL[primary.issueType] ?? primary.issueType;
   const noteRequired = note.trim() === '';
+  const multiple = flags.length > 1;
 
   return (
     <div className="mt-4 space-y-3 border-t border-line pt-4">
@@ -173,19 +223,21 @@ function ReviewForm({ flag, onDone }: { flag: ShariahFlagRow; onDone: () => void
           Is this a genuine Shariah concern?
         </p>
         <p className="mt-1 text-sm text-muted">
-          The <span className="font-mono text-xs">{flag.detectedBy}</span> rule flagged
-          what may be {described}. That is a machine reading of the transcript, not a
-          ruling. Your answer is the ruling.
+          The <span className="font-mono text-xs">{primary.detectedBy}</span> rule flagged
+          what may be {described}
+          {multiple ? `, at ${String(flags.length)} places in this transcript` : ''}. That is
+          a machine reading of the transcript, not a ruling. Your answer is the ruling
+          {multiple ? ' for all of them' : ''}.
         </p>
       </div>
 
       <Field
         label="Your reasoning"
-        htmlFor={`note-${flag.id}`}
+        htmlFor={`note-${primary.id}`}
         hint="Required for yes or no. Cite the placeholder, e.g. [NRIC_1] — a note containing personal data is rejected."
       >
         <Textarea
-          id={`note-${flag.id}`}
+          id={`note-${primary.id}`}
           rows={3}
           value={note}
           disabled={busy !== null}
@@ -234,7 +286,8 @@ function ReviewForm({ flag, onDone }: { flag: ShariahFlagRow; onDone: () => void
       )}
 
       <p className="text-xs text-faint">
-        Either answer is recorded against the rule that raised it, so how often the
+        Either answer is recorded against the rule that raised it
+        {multiple ? ', for every occurrence shown here,' : ''} so how often the
         system was right can be measured later. A facility cannot be submitted while
         any finding is still open.
       </p>
@@ -650,7 +703,18 @@ export default function MeetingDetailPage() {
   const session = useAsync<Session>(() => api.me(), 'session');
   const meeting = useAsync(() => api.meeting(id), `meeting:${id}`);
   const whiteboards = useAsync(() => api.whiteboards(id), `whiteboards:${id}`);
-  const [openFlag, setOpenFlag] = useState<string | null>(null);
+  /** Keyed by issue type ("group-RIBA"), not a single flag id — one review covers every occurrence of that issue. */
+  const [openReview, setOpenReview] = useState<string | null>(null);
+  const [highlightedSegmentId, setHighlightedSegmentId] = useState<string | null>(null);
+
+  /** Scrolls a transcript segment into view and briefly highlights it. */
+  function jumpToSegment(segmentId: string): void {
+    document.getElementById(segmentId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlightedSegmentId(segmentId);
+    window.setTimeout(() => {
+      setHighlightedSegmentId((current) => (current === segmentId ? null : current));
+    }, 2000);
+  }
 
   const maySubmit = can(session.data, 'termsheet:submit');
   const mayReview = can(session.data, 'shariah:review');
@@ -691,6 +755,32 @@ export default function MeetingDetailPage() {
 
   const data = meeting.data;
   const unresolved = data.shariahFlags.filter((flag) => flag.status !== 'CLEARED');
+
+  /**
+   * One card per issue type, not per raw finding — a sentence quoting an
+   * interest figure and the words "interest rate" in the same breath is one
+   * occurrence of riba to a reviewer, even though the engine's dedup fix
+   * still emits every genuinely distinct sentence as its own row. Known
+   * types render in SHARIAH_ISSUE_ORDER; anything outside that static list
+   * still renders (appended at the end) rather than silently dropping a
+   * raised finding.
+   */
+  const knownIssueTypes = new Set(SHARIAH_ISSUE_ORDER);
+  const otherIssueTypes = [...new Set(data.shariahFlags.map((flag) => flag.issueType))].filter(
+    (issueType) => !knownIssueTypes.has(issueType),
+  );
+  const shariahGroups = [...SHARIAH_ISSUE_ORDER, ...otherIssueTypes]
+    .map((issueType) => ({
+      issueType,
+      flags: data.shariahFlags
+        .filter((flag) => flag.issueType === issueType)
+        .sort((a, b) => b.confidence - a.confidence),
+    }))
+    .filter((group) => group.flags.length > 0);
+
+  const segmentsById = new Map(
+    (data.transcript?.segments ?? []).map((segment) => [segment.id, segment] as const),
+  );
 
   /**
    * Built once and reused from two places: standalone (below) when there is
@@ -792,7 +882,7 @@ export default function MeetingDetailPage() {
         <div className="min-w-0">
           <h1 className="text-[1.75rem] font-bold tracking-[-0.02em] sm:text-3xl">{data.title}</h1>
           <p className="mt-1.5 text-sm text-muted">
-            {new Date(data.occurredAt).toLocaleString()}
+            {formatDateTime(data.occurredAt)}
             {data.transcript && ` · ${data.transcript.languages.join(', ')}`}
             {data.transcript?.processingMs != null
               && ` · processed in ${formatDuration(data.transcript.processingMs)}`}
@@ -917,7 +1007,7 @@ export default function MeetingDetailPage() {
           </h2>
           {unresolved.length > 0 && (
             <Badge tone="warn" dot>
-              {unresolved.length} blocking approval
+              {unresolved.length} issue{unresolved.length === 1 ? '' : 's'} blocking approval
             </Badge>
           )}
         </div>
@@ -925,109 +1015,216 @@ export default function MeetingDetailPage() {
         {data.shariahFlags.length === 0 ? (
           <EmptyState title="No findings" body="The rule set raised nothing on this transcript." />
         ) : (
-          <ul className="space-y-3">
-            {data.shariahFlags.map((flag) => {
-              const resolved =
-                flag.status === 'CLEARED' || flag.status === 'CONFIRMED_VIOLATION';
-              const guidance = guidanceFor(flag.issueType);
-              return (
-                <li key={flag.id}>
-                  <Card className="px-5 py-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold">{flag.issueType}</p>
-                        <p className="mt-1 text-sm italic text-muted">
-                          <RedactedText text={flag.excerpt} />
-                        </p>
-                        <p className="mt-2 text-xs text-faint">
-                          {flag.detectedBy} · {(flag.confidence * 100).toFixed(0)}% ·{' '}
-                          {flag.reference}
-                        </p>
-                      </div>
-                      <Badge tone={FLAG_TONE[flag.status]} dot>
-                        {flag.status}
-                      </Badge>
-                    </div>
+          <>
+            <Card className="px-5 py-4">
+              <p className="text-sm text-muted">
+                Screened against {data.shariahRuleCount} rule{data.shariahRuleCount === 1 ? '' : 's'}{' '}
+                across {SHARIAH_ISSUE_ORDER.length} issue types · {data.shariahFlags.length} raised
+                finding{data.shariahFlags.length === 1 ? '' : 's'}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {SHARIAH_ISSUE_ORDER.map((issueType) => {
+                  const count = shariahGroups.find((g) => g.issueType === issueType)?.flags.length ?? 0;
+                  const label = guidanceFor(issueType)?.shortLabel ?? issueType;
+                  return (
+                    <span
+                      key={issueType}
+                      className={
+                        count > 0
+                          ? 'rounded-full border border-warn/40 bg-warn-soft px-3 py-1 text-xs font-medium text-warn'
+                          : 'rounded-full border border-line bg-raised px-3 py-1 text-xs text-faint'
+                      }
+                    >
+                      {label} · {count > 0 ? count : 'none raised'}
+                    </span>
+                  );
+                })}
+              </div>
+            </Card>
 
-                    {/*
-                      Request 3: a details view that says what was detected and
-                      why it flags — drawn from the same guidance module as the
-                      Islamic Banking page, so the two never disagree.
-                    */}
-                    <div className="mt-3">
-                      <Disclosure summary="Details — what was detected, and why it flags">
-                        <div className="space-y-3 text-sm leading-relaxed">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-faint">
-                              Detected in the transcript
-                            </p>
-                            <p className="mt-1 italic text-muted">
-                              <RedactedText text={flag.excerpt} />
-                            </p>
-                          </div>
-                          {guidance !== null && (
-                            <>
-                              <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-faint">
-                                  What {guidance.title} is
-                                </p>
-                                <p className="mt-1 text-muted">{guidance.whatItIs}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-faint">
-                                  Why it flags
-                                </p>
-                                <p className="mt-1 text-muted">{guidance.whyItViolates}</p>
-                              </div>
-                            </>
-                          )}
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-faint">
-                              Detected by · confidence · reference
-                            </p>
-                            <p className="mt-1 text-muted">
-                              <span className="font-mono text-xs">{flag.detectedBy}</span> ·{' '}
-                              {(flag.confidence * 100).toFixed(0)}% · {flag.reference}
-                            </p>
-                          </div>
-                          <p className="text-xs text-faint">
-                            A machine reading of the transcript, not a ruling.{' '}
-                            <Link href="/islamic-banking" className="underline underline-offset-2">
-                              Learn more about Shariah banking
-                            </Link>
-                            .
-                          </p>
+            <ul className="space-y-3">
+              {shariahGroups.map((group) => {
+                const guidance = guidanceFor(group.issueType);
+                const label = guidance?.shortLabel ?? group.issueType;
+                const primary = group.flags[0]!;
+                const extra = group.flags.slice(1);
+                const needsReview = group.flags.filter(
+                  (flag) => flag.status !== 'CLEARED' && flag.status !== 'CONFIRMED_VIOLATION',
+                );
+                const primarySegment =
+                  primary.segmentId === null ? null : segmentsById.get(primary.segmentId) ?? null;
+                const groupKey = `group-${group.issueType}`;
+
+                return (
+                  <li key={group.issueType}>
+                    <Card className="px-5 py-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="text-sm font-semibold">{label}</span>{' '}
+                          <span className="text-xs text-faint">
+                            {group.flags.length} occurrence{group.flags.length === 1 ? '' : 's'}
+                          </span>
                         </div>
-                      </Disclosure>
-                    </div>
-
-                    {mayReview && !resolved && openFlag === flag.id && (
-                      <ReviewForm
-                        flag={flag}
-                        onDone={() => {
-                          setOpenFlag(null);
-                          meeting.reload();
-                        }}
-                      />
-                    )}
-
-                    {mayReview && !resolved && openFlag !== flag.id && (
-                      <div className="mt-3">
-                        <Button
-                          variant="secondary"
-                          onClick={() => {
-                            setOpenFlag(flag.id);
-                          }}
-                        >
-                          Review this finding
-                        </Button>
+                        <Badge tone={FLAG_TONE[primary.status]} dot>
+                          {primary.status}
+                        </Badge>
                       </div>
-                    )}
-                  </Card>
-                </li>
-              );
-            })}
-          </ul>
+
+                      <p className="mt-2 text-sm italic leading-relaxed text-muted">
+                        <ShariahExcerpt text={primary.excerpt} highlights={primary.highlights} />
+                      </p>
+
+                      {primarySegment !== null && (
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
+                          <span className="font-medium text-brand">{primarySegment.speakerLabel}</span>
+                          <span className="font-mono">{timecode(primarySegment.startMs)}</span>
+                          <button
+                            type="button"
+                            className="text-brand underline underline-offset-2"
+                            onClick={() => jumpToSegment(primarySegment.id)}
+                          >
+                            Jump to transcript →
+                          </button>
+                        </div>
+                      )}
+
+                      <p className="mt-2 text-xs text-faint">
+                        <span className="font-mono">{primary.detectedBy}</span> ·{' '}
+                        {(primary.confidence * 100).toFixed(0)}% · {primary.reference}
+                      </p>
+
+                      {group.issueType === 'CONTRACT_MISMATCH' && (
+                        <p className="mt-3 rounded-lg border border-line bg-raised px-3 py-2 text-xs text-muted">
+                          Raised only because a riba finding is also present. Naming an Islamic
+                          contract on its own raises nothing.
+                        </p>
+                      )}
+
+                      {/*
+                        Request 3: a details view that says what was detected and
+                        why it flags — drawn from the same guidance module as the
+                        Islamic Banking page, so the two never disagree.
+                      */}
+                      <div className="mt-3">
+                        <Disclosure summary="Details — what was detected, and why it flags">
+                          <div className="space-y-3 text-sm leading-relaxed">
+                            {extra.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-faint">
+                                  Also found at
+                                </p>
+                                <ul className="mt-1.5 space-y-1.5">
+                                  {extra.map((flag) => {
+                                    const segment =
+                                      flag.segmentId === null
+                                        ? null
+                                        : segmentsById.get(flag.segmentId) ?? null;
+                                    return (
+                                      <li key={flag.id} className="text-muted">
+                                        {segment !== null && (
+                                          <>
+                                            <span className="font-mono text-xs text-faint">
+                                              {timecode(segment.startMs)}
+                                            </span>{' '}
+                                            <span className="text-xs font-medium text-brand">
+                                              {segment.speakerLabel}
+                                            </span>{' '}
+                                            —{' '}
+                                          </>
+                                        )}
+                                        <span className="italic">
+                                          &ldquo;
+                                          <ShariahExcerpt text={flag.excerpt} highlights={flag.highlights} />
+                                          &rdquo;
+                                        </span>
+                                        {segment !== null && (
+                                          <button
+                                            type="button"
+                                            className="ml-2 text-xs text-brand underline underline-offset-2"
+                                            onClick={() => jumpToSegment(segment.id)}
+                                          >
+                                            Jump →
+                                          </button>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
+                            )}
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-faint">
+                                Detected in the transcript
+                              </p>
+                              <p className="mt-1 italic text-muted">
+                                <ShariahExcerpt text={primary.excerpt} highlights={primary.highlights} />
+                              </p>
+                            </div>
+                            {guidance !== null && (
+                              <>
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-faint">
+                                    What {guidance.title} is
+                                  </p>
+                                  <p className="mt-1 text-muted">{guidance.whatItIs}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-faint">
+                                    Why it flags
+                                  </p>
+                                  <p className="mt-1 text-muted">{guidance.whyItViolates}</p>
+                                </div>
+                              </>
+                            )}
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-faint">
+                                Detected by · confidence · reference
+                              </p>
+                              <p className="mt-1 text-muted">
+                                <span className="font-mono text-xs">{primary.detectedBy}</span> ·{' '}
+                                {(primary.confidence * 100).toFixed(0)}% · {primary.reference}
+                              </p>
+                            </div>
+                            <p className="text-xs text-faint">
+                              A machine reading of the transcript, not a ruling.{' '}
+                              <Link href="/islamic-banking" className="underline underline-offset-2">
+                                Learn more about Shariah banking
+                              </Link>
+                              .
+                            </p>
+                          </div>
+                        </Disclosure>
+                      </div>
+
+                      {mayReview && needsReview.length > 0 && openReview === groupKey && (
+                        <ReviewForm
+                          flags={needsReview}
+                          onDone={() => {
+                            setOpenReview(null);
+                            meeting.reload();
+                          }}
+                        />
+                      )}
+
+                      {mayReview && needsReview.length > 0 && openReview !== groupKey && (
+                        <div className="mt-3">
+                          <Button
+                            variant="secondary"
+                            onClick={() => {
+                              setOpenReview(groupKey);
+                            }}
+                          >
+                            Review this finding
+                            {needsReview.length > 1 ? ` (${String(needsReview.length)})` : ''}
+                          </Button>
+                        </div>
+                      )}
+                    </Card>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         )}
       </section>
 
@@ -1242,7 +1439,13 @@ export default function MeetingDetailPage() {
 
               <ol className="divide-y divide-line">
                 {data.transcript.segments.map((segment) => (
-                  <li key={segment.id} className="px-5 py-3">
+                  <li
+                    key={segment.id}
+                    id={segment.id}
+                    className={`px-5 py-3 transition-colors duration-500 ${
+                      highlightedSegmentId === segment.id ? 'bg-warn-soft' : ''
+                    }`}
+                  >
                     <div className="flex items-baseline gap-2.5">
                       <span className="shrink-0 font-mono text-xs text-faint">
                         {timecode(segment.startMs)}

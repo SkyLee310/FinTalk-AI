@@ -15,6 +15,8 @@
 export interface ShariahGuidance {
   /** Short human title, e.g. "Riba — interest". */
   readonly title: string;
+  /** One or two words for a pill or card heading, e.g. "Riba", "Haram sector". */
+  readonly shortLabel: string;
   /** What the concept is, in one short paragraph. */
   readonly whatItIs: string;
   /** Why it makes a facility non-compliant. */
@@ -28,6 +30,7 @@ export interface ShariahGuidance {
 export const SHARIAH_GUIDANCE: Record<string, ShariahGuidance> = {
   RIBA: {
     title: 'Riba — interest',
+    shortLabel: 'Riba',
     whatItIs:
       'Riba is any predetermined return on money that is lent — interest. A conventional loan charges the borrower a percentage for the use of the money itself, whether the venture it funds succeeds or fails.',
     whyItViolates:
@@ -38,6 +41,7 @@ export const SHARIAH_GUIDANCE: Record<string, ShariahGuidance> = {
   },
   LATE_PAYMENT_PENALTY: {
     title: 'Late-payment penalty as income',
+    shortLabel: 'Late payment',
     whatItIs:
       "A charge applied when a customer pays late. Shariah separates ta'widh — compensation for a proven, actual loss — from gharamah, a penalty taken as income for the bank.",
     whyItViolates:
@@ -49,6 +53,7 @@ export const SHARIAH_GUIDANCE: Record<string, ShariahGuidance> = {
   },
   GHARAR: {
     title: 'Gharar — excessive uncertainty',
+    shortLabel: 'Gharar',
     whatItIs:
       'Gharar is avoidable uncertainty in the essential terms of a contract — the price, the subject matter, the delivery date, or whether the thing being sold even exists yet.',
     whyItViolates:
@@ -59,6 +64,7 @@ export const SHARIAH_GUIDANCE: Record<string, ShariahGuidance> = {
   },
   MAYSIR: {
     title: 'Maysir — speculation or gambling',
+    shortLabel: 'Maysir',
     whatItIs:
       'Maysir is gaining wealth by chance — betting, wagering, or a structure whose outcome turns on speculation rather than genuine economic activity.',
     whyItViolates:
@@ -69,6 +75,7 @@ export const SHARIAH_GUIDANCE: Record<string, ShariahGuidance> = {
   },
   HARAM_SECTOR: {
     title: 'Prohibited business sector',
+    shortLabel: 'Haram sector',
     whatItIs:
       'Financing whose proceeds fund an activity Islam prohibits — alcohol, pork, gambling, tobacco, or conventional interest-based insurance among them.',
     whyItViolates:
@@ -79,6 +86,7 @@ export const SHARIAH_GUIDANCE: Record<string, ShariahGuidance> = {
   },
   CONTRACT_MISMATCH: {
     title: 'Contract named does not match the terms',
+    shortLabel: 'Contract mismatch',
     whatItIs:
       'The facility is labelled with an Islamic contract — Murabahah, Ijarah, Tawarruq — while the terms described are those of a conventional interest loan.',
     whyItViolates:

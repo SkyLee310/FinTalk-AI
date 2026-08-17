@@ -6,6 +6,7 @@ import { Badge, type Tone } from '@/components/badge';
 import { Button, EmptyState, ErrorNote, PageHeader, Spinner } from '@/components/ui';
 import { describeError, useAsync } from '@/hooks/use-async';
 import { api, can, type MeetingStatus, type MeetingSummary, type Session } from '@/lib/api';
+import { formatDateTime } from '@/lib/format';
 
 const STATUS_TONE: Record<MeetingStatus, Tone> = {
   CAPTURED: 'neutral',
@@ -58,7 +59,7 @@ function MeetingRow({
         <div className="min-w-0">
           <p className="truncate text-[15px] font-semibold">{meeting.title}</p>
           <p className="mt-0.5 text-xs text-faint">
-            {new Date(meeting.occurredAt).toLocaleString()}
+            {formatDateTime(meeting.occurredAt)}
           </p>
         </div>
         <div className="col-span-2 flex flex-wrap items-center gap-2 sm:col-span-1 sm:justify-self-end">

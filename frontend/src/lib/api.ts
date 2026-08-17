@@ -167,6 +167,10 @@ export interface ShariahFlagRow {
   confidence: number;
   reference: string;
   status: ShariahStatus;
+  /** Which transcript segment to scroll to for "jump to transcript", or null. */
+  segmentId: string | null;
+  /** The phrase(s) matched within `excerpt`, for highlighting. */
+  highlights: string[];
 }
 
 /** The final decision a debated point reached, or "left unresolved" — arbiter output. */
@@ -211,6 +215,8 @@ export interface MeetingDetail {
     redactions: RedactionRow[];
   } | null;
   shariahFlags: ShariahFlagRow[];
+  /** Size of the rule set the engine screened against, for the findings header. */
+  shariahRuleCount: number;
   /** The final decision each debated point reached, arbiter output. Empty is normal, not a failure. */
   decisions: DecisionRow[];
   /** Who/what/when. Empty is normal, not a failure. */

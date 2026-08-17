@@ -6,6 +6,7 @@ import { Card } from '@/components/card';
 import { EmptyState, ErrorNote, PageHeader, Section, Spinner } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { api, can, type Capability, type FeedbackRow, type Session } from '@/lib/api';
+import { formatDateTime } from '@/lib/format';
 
 /**
  * The Administration section index.
@@ -204,7 +205,7 @@ function FeedbackList({ rows }: { rows: FeedbackRow[] }) {
                 <span className="text-caption text-faint">{row.author.role}</span>
               </div>
               <time dateTime={row.createdAt} className="text-caption text-faint">
-                {new Date(row.createdAt).toLocaleString()}
+                {formatDateTime(row.createdAt)}
               </time>
             </div>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted">

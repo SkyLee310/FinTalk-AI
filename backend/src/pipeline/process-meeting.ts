@@ -22,6 +22,7 @@ import {
   type TranscriptSegmentInput,
 } from '../pdpa/transcript-store.js';
 import { isStorableTopicLabel } from '../knowledge/graph.js';
+import { rescaleSegmentTimestamps } from '../ai/timestamps.js';
 import { analyseTranscript } from '../shariah/engine.js';
 
 /**
@@ -169,6 +170,34 @@ function redactTranscript(
   };
 }
 
+/**
+ * Resolves a character offset in the joined transcript to the id of the
+ * segment that contains it, by walking the same cumulative lengths
+ * `redactTranscript` used to place its own redaction records.
+ *
+ * `storedIds` must be TranscriptSegment ids fetched back in `startMs`
+ * ascending order — the same order `segments` (and therefore this pipeline's
+ * `document.segments`) was created in — so index `i` in both arrays names the
+ * same segment. Returns null rather than throwing if the offset falls
+ * outside every segment (should not happen, but a finding is still valid
+ * without a segment link — see ShariahFlag.segmentId).
+ */
+function segmentIdAtOffset(
+  segments: readonly TranscriptSegmentInput[],
+  storedIds: readonly string[],
+  offset: number,
+): string | null {
+  let cursor = 0;
+  for (const [index, segment] of segments.entries()) {
+    if (index > 0) cursor += SEGMENT_SEPARATOR.length;
+    const start = cursor;
+    const end = start + segment.textRedacted.length;
+    if (offset >= start && offset < end) return storedIds[index] ?? null;
+    cursor = end;
+  }
+  return null;
+}
+
 export async function processMeeting(
   deps: PipelineDeps,
   meetingId: string,
@@ -222,6 +251,19 @@ export async function processMeeting(
   } catch (cause) {
     throw await failed('transcription', cause);
   }
+
+  /**
+   * Corrects the provider's self-reported timestamps against the audio's
+   * real, client-measured length before anything downstream — stored
+   * segments, redaction offsets, a Shariah finding's segment link — is built
+   * on them. Runs even when no duration was measured (audio.durationMs is
+   * then undefined): rescaleSegmentTimestamps still clamps the sequence to
+   * be non-decreasing in that case.
+   */
+  transcription = {
+    ...transcription,
+    segments: rescaleSegmentTimestamps(transcription.segments, audio.durationMs),
+  };
 
   let document: RedactedDocument;
   try {
@@ -285,6 +327,16 @@ export async function processMeeting(
   try {
     const findings = analyseTranscript(document.rawRedacted);
     if (findings.length > 0) {
+      // Fetched in the same startMs order the segments were created in (see
+      // segmentIdAtOffset), so a finding's matchStart can be resolved to the
+      // real row that raised it — that's what "jump to transcript" follows.
+      const storedSegments = await prisma.transcriptSegment.findMany({
+        where: { transcriptId },
+        orderBy: { startMs: 'asc' },
+        select: { id: true },
+      });
+      const storedSegmentIds = storedSegments.map((segment) => segment.id);
+
       flagCount = await prisma.$transaction(async (tx) => {
         const created = await tx.shariahFlag.createMany({
           data: findings.map((finding) => ({
@@ -295,6 +347,8 @@ export async function processMeeting(
             confidence: finding.confidence,
             reference: finding.reference,
             status: 'FLAGGED' as const,
+            segmentId: segmentIdAtOffset(document.segments, storedSegmentIds, finding.matchStart),
+            highlights: [...finding.highlights],
           })),
         });
 

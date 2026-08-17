@@ -373,6 +373,9 @@ model TranscriptSegment {
 
   transcript  Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
   confirmedBy User?      @relation("SegmentConfirmer", fields: [confirmedById], references: [id])
+  /// Shariah findings anchored to this segment, for "jump to transcript".
+  /// See ShariahFlag.segmentId.
+  shariahFlags ShariahFlag[]
 
   @@index([transcriptId, startMs])
 }
@@ -458,8 +461,21 @@ model ShariahFlag {
   reviewedAt   DateTime?
   reviewNote   String?
 
-  meeting    Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  reviewedBy User?   @relation("ShariahReviewer", fields: [reviewedById], references: [id])
+  /// Which transcript segment the finding's anchor match falls in, for
+  /// "jump to transcript". Null for a flag raised before this column
+  /// existed, or the rare case the offset could not be resolved — the
+  /// finding is still valid either way, just not linkable to one line.
+  /// SetNull rather than Cascade: a segment's correction shouldn't delete
+  /// the finding it once helped locate.
+  segmentId String?
+  /// The distinct phrases matched within the finding's sentence, for
+  /// highlighting inside `excerpt`. Empty for a flag raised before this
+  /// column existed.
+  highlights String[] @default([])
+
+  meeting    Meeting            @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  reviewedBy User?              @relation("ShariahReviewer", fields: [reviewedById], references: [id])
+  segment    TranscriptSegment? @relation(fields: [segmentId], references: [id], onDelete: SetNull)
 
   @@index([meetingId, status])
 }

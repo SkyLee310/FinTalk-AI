@@ -5,6 +5,7 @@ import { Card, CardHeader } from '@/components/card';
 import { EmptyState, ErrorNote, PageHeader, Spinner } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { api } from '@/lib/api';
+import { formatDateTime } from '@/lib/format';
 
 export default function AuditPage() {
   const audit = useAsync(() => api.audit(), 'audit');
@@ -77,7 +78,7 @@ export default function AuditPage() {
                     {audit.data.entries.map((entry) => (
                       <tr key={entry.id}>
                         <td className="whitespace-nowrap px-5 py-2.5 text-xs text-muted">
-                          {new Date(entry.at).toLocaleString()}
+                          {formatDateTime(entry.at)}
                         </td>
                         <td className="px-5 py-2.5 text-xs">
                           {entry.actorRole === null ? (

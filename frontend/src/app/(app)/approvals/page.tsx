@@ -25,6 +25,7 @@ import {
   type Session,
   type SettlementRail,
 } from '@/lib/api';
+import { formatDateTime } from '@/lib/format';
 
 const DECISION_TONE: Record<ApprovalStatus, Tone> = {
   DRAFT: 'neutral',
@@ -170,7 +171,7 @@ function SettleForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
             </span>
           </DataRow>
           <DataRow label="Recorded">
-            {new Date(settlement.settledAt).toLocaleString()}
+            {formatDateTime(settlement.settledAt)}
           </DataRow>
         </dl>
         <p className="text-xs text-faint">
@@ -261,9 +262,9 @@ function ApprovalCard({
       <Card>
         <CardHeader
           title={sheet.applicantName}
-          description={`Submitted by ${approval.makerName} on ${new Date(
+          description={`Submitted by ${approval.makerName} on ${formatDateTime(
             approval.submittedAt,
-          ).toLocaleString()}`}
+          )}`}
           action={
             <Badge tone={DECISION_TONE[approval.decision]} dot>
               {approval.decision}

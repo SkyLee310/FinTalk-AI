@@ -12,6 +12,7 @@ import {
   type PipelineDeps,
   processMeeting,
 } from '../pipeline/process-meeting.js';
+import { SHARIAH_RULES } from '../shariah/rules.js';
 
 /**
  * Meeting capture.
@@ -287,7 +288,19 @@ export function registerMeetingRoutes(
        * PROCESSING. A durable queue is the real answer; this is honest about
        * being a single process.
        */
-      const audio = { bytes: audioBytes, mimeType: audioMimeType };
+      /**
+       * Client-measured playback length, for correcting the provider's
+       * self-reported segment timestamps (see rescaleSegmentTimestamps).
+       * Best-effort: a missing or malformed value just means no correction
+       * runs, never a rejected upload — this field is an enhancement, not a
+       * requirement like consent or the audio bytes above.
+       */
+      const rawDurationMs = fields.get('durationMs');
+      const parsedDurationMs = rawDurationMs === undefined ? NaN : Number(rawDurationMs);
+      const durationMs =
+        Number.isFinite(parsedDurationMs) && parsedDurationMs > 0 ? parsedDurationMs : undefined;
+
+      const audio = { bytes: audioBytes, mimeType: audioMimeType, durationMs };
 
       deps.jobs.run(processMeeting(deps, meeting.id, audio, actor), (error: unknown) => {
         /**
@@ -584,7 +597,19 @@ export function registerMeetingRoutes(
           confidence: flag.confidence,
           reference: flag.reference,
           status: flag.status,
+          // Null when the offset could not be resolved to a segment (see
+          // ShariahFlag.segmentId) — the client renders that finding without
+          // a "jump to transcript" link rather than a broken one.
+          segmentId: flag.segmentId,
+          highlights: flag.highlights,
         })),
+        /**
+         * Static across every meeting — the size of the rule set the engine
+         * ran, for the findings panel's "screened against N rules" header.
+         * Read from the same array the engine iterates, so it can never
+         * drift from what was actually run.
+         */
+        shariahRuleCount: SHARIAH_RULES.length,
         /** The final decision each debated point reached, arbiter output. */
         decisions: meeting.decisions.map((decision) => ({
           id: decision.id,

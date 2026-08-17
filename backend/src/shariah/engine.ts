@@ -21,6 +21,19 @@ export interface ShariahFinding {
   readonly detectedBy: string;
   readonly confidence: number;
   readonly reference: string;
+  /**
+   * Offset of the finding's anchor match within the transcript passed in.
+   * The caller holds that same transcript's segment boundaries, so this is
+   * what lets a finding point at the segment that raised it.
+   */
+  readonly matchStart: number;
+  /**
+   * The distinct phrases matched within this finding's sentence, in the
+   * order first matched — what a reviewer should see picked out inside
+   * `excerpt`. A match outside the excerpt's padding window is left out,
+   * since there is nothing in the rendered text for it to highlight.
+   */
+  readonly highlights: readonly string[];
 }
 
 export interface FacilityContext {
@@ -68,27 +81,45 @@ const EXPLANATORY_AFTER =
   /^[\s,]*(?:means|refers?\s+to|is\s+defined\s+as|is\s+basically|is\s+essentially|bermaksud|maksudnya)\b/i;
 const SENTENCE_BOUNDARY = /[.?!\n]/;
 
-function isExplanatoryMention(transcript: string, start: number, end: number): boolean {
-  let beforeFrom = 0;
+/**
+ * Sentence-like bounds around [start, end): walks outward to the nearest
+ * SENTENCE_BOUNDARY on each side. Segments are joined with '\n' (see
+ * SEGMENT_SEPARATOR in process-meeting.ts), so this never crosses a segment
+ * boundary either. Two matches that resolve to the same `start` here are, by
+ * construction, in the same sentence — there is no boundary between them.
+ */
+function sentenceBounds(transcript: string, start: number, end: number): { start: number; end: number } {
+  let boundsStart = 0;
   for (let i = start - 1; i >= 0; i -= 1) {
     if (SENTENCE_BOUNDARY.test(transcript[i]!)) {
-      beforeFrom = i + 1;
+      boundsStart = i + 1;
       break;
     }
   }
 
-  let afterTo = transcript.length;
+  let boundsEnd = transcript.length;
   for (let i = end; i < transcript.length; i += 1) {
     if (SENTENCE_BOUNDARY.test(transcript[i]!)) {
-      afterTo = i;
+      boundsEnd = i;
       break;
     }
   }
 
+  return { start: boundsStart, end: boundsEnd };
+}
+
+function isExplanatoryMention(transcript: string, start: number, end: number): boolean {
+  const { start: beforeFrom, end: afterTo } = sentenceBounds(transcript, start, end);
   return (
     EXPLANATORY_BEFORE.test(transcript.slice(beforeFrom, start))
     || EXPLANATORY_AFTER.test(transcript.slice(end, afterTo))
   );
+}
+
+interface RawMatch {
+  readonly start: number;
+  readonly end: number;
+  readonly text: string;
 }
 
 export function analyseTranscript(
@@ -103,26 +134,57 @@ export function analyseTranscript(
     // Fresh RegExp per rule: the shared literals carry /g, and reusing one
     // across calls would leak lastIndex between transcripts.
     const pattern = new RegExp(rule.pattern.source, rule.pattern.flags);
+    const rawMatches: RawMatch[] = [];
     let match = pattern.exec(transcript);
-    let seen = 0;
-
-    while (match !== null && seen < MAX_FINDINGS_PER_RULE) {
-      const matchEnd = match.index + match[0].length;
-      const suppressed = rule.suppressWhenExplanatory === true
-        && isExplanatoryMention(transcript, match.index, matchEnd);
-
-      if (!suppressed) {
-        findings.push({
-          issueType: rule.issueType,
-          excerpt: excerptAround(transcript, match.index, matchEnd),
-          detectedBy: rule.id,
-          confidence: rule.confidence,
-          reference: rule.reference,
-        });
-        seen += 1;
-      }
-
+    while (match !== null) {
+      rawMatches.push({ start: match.index, end: match.index + match[0].length, text: match[0] });
       match = pattern.exec(transcript);
+    }
+
+    /**
+     * Group by sentence rather than emitting one finding per raw match: a
+     * single utterance can trip a rule's alternation twice (e.g. both
+     * "interest rate" and a "6% per annum" figure matching
+     * riba.interest-rate-mention in the same breath), which a reviewer reads
+     * as one occurrence, not two. The group's first match anchors
+     * suppression and the excerpt window, same as the lone match did before.
+     */
+    const groups = new Map<number, RawMatch[]>();
+    for (const raw of rawMatches) {
+      const { start: sentenceStart } = sentenceBounds(transcript, raw.start, raw.end);
+      const group = groups.get(sentenceStart);
+      if (group) {
+        group.push(raw);
+      } else {
+        groups.set(sentenceStart, [raw]);
+      }
+    }
+
+    let seen = 0;
+    for (const group of groups.values()) {
+      if (seen >= MAX_FINDINGS_PER_RULE) break;
+
+      const anchor = group[0]!;
+      const suppressed = rule.suppressWhenExplanatory === true
+        && isExplanatoryMention(transcript, anchor.start, anchor.end);
+      if (suppressed) continue;
+
+      const from = Math.max(0, anchor.start - EXCERPT_PADDING);
+      const to = Math.min(transcript.length, anchor.end + EXCERPT_PADDING);
+      const highlights = [...new Set(
+        group.filter((raw) => raw.start >= from && raw.end <= to).map((raw) => raw.text),
+      )];
+
+      findings.push({
+        issueType: rule.issueType,
+        excerpt: excerptAround(transcript, anchor.start, anchor.end),
+        detectedBy: rule.id,
+        confidence: rule.confidence,
+        reference: rule.reference,
+        matchStart: anchor.start,
+        highlights,
+      });
+      seen += 1;
     }
   }
 

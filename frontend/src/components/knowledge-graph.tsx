@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { GraphEdge, GraphNode, KnowledgeGraph } from '@/lib/api';
+import { formatDate } from '@/lib/format';
 import { Input } from './ui';
 
 /**
@@ -332,7 +333,7 @@ export function KnowledgeGraphView({
         <div className="rounded-lg border border-brand/40 bg-brand-soft/40 px-4 py-3">
           <p className="text-caption font-medium">{selectedNode.title}</p>
           <p className="mt-1 text-caption text-muted">
-            {new Date(selectedNode.occurredAt).toLocaleDateString()} ·{' '}
+            {formatDate(selectedNode.occurredAt)} ·{' '}
             {selectedNode.termSheetCount} term sheet
             {selectedNode.termSheetCount === 1 ? '' : 's'}
             {selectedNode.openFindingCount > 0 && (

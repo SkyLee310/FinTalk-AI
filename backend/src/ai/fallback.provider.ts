@@ -7,6 +7,7 @@ import type {
   ImageInput,
   ProjectDraft,
   ProviderName,
+  TermSheetSuggestion,
   TopicDraft,
   TranscriptionProvider,
   TranscriptionResult,
@@ -40,6 +41,7 @@ export class FallbackTranscriptionProvider implements TranscriptionProvider {
     question: string,
     excerpts: readonly GroundingExcerpt[],
   ) => Promise<GroundedAnswer>;
+  readonly suggestTermSheet?: (redactedContext: string) => Promise<TermSheetSuggestion>;
 
   private readonly primary: TranscriptionProvider;
   private readonly secondary: TranscriptionProvider;
@@ -106,6 +108,14 @@ export class FallbackTranscriptionProvider implements TranscriptionProvider {
         'answerFromContext',
         () => runPrimary(question, excerpts),
         runSecondary && (() => runSecondary(question, excerpts)),
+      );
+    }
+
+    if (primary.suggestTermSheet) {
+      const runPrimary = primary.suggestTermSheet.bind(primary);
+      const runSecondary = secondary.suggestTermSheet?.bind(secondary);
+      this.suggestTermSheet = (context) => withFallback(
+        primary.name, secondary.name, 'suggestTermSheet', () => runPrimary(context), runSecondary && (() => runSecondary(context)),
       );
     }
 

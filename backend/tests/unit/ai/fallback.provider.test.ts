@@ -146,6 +146,48 @@ describe('FallbackTranscriptionProvider', () => {
     await expect(fallback.summarize!('redacted text')).rejects.toThrow(/summarize boom/);
   });
 
+  it('forwards suggestTermSheet to the secondary on primary failure', async () => {
+    const primary: TranscriptionProvider = {
+      name: 'gemini',
+      transcribe: () => Promise.resolve(result('gemini')),
+      suggestTermSheet: () => Promise.reject(new TranscriptionError('gemini', 'suggest boom')),
+    };
+    let secondaryCalls = 0;
+    const secondary: TranscriptionProvider = {
+      name: 'openrouter',
+      transcribe: () => Promise.resolve(result('openrouter')),
+      suggestTermSheet: (context) => {
+        secondaryCalls += 1;
+        return Promise.resolve({
+          modelId: 'openrouter',
+          promptVersion: 'openrouter-v1',
+          applicantName: context,
+        });
+      },
+    };
+
+    const fallback = new FallbackTranscriptionProvider(primary, secondary);
+    const suggestion = await fallback.suggestTermSheet!('redacted context');
+
+    expect(suggestion.modelId).toBe('openrouter');
+    expect(secondaryCalls).toBe(1);
+  });
+
+  it('omits suggestTermSheet when the primary does not implement it', () => {
+    const primary: TranscriptionProvider = {
+      name: 'gemini',
+      transcribe: () => Promise.resolve(result('gemini')),
+    };
+    const secondary: TranscriptionProvider = {
+      name: 'openrouter',
+      transcribe: () => Promise.resolve(result('openrouter')),
+      suggestTermSheet: () => Promise.resolve({ modelId: 'openrouter', promptVersion: 'v1' }),
+    };
+
+    expect(new FallbackTranscriptionProvider(primary, secondary).suggestTermSheet)
+      .toBeUndefined();
+  });
+
   /**
    * embed() has no fallback path even when the secondary implements it: two
    * different embedding models produce vectors that are not comparable, so

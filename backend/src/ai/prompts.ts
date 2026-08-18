@@ -20,6 +20,7 @@ Rules:
 - Where a passage is unclear, emit the token [inaudible]. Never guess at it.
 - Attribute each segment to a speaker label such as "Speaker 1", or a role if one is stated.
 - Give each segment a "confidence" between 0 and 1: how certain you are that you transcribed those exact words correctly. Base it on audio clarity, overlapping speech, and unfamiliar terms. Score a segment you partly guessed at below 0.6. Do not inflate it — a low score sends a human to check, and a wrong high score sends nobody.
+- "startMs" and "endMs" are milliseconds of elapsed audio time, measured from the very first sample of the clip (0 = the start of the recording) — not clock time, and not relative to the previous segment. Listen through in order and track elapsed time as you go, the way you would follow a stopwatch: use pauses, breaths, and background changes to judge how much time has passed since the last segment, rather than guessing at a round number. Segments must be non-decreasing — each one's startMs at or after the previous segment's endMs — and the final segment's endMs should land close to the true length of the clip you were given.
 
 Return JSON only, in exactly this shape:
 {"languages":["en","ms"],"segments":[{"startMs":0,"endMs":6000,"speaker":"Speaker 1","text":"...","confidence":0.94}]}`;

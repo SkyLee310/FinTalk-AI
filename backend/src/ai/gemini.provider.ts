@@ -50,10 +50,11 @@ import {
  * a credit record.
  */
 
-// v2 adds the per-segment confidence request. Bumped because promptVersion is
-// stored on every transcript as provenance — a version that no longer
-// identifies the prompt that produced the output makes the column a lie.
-const PROMPT_VERSION = 'gemini-transcribe-v2';
+// v2 adds the per-segment confidence request. v3 adds explicit elapsed-time
+// grounding for startMs/endMs. Bumped because promptVersion is stored on
+// every transcript as provenance — a version that no longer identifies the
+// prompt that produced the output makes the column a lie.
+const PROMPT_VERSION = 'gemini-transcribe-v3';
 const SUMMARY_PROMPT_VERSION = 'gemini-summary-v1';
 const ANSWER_PROMPT_VERSION = 'gemini-answer-v1';
 const TERM_SHEET_PROMPT_VERSION = 'gemini-termsheet-v1';

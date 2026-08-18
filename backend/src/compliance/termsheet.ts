@@ -129,11 +129,23 @@ export async function draftTermSheet(
   if (problem !== null) throw new ComplianceError('invalid-facility', 422, problem);
 
   return prisma.$transaction(async (tx) => {
-    const meeting = await tx.meeting.findUnique({ where: { id: input.meetingId } });
-    if (meeting === null) {
-      throw new ComplianceError('not-found', 404, 'No meeting exists with that id.');
-    }
+  const meeting = await tx.meeting.findUnique({
+    where: { id: input.meetingId },
+    select: { status: true, transcript: { select: { id: true } } },
+  });
 
+  if (meeting === null) {
+    throw new ComplianceError('not-found', 404, 'No meeting exists with that id.');
+  }
+
+  if (meeting.status === 'FAILED' || meeting.transcript === null) {
+    throw new ComplianceError(
+      'meeting-not-ready-for-termsheet',
+      409,
+      'A term sheet can only be drafted from a successfully processed meeting with a transcript.',
+    );
+  }
+    
     const at = new Date();
 
     const sheet = await tx.termSheet.create({

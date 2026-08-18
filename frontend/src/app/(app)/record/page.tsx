@@ -21,7 +21,8 @@ import {
   Textarea,
 } from '@/components/ui';
 import { describeError, useAsync } from '@/hooks/use-async';
-import { formatElapsed, recordingFilename, useRecorder } from '@/hooks/use-recorder';
+import { useLivePreview } from '@/hooks/use-live-preview';
+import { formatElapsed, pickMimeType, recordingFilename, useRecorder } from '@/hooks/use-recorder';
 import { guessAttachmentKind, isKindFixed } from '@/lib/attachment-kind';
 import { api, can, type Session, type WhiteboardKind, WHITEBOARD_KIND_LABEL } from '@/lib/api';
 import { measureDurationMs } from '@/lib/audio-duration';
@@ -127,6 +128,22 @@ export default function RecordPage() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [boardFiles, setBoardFiles] = useState<Attachment[]>([]);
   const [dragging, setDragging] = useState(false);
+
+  /**
+   * A rough, rolling transcript while still recording — the real, full
+   * transcript is still only produced after upload. Gated on `recorder.state
+   * === 'recording'`, not just `stream !== null`: the stream stays open
+   * across a pause (only stop() clears it), so without this a paused
+   * recording would keep sending clips to Gemini while the user believes
+   * nothing is happening.
+   */
+  const livePreview = useLivePreview(recorder.stream, {
+    enabled: mode === 'record' && recorder.state === 'recording',
+    mimeType: pickMimeType(),
+    consentConfirmed: ack.consentConfirmed,
+    transferAcknowledged: ack.transferAcknowledged,
+    intervalMs: 10_000,
+  });
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -605,6 +622,36 @@ export default function RecordPage() {
                   Keep this tab open. The audio is only in this browser until you
                   upload it, so closing the tab loses the recording.
                 </p>
+              )}
+
+              {recorder.state === 'recording' && (
+                <div className="mt-4 rounded-lg border border-line bg-raised/60 p-4">
+                  <p className="text-xs font-semibold text-muted">Live preview</p>
+                  <div className="mt-2 max-h-40 space-y-3 overflow-y-auto">
+                    {livePreview.segments.length === 0 ? (
+                      <p className="text-xs text-faint">Listening…</p>
+                    ) : (
+                      livePreview.segments.map((segment, index) => (
+                        <div key={index}>
+                          <span className="text-xs font-medium text-brand">
+                            {segment.speakerLabel}
+                          </span>
+                          <p className="text-sm leading-relaxed">{segment.textRedacted}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {livePreview.error !== null && (
+                    <p className="mt-2 text-xs text-warn">
+                      Last preview refresh failed — retrying automatically.
+                    </p>
+                  )}
+                  <p className="mt-3 text-xs text-faint">
+                    A rough guide, refreshed every ~10s. Speaker labels may shift between
+                    refreshes, and this is not the final transcript — that is generated
+                    after you finish recording.
+                  </p>
+                </div>
               )}
             </div>
           ) : (

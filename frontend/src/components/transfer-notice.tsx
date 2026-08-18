@@ -95,7 +95,9 @@ export function TransferNotice({
         This recording is transcribed by{' '}
         <strong className="font-medium text-text">Google Gemini</strong>. The audio —
         and any whiteboard photo — is sent to Google&apos;s servers outside Malaysia
-        to be processed.
+        to be processed. While you are recording, short clips of the same audio are
+        also sent the same way every ~10 seconds for a rough live preview — the same
+        transfer as above, sent in pieces as you go rather than only once at the end.
       </p>
 
       <p className="mt-2 text-sm leading-relaxed text-muted">

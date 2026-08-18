@@ -31,7 +31,7 @@ const CANDIDATE_TYPES = [
   'audio/ogg;codecs=opus',
 ] as const;
 
-function pickMimeType(): string | undefined {
+export function pickMimeType(): string | undefined {
   if (typeof MediaRecorder === 'undefined') return undefined;
   return CANDIDATE_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
 }
@@ -46,6 +46,14 @@ export interface Recorder {
   readonly error: string | null;
   /** False when this browser cannot record at all, so the UI offers upload. */
   readonly supported: boolean;
+  /**
+   * The live microphone stream, so a second, independent consumer (e.g. a
+   * rolling live-transcription preview) can tap it the same way the level
+   * meter's AnalyserNode already does internally — without touching the
+   * MediaRecorder this hook uses for the actual recording. Null whenever
+   * nothing is recording.
+   */
+  readonly stream: MediaStream | null;
   start: () => Promise<void>;
   pause: () => void;
   resume: () => void;
@@ -59,6 +67,7 @@ export function useRecorder(): Recorder {
   const [level, setLevel] = useState(0);
   const [blob, setBlob] = useState<Blob | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -90,6 +99,7 @@ export function useRecorder(): Recorder {
       track.stop();
     });
     streamRef.current = null;
+    setStream(null);
 
     void audioCtxRef.current?.close();
     audioCtxRef.current = null;
@@ -143,6 +153,7 @@ export function useRecorder(): Recorder {
     }
 
     streamRef.current = stream;
+    setStream(stream);
 
     // A level meter, so a dead microphone is visible before the meeting ends
     // rather than after. Reads the analyser and stores nothing.
@@ -233,6 +244,7 @@ export function useRecorder(): Recorder {
     blob,
     error,
     supported,
+    stream,
     start,
     pause,
     resume,

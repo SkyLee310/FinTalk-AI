@@ -35,6 +35,7 @@ import {
   WHITEBOARD_PROMPT,
   WhiteboardSchema,
 } from './prompts.js';
+import { withAiTimeout } from './timeout.js';
 
 /**
  * Gemini-backed transcription.
@@ -88,6 +89,7 @@ export interface GeminiConfig {
    * guaranteed to work for the other.
    */
   readonly embeddingModel: string;
+  readonly timeoutMs?: number;
 }
 
 /**
@@ -123,6 +125,10 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
       : new GoogleGenAI({ apiKey: config.auth.apiKey });
   }
 
+  private request<T>(stage: string, operation: Promise<T>): Promise<T> {
+  return withAiTimeout('gemini', stage, this.config.timeoutMs ?? 30_000, operation);
+}
+
   async transcribe(audio: AudioInput): Promise<TranscriptionResult> {
     if (audio.bytes.byteLength === 0) {
       throw new TranscriptionError('gemini', 'received empty audio');
@@ -130,7 +136,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
 
     let raw: string;
     try {
-      const response = await this.client.models.generateContent({
+      const response = await this.request('transcribe', this.client.models.generateContent({
         model: this.config.transcribeModel,
         contents: [
           {
@@ -149,7 +155,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
         // temperature 0: a transcript should not vary between runs of the same
         // audio, and an auditor comparing two runs should see one answer.
         config: { responseMimeType: 'application/json', temperature: 0 },
-      });
+      }));
       raw = response.text ?? '';
     } catch (cause) {
       logApiErrorStatus('transcribe', cause);
@@ -200,7 +206,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
 
     let raw: string;
     try {
-      const response = await this.client.models.generateContent({
+      const response = await this.request('extractWhiteboard', this.client.models.generateContent({
         model: this.config.visionModel,
         contents: [
           {
@@ -219,7 +225,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
         // temperature 0 for the same reason transcription uses it: two runs over
         // one photograph should not hand an auditor two different diagrams.
         config: { responseMimeType: 'application/json', temperature: 0 },
-      });
+      }));
       raw = response.text ?? '';
     } catch (cause) {
       /**
@@ -279,11 +285,11 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
 
     let raw: string;
     try {
-      const response = await this.client.models.generateContent({
+      const response = await this.request('extractTopics', this.client.models.generateContent({
         model: this.config.textModel,
         contents: [{ role: 'user', parts: [{ text: TOPICS_PROMPT }, { text: redactedSummary }] }],
         config: { responseMimeType: 'application/json', temperature: 0 },
-      });
+      }));
       raw = response.text ?? '';
     } catch (cause) {
       logApiErrorStatus('extractTopics', cause);
@@ -335,10 +341,10 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
     }
 
     try {
-      const response = await this.client.models.embedContent({
+      const response = await this.request('embed', this.client.models.embedContent({
         model: this.config.embeddingModel,
         contents: [{ role: 'user', parts: [{ text: redactedText }] }],
-      });
+      }));
       const values = response.embeddings?.[0]?.values;
       if (values === undefined || values.length === 0) {
         throw new TranscriptionError('gemini', 'embedding response carried no vector');
@@ -363,11 +369,11 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
 
     let raw: string;
     try {
-      const response = await this.client.models.generateContent({
+      const response = await this.request('arbitrateDecisions', this.client.models.generateContent({
         model: this.config.textModel,
         contents: [{ role: 'user', parts: [{ text: DECISIONS_PROMPT }, { text: redactedText }] }],
         config: { responseMimeType: 'application/json', temperature: 0 },
-      });
+      }));
       raw = response.text ?? '';
     } catch (cause) {
       logApiErrorStatus('arbitrateDecisions', cause);
@@ -399,11 +405,11 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
 
     let raw: string;
     try {
-      const response = await this.client.models.generateContent({
+      const response = await this.request('extractActionItems', this.client.models.generateContent({
         model: this.config.textModel,
         contents: [{ role: 'user', parts: [{ text: ACTION_ITEMS_PROMPT }, { text: redactedText }] }],
         config: { responseMimeType: 'application/json', temperature: 0 },
-      });
+      }));
       raw = response.text ?? '';
     } catch (cause) {
       logApiErrorStatus('extractActionItems', cause);
@@ -430,11 +436,11 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
 
     let raw: string;
     try {
-      const response = await this.client.models.generateContent({
+      const response = await this.request('draftProject', this.client.models.generateContent({
         model: this.config.textModel,
         contents: [{ role: 'user', parts: [{ text: PROJECT_DRAFT_PROMPT }, { text: redactedText }] }],
         config: { responseMimeType: 'application/json', temperature: 0 },
-      });
+      }));
       raw = response.text ?? '';
     } catch (cause) {
       logApiErrorStatus('draftProject', cause);
@@ -470,7 +476,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
 
     let raw: string;
     try {
-      const response = await this.client.models.generateContent({
+      const response = await this.request('answerFromContext', this.client.models.generateContent({
         model: this.config.textModel,
         contents: [
           {
@@ -485,7 +491,7 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
         // temperature 0: the same question over the same corpus should not give a
         // reviewer two different answers on two days.
         config: { responseMimeType: 'application/json', temperature: 0 },
-      });
+      }));
       raw = response.text ?? '';
     } catch (cause) {
       logApiErrorStatus('answerFromContext', cause);
@@ -522,13 +528,13 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
 
     let raw: string;
     try {
-      const response = await this.client.models.generateContent({
+      const response = await this.request('suggestTermSheet', this.client.models.generateContent({
         model: this.config.textModel,
         contents: [
           { role: 'user', parts: [{ text: TERM_SHEET_PROMPT }, { text: redactedContext }] },
         ],
         config: { responseMimeType: 'application/json', temperature: 0 },
-      });
+      }));
       raw = response.text ?? '';
     } catch (cause) {
       logApiErrorStatus('suggestTermSheet', cause);
@@ -552,13 +558,13 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
 
   async summarize(redactedText: string): Promise<string> {
     try {
-      const response = await this.client.models.generateContent({
+      const response = await this.request('summarize', this.client.models.generateContent({
         model: this.config.textModel,
         contents: [
           { role: 'user', parts: [{ text: `${SUMMARY_PROMPT}\n\n---\n${redactedText}` }] },
         ],
         config: { temperature: 0 },
-      });
+      }));
 
       const summary = (response.text ?? '').trim();
       if (summary === '') {

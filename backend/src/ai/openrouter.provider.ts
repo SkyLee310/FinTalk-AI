@@ -60,6 +60,7 @@ export interface OpenRouterConfig {
   /** Text + vision model, used for every JSON/text task including whiteboard reading. */
   readonly model: string;
   readonly transcribeModel: string;
+  readonly timeoutMs?: number;
 }
 
 /** Mirrors gemini.provider.ts's logApiErrorStatus: a status code carries no request content. */
@@ -72,6 +73,7 @@ async function postOpenRouter(
   path: string,
   body: unknown,
   stage: string,
+  timeoutMs: number,
 ): Promise<unknown> {
   let response: Response;
   try {
@@ -82,11 +84,14 @@ async function postOpenRouter(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (cause) {
     throw new TranscriptionError(
       'openrouter',
-      cause instanceof Error ? `request failed (${cause.name})` : 'request failed',
+      cause instanceof Error && cause.name === 'TimeoutError'
+        ? `${stage} timed out after ${String(timeoutMs)}ms`
+        : cause instanceof Error ? `request failed (${cause.name})` : 'request failed',
     );
   }
 
@@ -147,7 +152,7 @@ export class OpenRouterProvider implements TranscriptionProvider {
         data: Buffer.from(audio.bytes).toString('base64'),
         format: audioFormatFor(audio.mimeType),
       },
-    }, 'transcribe');
+    }, 'transcribe', this.config.timeoutMs ?? 30_000);
 
     const { text: rawText, usage } = body as { text?: string; usage?: { seconds?: number } };
     const text = (rawText ?? '').trim();
@@ -194,7 +199,7 @@ export class OpenRouterProvider implements TranscriptionProvider {
       ],
       response_format: { type: 'json_object' },
       temperature: 0,
-    }, 'extractWhiteboard');
+    }, 'extractWhiteboard', this.config.timeoutMs ?? 30_000);
 
     const choices = (body as { choices?: { message?: { content?: string } }[] }).choices;
     const raw = choices?.[0]?.message?.content ?? '';
@@ -312,7 +317,7 @@ export class OpenRouterProvider implements TranscriptionProvider {
       model: this.config.model,
       messages: [{ role: 'user', content: `${SUMMARY_PROMPT}\n\n---\n${redactedText}` }],
       temperature: 0,
-    }, 'summarize');
+    }, 'summarize', this.config.timeoutMs ?? 30_000);
 
     const choices = (body as { choices?: { message?: { content?: string } }[] }).choices;
     const summary = (choices?.[0]?.message?.content ?? '').trim();

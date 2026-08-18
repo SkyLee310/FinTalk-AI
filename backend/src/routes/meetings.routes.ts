@@ -12,6 +12,7 @@ import {
   type PipelineDeps,
   processMeeting,
 } from '../pipeline/process-meeting.js';
+import { needsReconciliation, reconcileStaleFlags } from '../shariah/reconcile.js';
 import { SHARIAH_RULES } from '../shariah/rules.js';
 
 /**
@@ -474,6 +475,11 @@ export function registerMeetingRoutes(
     '/meetings/:id',
     { preHandler: [requireAuth, requireCapability('transcript:read')] },
     async (request, reply) => {
+      const actor = request.authUser;
+      if (actor === undefined) {
+        return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
+      }
+
       const meeting = await prisma.meeting.findUnique({
         where: { id: request.params.id },
         include: {
@@ -504,6 +510,21 @@ export function registerMeetingRoutes(
 
       if (meeting === null) {
         return sendProblem(reply, 404, 'Not found', 'No meeting exists with that id.');
+      }
+
+      /**
+       * Self-heals flags raised before the dedup/segment-link/highlight fix
+       * (see shariah/reconcile.ts) the first time this meeting is opened
+       * after that fix shipped, so a meeting captured before today does not
+       * need a re-upload to show a working "jump to transcript" link.
+       * Skipped once any flag has been reviewed, or once reconciliation has
+       * already run — needsReconciliation is false in both cases, the first
+       * on purpose (never discard a reviewer's verdict) and the second
+       * because the fresh rows it just wrote already carry highlights.
+       */
+      let shariahFlags = meeting.shariahFlags;
+      if (meeting.transcript !== null && needsReconciliation(shariahFlags)) {
+        shariahFlags = await reconcileStaleFlags(prisma, meeting.id, meeting.transcript, actor);
       }
 
       /**
@@ -589,7 +610,7 @@ export function registerMeetingRoutes(
                 })),
                 redactions: meeting.transcript.redactions,
               },
-        shariahFlags: meeting.shariahFlags.map((flag) => ({
+        shariahFlags: shariahFlags.map((flag) => ({
           id: flag.id,
           issueType: flag.issueType,
           excerpt: flag.excerpt,

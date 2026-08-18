@@ -1,13 +1,19 @@
 import type { ShariahIssueType } from '@prisma/client';
-import type { RedactedText } from '../pdpa/redacted-text.js';
 import { SHARIAH_RULES, type ShariahRule } from './rules.js';
 
 /**
  * Runs the rule set over a transcript and returns findings.
  *
- * The input is RedactedText, which is what makes the excerpts safe to store: an
- * excerpt is a window cut from text that has already passed the redaction
- * barrier, so a flag shown to a reviewer cannot carry an identifier.
+ * The input must already be redacted, which is what makes the excerpts safe
+ * to store: an excerpt is a window cut from text that has already passed the
+ * redaction barrier, so a flag shown to a reviewer cannot carry an
+ * identifier. Typed as plain `string` rather than RedactedText because a
+ * caller re-analysing an already-stored transcript (see
+ * shariah/reconcile.ts) only has that text back from Prisma, which cannot
+ * carry the brand across a database round-trip — the same reasoning
+ * compliance/termsheet-suggestion.ts already applies to a re-read
+ * `rawRedacted`. The type does not re-prove safety on read; only
+ * pdpa/redactor.ts is trusted to mint it on write.
  *
  * Findings are advisory. This function has no way to clear anything, and the
  * word "violation" appears nowhere in its output — that judgement belongs to a
@@ -123,7 +129,7 @@ interface RawMatch {
 }
 
 export function analyseTranscript(
-  transcript: RedactedText,
+  transcript: string,
   context: FacilityContext = {},
 ): ShariahFinding[] {
   const findings: ShariahFinding[] = [];

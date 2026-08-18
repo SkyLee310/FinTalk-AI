@@ -181,9 +181,15 @@ function redactTranscript(
  * same segment. Returns null rather than throwing if the offset falls
  * outside every segment (should not happen, but a finding is still valid
  * without a segment link — see ShariahFlag.segmentId).
+ *
+ * Exported because shariah/reconcile.ts calls this same math against
+ * TranscriptSegment rows read back from the database, to link up a meeting's
+ * pre-existing findings that were raised before this column existed. The
+ * parameter type only asks for `textRedacted`, which is all either caller
+ * has in common — a freshly transcribed segment here, a stored row there.
  */
-function segmentIdAtOffset(
-  segments: readonly TranscriptSegmentInput[],
+export function segmentIdAtOffset(
+  segments: readonly { readonly textRedacted: string }[],
   storedIds: readonly string[],
   offset: number,
 ): string | null {

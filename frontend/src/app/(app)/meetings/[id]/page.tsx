@@ -938,6 +938,13 @@ export default function MeetingDetailPage() {
         </div>
       )}
 
+      {data.transcript === null && (
+        <>
+          <ProcessingStatus status={data.status} failureReason={data.failureReason} />
+          {whiteboardsSection}
+        </>
+      )}
+
       <div className="rounded-lg border border-line bg-raised px-4 py-3">
         <TransferRecord
           consentConfirmed={data.consentConfirmed}
@@ -950,11 +957,13 @@ export default function MeetingDetailPage() {
         the transcript, deliberately. A long recording's segment list can run
         to hundreds of entries, and these three are exactly what a reviewer
         opens the meeting to check — burying them below that list meant
-        scrolling past the transcript in full every time. Shariah findings and
-        the term sheet don't depend on a transcript existing, so they keep
-        rendering (and stay this early) even while a meeting is still
-        processing; Participation needs transcript segments, so it guards on
-        that itself instead of relying on the branch below.
+        scrolling past the transcript in full every time. Participation and
+        Shariah findings both need a transcript to say anything real (Shariah
+        screening only runs after transcript storage, so flags are always
+        empty before that), so both guard on data.transcript !== null. The
+        term sheet stays visible throughout — a reviewer may want to start
+        drafting early — but its description says so rather than claiming
+        findings are clear before screening has run.
       */}
       {data.transcript !== null && (() => {
         const participation = computeParticipation(data.transcript.segments);
@@ -1000,6 +1009,7 @@ export default function MeetingDetailPage() {
         );
       })()}
 
+      {data.transcript !== null && (
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
@@ -1227,27 +1237,25 @@ export default function MeetingDetailPage() {
           </>
         )}
       </section>
+      )}
 
       {maySubmit && (
         <Card>
           <CardHeader
             title="Term sheet"
             description={
-              unresolved.length > 0
-                ? 'Submission will be refused until every finding above is cleared.'
-                : 'All findings cleared. This can be submitted for checking.'
+              data.transcript === null
+                ? 'Shariah screening runs once transcription finishes. You can start drafting below.'
+                : unresolved.length > 0
+                  ? 'Submission will be refused until every finding above is cleared.'
+                  : 'All findings cleared. This can be submitted for checking.'
             }
           />
           <TermSheetForm meetingId={id} blockedBy={unresolved} />
         </Card>
       )}
 
-      {data.transcript === null ? (
-        <>
-          <ProcessingStatus status={data.status} failureReason={data.failureReason} />
-          {whiteboardsSection}
-        </>
-      ) : (
+      {data.transcript !== null && (
         <>
           <Card>
             <CardHeader

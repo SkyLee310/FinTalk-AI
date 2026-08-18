@@ -145,9 +145,7 @@ export async function draftTermSheet(
       'A term sheet can only be drafted from a successfully processed meeting with a transcript.',
     );
   }
-
-    const at = new Date();
-
+    
     const at = new Date();
 
     const sheet = await tx.termSheet.create({

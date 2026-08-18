@@ -12,7 +12,7 @@ import { registerAuthRoutes } from './routes/auth.routes.js';
 import { registerComplianceRoutes } from './routes/compliance.routes.js';
 import { registerFeedbackRoutes } from './routes/feedback.routes.js';
 import { registerKnowledgeRoutes } from './routes/knowledge.routes.js';
-import { registerLivePreviewRoutes } from './routes/live-preview.routes.js';
+import { registerLiveCaptionRoutes } from './routes/live-caption.routes.js';
 import { registerMeetingRoutes } from './routes/meetings.routes.js';
 import { registerUserRoutes } from './routes/users.routes.js';
 import { registerWhiteboardRoutes } from './routes/whiteboards.routes.js';
@@ -69,7 +69,7 @@ export function buildServer(deps?: Partial<ServerDeps>) {
   registerAuthRoutes(app, prisma);
   registerMeetingRoutes(app, { prisma, provider, vaultKey, jobs });
   registerWhiteboardRoutes(app, { prisma, provider, vaultKey });
-  registerLivePreviewRoutes(app, { provider, vaultKey });
+  registerLiveCaptionRoutes(app, { vaultKey });
   registerComplianceRoutes(app, { prisma, provider });
   registerUserRoutes(app, prisma);
   registerKnowledgeRoutes(app, { prisma, provider });

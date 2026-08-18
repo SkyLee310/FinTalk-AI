@@ -3,34 +3,46 @@
 import type { ReactNode } from 'react';
 
 /**
- * The cross-border transfer disclosure, and the two confirmations it gates.
+ * The cross-border transfer disclosure, and the two confirmations it gates —
+ * plus one further, separate consent for a genuinely different transfer.
  *
- * Three decisions here are deliberate.
+ * Four decisions here are deliberate.
  *
- * **Two checkboxes, not one.** Consenting to be recorded and accepting that the
- * recording leaves Malaysia are different acts by different parties — the
- * participants agree to the first, the operator accepts the second. One combined
- * checkbox would evidence neither, and the audit log would be unable to show
- * which was actually agreed to.
+ * **Two checkboxes, not one, for the gating pair.** Consenting to be recorded
+ * and accepting that the recording leaves Malaysia are different acts by
+ * different parties — the participants agree to the first, the operator
+ * accepts the second. One combined checkbox would evidence neither, and the
+ * audit log would be unable to show which was actually agreed to.
  *
  * **The sequence is stated, not softened.** Redaction happens *after* the
  * transfer, so a spoken NRIC reaches Google intact. Saying "personal data is
  * protected" would be true of storage and false of transit, and transit is what
  * this notice exists to disclose.
  *
- * **Neither box is pre-ticked, and the copy is not collapsed behind a link.** A
- * default-on consent checkbox is not consent, and a disclosure a user has to
- * open is one the product is hiding.
+ * **Neither gating box is pre-ticked, and the copy is not collapsed behind a
+ * link.** A default-on consent checkbox is not consent, and a disclosure a user
+ * has to open is one the product is hiding.
+ *
+ * **Live captions get their own, separate, optional checkbox**, not folded into
+ * the two above. Recording to Google is one disclosed, contracted relationship
+ * this app already stands behind; browser-native speech recognition is a
+ * second, different, uncontrolled processor — whichever company makes the
+ * visitor's browser — that this app has no relationship with at all. Declining
+ * it must never block recording: captions are a convenience layered on top, not
+ * part of the compliance flow the two gating boxes protect.
  */
 
 export interface TransferAcknowledgement {
   readonly consentConfirmed: boolean;
   readonly transferAcknowledged: boolean;
+  /** Optional. Never required to record — see isFullyAcknowledged. */
+  readonly liveCaptionsConsent: boolean;
 }
 
 export const NO_ACKNOWLEDGEMENT: TransferAcknowledgement = {
   consentConfirmed: false,
   transferAcknowledged: false,
+  liveCaptionsConsent: false,
 };
 
 /**
@@ -95,9 +107,7 @@ export function TransferNotice({
         This recording is transcribed by{' '}
         <strong className="font-medium text-text">Google Gemini</strong>. The audio —
         and any whiteboard photo — is sent to Google&apos;s servers outside Malaysia
-        to be processed. While you are recording, short clips of the same audio are
-        also sent the same way every ~10 seconds for a rough live preview — the same
-        transfer as above, sent in pieces as you go rather than only once at the end.
+        to be processed.
       </p>
 
       <p className="mt-2 text-sm leading-relaxed text-muted">
@@ -134,6 +144,26 @@ export function TransferNotice({
           transcribed before any personal data is removed from it.
         </Check>
       </div>
+
+      <div className="mt-4 space-y-2 border-t border-line pt-3">
+        <p className="text-xs font-medium text-muted">Optional — live captions</p>
+        <p className="text-xs leading-relaxed text-faint">
+          Live captions use your browser&apos;s own built-in speech recognition, not
+          Google Gemini — a separate service run by whoever makes your browser (Google
+          in Chrome, Apple in Safari, and so on). Turning this on sends audio there in
+          real time, only while captions are showing. Recording works the same either way.
+        </p>
+        <Check
+          id={`${idPrefix}-live-captions`}
+          checked={value.liveCaptionsConsent}
+          onChange={(liveCaptionsConsent) => {
+            onChange({ ...value, liveCaptionsConsent });
+          }}
+        >
+          Show live captions while recording, using my browser&apos;s built-in speech
+          recognition.
+        </Check>
+      </div>
     </section>
   );
 }
@@ -149,7 +179,7 @@ export function TransferNotice({
 export function TransferRecord({
   consentConfirmed,
   transferAcknowledged,
-}: TransferAcknowledgement) {
+}: Pick<TransferAcknowledgement, 'consentConfirmed' | 'transferAcknowledged'>) {
   const both = consentConfirmed && transferAcknowledged;
 
   return (

@@ -159,15 +159,6 @@ export interface WhiteboardRow {
   redactions: RedactionRow[];
 }
 
-/** One rolling live-preview segment, already redacted server-side. */
-export interface LivePreviewSegmentRow {
-  startMs: number;
-  endMs: number;
-  speakerLabel: string;
-  textRedacted: string;
-  confidence?: number;
-}
-
 export interface ShariahFlagRow {
   id: string;
   issueType: string;
@@ -492,12 +483,9 @@ export const api = {
       body: form,
     }),
 
-  /** A rough, rolling transcript preview for a short clip while still recording. */
-  livePreview: (form: FormData) =>
-    apiFetch<{ segments: LivePreviewSegmentRow[]; languages: string[] }>('/meetings/live-preview', {
-      method: 'POST',
-      body: form,
-    }),
+  /** Masks one finalized live-caption line before it is shown on screen. */
+  redactLiveCaption: (text: string) =>
+    apiFetch<{ textRedacted: string }>('/meetings/redact-live-caption', json({ text })),
 
   /**
    * Extracts a photographed whiteboard into the meeting record.

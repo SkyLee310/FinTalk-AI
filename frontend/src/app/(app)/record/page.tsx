@@ -17,12 +17,13 @@ import {
   Field,
   Input,
   PageHeader,
+  Select,
   Spinner,
   Textarea,
 } from '@/components/ui';
 import { describeError, useAsync } from '@/hooks/use-async';
-import { useLivePreview } from '@/hooks/use-live-preview';
-import { formatElapsed, pickMimeType, recordingFilename, useRecorder } from '@/hooks/use-recorder';
+import { useLiveCaptions } from '@/hooks/use-live-captions';
+import { formatElapsed, recordingFilename, useRecorder } from '@/hooks/use-recorder';
 import { guessAttachmentKind, isKindFixed } from '@/lib/attachment-kind';
 import { api, can, type Session, type WhiteboardKind, WHITEBOARD_KIND_LABEL } from '@/lib/api';
 import { measureDurationMs } from '@/lib/audio-duration';
@@ -64,6 +65,13 @@ const KIND_ICON: Record<WhiteboardKind, LucideIcon> = {
 
 /** The order a click on a tag cycles through. */
 const KIND_CYCLE: readonly WhiteboardKind[] = ['WHITEBOARD', 'SLIDE', 'DOCUMENT'];
+
+/** BCP-47 tags for SpeechRecognition, matching the app's transcription languages. */
+const CAPTION_LANGUAGES: readonly { value: string; label: string }[] = [
+  { value: 'en-US', label: 'English' },
+  { value: 'ms-MY', label: 'Malay' },
+  { value: 'zh-CN', label: 'Chinese' },
+];
 
 /** Local time in the format a datetime-local input expects. */
 function localDateTimeValue(date: Date): string {
@@ -107,6 +115,28 @@ function MicIcon() {
   );
 }
 
+/** Renders redaction placeholders as visible chips, matching the meeting detail page. */
+function RedactedText({ text }: { text: string }) {
+  const parts = text.split(/(\[[A-Z_]+_\d+\])/g);
+  return (
+    <>
+      {parts.map((part, index) =>
+        /^\[[A-Z_]+_\d+\]$/.test(part) ? (
+          <span
+            key={`${part}-${String(index)}`}
+            title="Personal data, redacted before storage"
+            className="mx-0.5 rounded border border-brand/40 bg-brand-soft px-1 font-mono text-xs text-brand"
+          >
+            {part}
+          </span>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
 export default function RecordPage() {
   const router = useRouter();
   const session = useAsync<Session>(() => api.me(), 'session');
@@ -128,21 +158,20 @@ export default function RecordPage() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [boardFiles, setBoardFiles] = useState<Attachment[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [captionLanguage, setCaptionLanguage] = useState(CAPTION_LANGUAGES[0]!.value);
 
   /**
-   * A rough, rolling transcript while still recording — the real, full
-   * transcript is still only produced after upload. Gated on `recorder.state
-   * === 'recording'`, not just `stream !== null`: the stream stays open
-   * across a pause (only stop() clears it), so without this a paused
-   * recording would keep sending clips to Gemini while the user believes
-   * nothing is happening.
+   * Live captions via the browser's own speech recognition — separate from,
+   * and much faster than, the real transcript Vertex/Gemini still produces
+   * after upload. Gated on the third, optional checkbox: declining it must
+   * not block recording, so this simply never turns on rather than blocking
+   * anything. Also gated on `recorder.state === 'recording'`, not just
+   * `mode === 'record'`, so a paused recording does not keep listening while
+   * the user believes nothing is happening.
    */
-  const livePreview = useLivePreview(recorder.stream, {
-    enabled: mode === 'record' && recorder.state === 'recording',
-    mimeType: pickMimeType(),
-    consentConfirmed: ack.consentConfirmed,
-    transferAcknowledged: ack.transferAcknowledged,
-    intervalMs: 10_000,
+  const liveCaptions = useLiveCaptions({
+    enabled: mode === 'record' && recorder.state === 'recording' && ack.liveCaptionsConsent,
+    language: captionLanguage,
   });
 
   const [busy, setBusy] = useState(false);
@@ -624,33 +653,64 @@ export default function RecordPage() {
                 </p>
               )}
 
-              {recorder.state === 'recording' && (
+              {ack.liveCaptionsConsent && (
                 <div className="mt-4 rounded-lg border border-line bg-raised/60 p-4">
-                  <p className="text-xs font-semibold text-muted">Live preview</p>
-                  <div className="mt-2 max-h-40 space-y-3 overflow-y-auto">
-                    {livePreview.segments.length === 0 ? (
-                      <p className="text-xs text-faint">Listening…</p>
-                    ) : (
-                      livePreview.segments.map((segment, index) => (
-                        <div key={index}>
-                          <span className="text-xs font-medium text-brand">
-                            {segment.speakerLabel}
-                          </span>
-                          <p className="text-sm leading-relaxed">{segment.textRedacted}</p>
-                        </div>
-                      ))
-                    )}
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <p className="text-xs font-semibold text-muted">Live captions</p>
+                    <Field label="Caption language" htmlFor="captionLanguage">
+                      <Select
+                        id="captionLanguage"
+                        value={captionLanguage}
+                        disabled={recorder.state === 'recording' || recorder.state === 'paused'}
+                        onChange={(event) => setCaptionLanguage(event.target.value)}
+                      >
+                        {CAPTION_LANGUAGES.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
                   </div>
-                  {livePreview.error !== null && (
-                    <p className="mt-2 text-xs text-warn">
-                      Last preview refresh failed — retrying automatically.
-                    </p>
+
+                  {recorder.state === 'recording' && (
+                    <>
+                      {!liveCaptions.supported ? (
+                        <p className="mt-3 text-xs text-faint">
+                          This browser has no built-in speech recognition, so live captions
+                          are unavailable here. The full transcript is still generated after
+                          you finish recording.
+                        </p>
+                      ) : (
+                        <>
+                          <div className="mt-3 max-h-40 space-y-2 overflow-y-auto">
+                            {liveCaptions.lines.length === 0 && liveCaptions.interimText === '' ? (
+                              <p className="text-xs text-faint">Listening…</p>
+                            ) : (
+                              liveCaptions.lines.map((line) => (
+                                <p key={line.id} className="text-sm leading-relaxed">
+                                  <RedactedText text={line.textRedacted} />
+                                </p>
+                              ))
+                            )}
+                            {liveCaptions.interimText !== '' && (
+                              <p className="text-sm italic leading-relaxed text-faint">
+                                {liveCaptions.interimText}
+                              </p>
+                            )}
+                          </div>
+                          {liveCaptions.error !== null && (
+                            <p className="mt-2 text-xs text-warn">{liveCaptions.error}</p>
+                          )}
+                        </>
+                      )}
+                      <p className="mt-3 text-xs text-faint">
+                        A rough guide only — no speaker labels, one language at a time, and
+                        not the final transcript. The full transcript, with speakers and all
+                        three languages, is generated after you finish recording.
+                      </p>
+                    </>
                   )}
-                  <p className="mt-3 text-xs text-faint">
-                    A rough guide, refreshed every ~10s. Speaker labels may shift between
-                    refreshes, and this is not the final transcript — that is generated
-                    after you finish recording.
-                  </p>
                 </div>
               )}
             </div>

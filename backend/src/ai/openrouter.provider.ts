@@ -121,13 +121,14 @@ async function chatJson(
   prompt: string,
   input: string,
   stage: string,
+  timeoutMs: number = 30_000
 ): Promise<string> {
   const body = await postOpenRouter(apiKey, '/chat/completions', {
     model,
     messages: [{ role: 'user', content: input === '' ? prompt : `${prompt}\n\n---\n${input}` }],
     response_format: { type: 'json_object' },
     temperature: 0,
-  }, stage);
+  }, stage,timeoutMs);
   const choices = (body as { choices?: { message?: { content?: string } }[] }).choices;
   return choices?.[0]?.message?.content ?? '';
 }
@@ -226,7 +227,7 @@ export class OpenRouterProvider implements TranscriptionProvider {
       this.config.model,
       TOPICS_PROMPT,
       redactedSummary,
-      'extractTopics',
+      'extractTopics', this.config.timeoutMs ?? 30_000,
     );
     const parsed = TopicsSchema.safeParse(parseJsonLoosely(raw));
     if (!parsed.success) return [];

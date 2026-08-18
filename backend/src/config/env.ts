@@ -59,6 +59,7 @@ const base = z.object({
   OPENROUTER_API_KEY: z.string().optional(),
   OPENROUTER_MODEL: z.string().default('openai/gpt-4o'),
   OPENROUTER_MODEL_TRANSCRIBE: z.string().default('openai/whisper-large-v3'),
+  AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(30_000),
 
   JWT_ACCESS_SECRET: z.string().min(32, 'must be at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'must be at least 32 characters'),

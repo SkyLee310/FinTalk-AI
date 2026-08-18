@@ -14,9 +14,10 @@ describe('rescaleSegmentTimestamps', () => {
     expect(rescaleSegmentTimestamps(segments, undefined)).toEqual(segments);
   });
 
-  it('leaves timestamps alone when the reported and real durations are close', () => {
-    // Reported end 100_000ms vs a measured 105_000ms — 5% drift, under the
-    // 10% threshold, so the model's estimate stands.
+  it('leaves timestamps alone when there is no reported gap to redistribute into', () => {
+    // Back-to-back segments (no pause reported anywhere) with a 5000ms
+    // shortfall against the real duration — there is no gap budget to
+    // absorb it, so positions are left as reported rather than invented.
     const segments = [
       { startMs: 0, endMs: 40_000 },
       { startMs: 40_000, endMs: 100_000 },
@@ -24,10 +25,11 @@ describe('rescaleSegmentTimestamps', () => {
     expect(rescaleSegmentTimestamps(segments, 105_000)).toEqual(segments);
   });
 
-  it('rescales proportionally when the reported end drifts far from the real duration', () => {
+  it('falls back to a proportional rescale when reported durations alone exceed the real duration', () => {
     // Reported end 200_000ms ("3:20") against a real 100_000ms ("1:40")
-    // recording — exactly the symptom reported: segments placed far later
-    // than the audio actually runs.
+    // recording, and the segments' own durations (185_000ms combined)
+    // already don't fit — there is no gap budget to trust, so the whole
+    // span is squeezed proportionally instead.
     const segments = [
       { startMs: 0, endMs: 40_000 },
       { startMs: 55_000, endMs: 100_000 },
@@ -40,6 +42,40 @@ describe('rescaleSegmentTimestamps', () => {
       { startMs: 50_000, endMs: 100_000 },
     ]);
     expect(rescaled.at(-1)!.endMs).toBe(100_000);
+  });
+
+  it('stretches a reported gap to absorb the shortfall, keeping each duration exact', () => {
+    // Two 1000ms utterances with a reported 500ms gap between them, against
+    // a real 4000ms recording — a 2000ms shortfall with only one gap to
+    // carry it.
+    const segments = [
+      { startMs: 0, endMs: 1_000 },
+      { startMs: 1_500, endMs: 2_500 },
+    ];
+    const rescaled = rescaleSegmentTimestamps(segments, 4_000);
+    expect(rescaled).toEqual([
+      { startMs: 0, endMs: 1_000 },
+      { startMs: 3_000, endMs: 4_000 },
+    ]);
+    // Each segment's own reported length survives untouched.
+    expect(rescaled[0]!.endMs - rescaled[0]!.startMs).toBe(1_000);
+    expect(rescaled[1]!.endMs - rescaled[1]!.startMs).toBe(1_000);
+  });
+
+  it('only stretches segments that reported a pause, leaving back-to-back ones touching', () => {
+    // Segment 2 follows segment 1 immediately (no gap); segment 3 follows a
+    // 500ms gap. The whole 2000ms shortfall lands on that one real gap.
+    const segments = [
+      { startMs: 0, endMs: 1_000 },
+      { startMs: 1_000, endMs: 2_000 },
+      { startMs: 2_500, endMs: 3_500 },
+    ];
+    const rescaled = rescaleSegmentTimestamps(segments, 5_000);
+    expect(rescaled).toEqual([
+      { startMs: 0, endMs: 1_000 },
+      { startMs: 1_000, endMs: 2_000 },
+      { startMs: 4_000, endMs: 5_000 },
+    ]);
   });
 
   it('clamps a later segment reported to start before an earlier one ends', () => {

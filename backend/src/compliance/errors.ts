@@ -32,7 +32,8 @@ export type ComplianceErrorCode =
   | 'assistant-unavailable'
   | 'answer-contains-personal-data'
   // Term sheet suggestion (Phase 6).
-  | 'suggestion-unavailable';
+  | 'suggestion-unavailable'
+  | 'meeting-not-ready-for-termsheet';
 
 export class ComplianceError extends Error {
   readonly code: ComplianceErrorCode;

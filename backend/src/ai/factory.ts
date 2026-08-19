@@ -45,6 +45,7 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
         transcribeModel: GEMINI_MODEL_TRANSCRIBE,
         textModel: GEMINI_MODEL_TEXT,
         visionModel: GEMINI_MODEL_VISION,
+        timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
         /**
          * Optional. An empty string means no embedding model is configured, and
          * the knowledge features degrade rather than the server refusing to boot:
@@ -97,6 +98,7 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
         transcribeModel: VERTEX_MODEL_TRANSCRIBE,
         textModel: VERTEX_MODEL_TEXT,
         visionModel: VERTEX_MODEL_VISION,
+        timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
         embeddingModel: env.VERTEX_MODEL_EMBEDDING ?? '',
       });
       return withOpenRouterFallback(gemini, env);
@@ -121,6 +123,7 @@ function withOpenRouterFallback(
     apiKey: env.OPENROUTER_API_KEY,
     model: env.OPENROUTER_MODEL,
     transcribeModel: env.OPENROUTER_MODEL_TRANSCRIBE,
+    timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
   });
   return new FallbackTranscriptionProvider(gemini, openRouter);
 }

@@ -13,7 +13,15 @@ import {
   PipelineError,
   type PipelineDeps,
   processMeeting,
+  processTranscriptDirectly,
 } from '../pipeline/process-meeting.js';
+import {
+  convertToSegments,
+  extractMeetingCode,
+  fetchMeetTranscript,
+} from '../pipeline/google-meet-fetcher.js';
+import { getUserGoogleClient } from '../auth/google-oauth.js';
+import { getEnv, type Env } from '../config/env.js';
 import { needsReconciliation, reconcileStaleFlags } from '../shariah/reconcile.js';
 import { SHARIAH_RULES } from '../shariah/rules.js';
 
@@ -61,6 +69,7 @@ function parseParticipants(raw: string | undefined): z.infer<typeof Participants
 export interface MeetingRouteDeps extends PipelineDeps {
   readonly prisma: PrismaClient;
   readonly jobs: BackgroundJobs;
+  readonly env?: Env;
 }
 
 export function registerMeetingRoutes(
@@ -322,6 +331,274 @@ export function registerMeetingRoutes(
       return reply.code(202).send({
         meetingId: meeting.id,
         status: 'CAPTURED',
+        pollUrl: `/meetings/${meeting.id}`,
+      });
+    },
+  );
+
+  /**
+   * Connect a Google Meet session to FinTalk AI for automatic post-meeting transcript ingestion.
+   */
+  const ConnectMeetSchema = z.object({
+    meetLink: z.string().min(1),
+    title: z.string().min(1).max(200),
+    occurredAt: z.string().datetime(),
+    description: z.string().max(2_000).optional(),
+    consentConfirmed: z.boolean(),
+    transferAcknowledged: z.boolean(),
+    participants: z
+      .array(
+        z.object({
+          name: z.string().min(1),
+          role: z.string().optional(),
+        }),
+      )
+      .optional(),
+  });
+
+  app.post(
+    '/meetings/connect-meet',
+    { preHandler: [requireAuth, requireCapability('meeting:create')] },
+    async (request, reply) => {
+      const parsed = ConnectMeetSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return sendProblem(
+          reply,
+          400,
+          'Invalid request',
+          'Malformed request payload.',
+        );
+      }
+
+      const {
+        meetLink,
+        title,
+        occurredAt,
+        description,
+        consentConfirmed,
+        transferAcknowledged,
+        participants: rawParticipants,
+      } = parsed.data;
+
+      if (!consentConfirmed) {
+        return sendProblem(
+          reply,
+          400,
+          'Consent required',
+          'Consent from all participants is required before a meeting can be recorded.',
+        );
+      }
+
+      if (!transferAcknowledged) {
+        return sendProblem(
+          reply,
+          400,
+          'Cross-border transfer acknowledgement required',
+          'Cross-border transfer acknowledgement is required for Google Meet processing.',
+        );
+      }
+
+      let meetingCode: string;
+      try {
+        meetingCode = extractMeetingCode(meetLink);
+      } catch (err) {
+        return sendProblem(
+          reply,
+          400,
+          'Invalid Google Meet link',
+          err instanceof Error ? err.message : 'Invalid Google Meet URL',
+        );
+      }
+
+      // Check if user has linked Google account
+      const token = await prisma.googleToken.findUnique({
+        where: { userId: request.authUser!.id },
+      });
+
+      if (!token) {
+        return sendProblem(
+          reply,
+          400,
+          'Google Account Not Linked',
+          'Please link your Google account in Settings before connecting Google Meet meetings.',
+        );
+      }
+
+      const participantInputs = (rawParticipants ?? []).filter((p) => p.name.trim().length > 0);
+      const nameContext = createRedactionContext();
+      const redactedParticipants = participantInputs.map((participant, index) => ({
+        redaction: redactDeclaredValue(
+          participant.name,
+          'PERSON_NAME',
+          deps.vaultKey,
+          nameContext,
+        ),
+        role: participant.role ?? null,
+        ordinal: index,
+      }));
+
+      const meeting = await prisma.$transaction(async (tx) => {
+        const created = await tx.meeting.create({
+          data: {
+            title,
+            description: description ?? null,
+            occurredAt: new Date(occurredAt),
+            status: 'CAPTURED',
+            consentConfirmed: true,
+            transferAcknowledged: true,
+            captureSource: 'GOOGLE_MEET',
+            meetLink,
+            googleConferenceId: meetingCode,
+            createdById: request.authUser!.id,
+          },
+        });
+
+        for (const participant of redactedParticipants) {
+          const row = await tx.meetingParticipant.create({
+            data: {
+              meetingId: created.id,
+              nameRedacted: participant.redaction.text,
+              role: participant.role,
+              ordinal: participant.ordinal,
+            },
+          });
+
+          for (const record of participant.redaction.records) {
+            const vault = await tx.piiVault.create({ data: sealedToRow(record.sealed) });
+            await tx.redaction.create({
+              data: {
+                participantId: row.id,
+                piiType: record.piiType,
+                placeholder: record.placeholder,
+                startOffset: record.startOffset,
+                endOffset: record.endOffset,
+                detectedBy: record.detectedBy,
+                confidence: record.confidence,
+                vaultId: vault.id,
+              },
+            });
+          }
+        }
+
+        await appendAuditWithin(tx, {
+          at: new Date(),
+          actorId: request.authUser!.id,
+          actorRole: request.authUser!.role ?? 'MAKER',
+          action: 'meeting.connected.google-meet',
+          entityType: 'Meeting',
+          entityId: created.id,
+          payload: {
+            meetLink,
+            meetingCode,
+            participantCount: redactedParticipants.length,
+          },
+        });
+
+        return created;
+      });
+
+      return reply.code(202).send({
+        meetingId: meeting.id,
+        status: meeting.status,
+        pollUrl: `/meetings/${meeting.id}`,
+      });
+    },
+  );
+
+  /**
+   * Manually triggers syncing and processing a Google Meet transcript for a meeting.
+   */
+  app.post(
+    '/meetings/:id/sync-meet',
+    { preHandler: [requireAuth, requireCapability('meeting:create')] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+
+      const meeting = await prisma.meeting.findUnique({
+        where: { id },
+      });
+
+      if (!meeting) {
+        return sendProblem(reply, 404, 'Meeting not found', `No meeting with id ${id}.`);
+      }
+
+      if (meeting.captureSource !== 'GOOGLE_MEET' || !meeting.googleConferenceId) {
+        return sendProblem(
+          reply,
+          400,
+          'Not a Google Meet meeting',
+          'This meeting was not captured via Google Meet.',
+        );
+      }
+
+      let authClient;
+      try {
+        const env = deps.env ?? getEnv();
+        authClient = await getUserGoogleClient(env, prisma, meeting.createdById);
+      } catch (err) {
+        return sendProblem(
+          reply,
+          400,
+          'Google Authorization Failed',
+          err instanceof Error ? err.message : 'Could not authorize with Google',
+        );
+      }
+
+      let entries;
+      try {
+        // Try finding conference records for this space or meeting code
+        const conferenceRecordName = meeting.googleConferenceId.startsWith('conferenceRecords/')
+          ? meeting.googleConferenceId
+          : `conferenceRecords/${meeting.googleConferenceId}`;
+
+        entries = await fetchMeetTranscript(authClient, conferenceRecordName);
+      } catch (err) {
+        return sendProblem(
+          reply,
+          502,
+          'Failed to fetch transcript from Google',
+          err instanceof Error ? err.message : 'Google Meet API error',
+        );
+      }
+
+      if (!entries || entries.length === 0) {
+        return sendProblem(
+          reply,
+          404,
+          'No transcript available yet',
+          'Google has not generated a transcript for this meeting yet. Please try again after the meeting ends.',
+        );
+      }
+
+      const segments = convertToSegments(
+        entries,
+        meeting.occurredAt.getTime(),
+      );
+
+      const transcriptionResult = {
+        segments,
+        languages: ['en', 'ms'],
+        modelId: 'google-meet-transcript',
+        promptVersion: 'google-v2',
+      };
+
+      const actor = { id: request.authUser!.id, role: request.authUser!.role ?? 'MAKER' };
+
+      deps.jobs.run(
+        processTranscriptDirectly(deps, meeting.id, transcriptionResult, actor),
+        (error: unknown) => {
+          const stage = error instanceof PipelineError ? error.stage : 'unknown';
+          request.log.error(
+            { err: error, meetingId: meeting.id, stage },
+            'Google Meet background processing failed',
+          );
+        },
+      );
+
+      return reply.code(202).send({
+        meetingId: meeting.id,
+        status: 'PROCESSING',
+        segmentCount: segments.length,
         pollUrl: `/meetings/${meeting.id}`,
       });
     },

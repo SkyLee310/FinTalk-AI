@@ -11,6 +11,8 @@ import { BackgroundJobs } from './pipeline/background-jobs.js';
 import { registerAuthRoutes } from './routes/auth.routes.js';
 import { registerComplianceRoutes } from './routes/compliance.routes.js';
 import { registerFeedbackRoutes } from './routes/feedback.routes.js';
+import { registerGoogleAuthRoutes } from './routes/google-auth.routes.js';
+import { registerGoogleWebhookRoutes } from './routes/google-webhook.routes.js';
 import { registerKnowledgeRoutes } from './routes/knowledge.routes.js';
 import { registerLiveCaptionRoutes } from './routes/live-caption.routes.js';
 import { registerMeetingRoutes } from './routes/meetings.routes.js';
@@ -74,6 +76,8 @@ export function buildServer(deps?: Partial<ServerDeps>) {
   registerUserRoutes(app, prisma);
   registerKnowledgeRoutes(app, { prisma, provider });
   registerFeedbackRoutes(app, prisma);
+  registerGoogleAuthRoutes(app, env, prisma);
+  registerGoogleWebhookRoutes(app, { prisma, provider, vaultKey, jobs, env });
 
   /**
    * A restart kills in-flight capture, and the code that would have marked the

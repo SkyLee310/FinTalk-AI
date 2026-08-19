@@ -674,7 +674,34 @@ export const api = {
 
   /** Gated server-side on user:manage. Newest first. */
   feedback: () => apiFetch<{ feedback: FeedbackRow[] }>('/feedback'),
+
+  /** Google OAuth & Meet integration methods */
+  googleAuthUrl: () => apiFetch<{ url: string; state: string }>('/auth/google/url'),
+  googleAuthStatus: () => apiFetch<GoogleAuthStatus>('/auth/google/status'),
+  unlinkGoogle: () => apiFetch<{ success: boolean }>('/auth/google/link', { method: 'DELETE' }),
+  connectMeet: (data: ConnectMeetInput) =>
+    apiFetch<{ meetingId: string; status: string; pollUrl: string }>('/meetings/connect-meet', json(data)),
+  syncMeet: (id: string) =>
+    apiFetch<{ meetingId: string; status: string; segmentCount: number; pollUrl: string }>(`/meetings/${id}/sync-meet`, {
+      method: 'POST',
+    }),
 };
+
+export interface GoogleAuthStatus {
+  linked: boolean;
+  scope?: string | null;
+  linkedAt?: string | null;
+}
+
+export interface ConnectMeetInput {
+  meetLink: string;
+  title: string;
+  occurredAt: string;
+  description?: string;
+  consentConfirmed: boolean;
+  transferAcknowledged: boolean;
+  participants?: { name: string; role?: string }[];
+}
 
 export function can(session: Session | null, capability: Capability): boolean {
   return session?.capabilities.includes(capability) ?? false;

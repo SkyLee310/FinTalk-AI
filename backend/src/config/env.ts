@@ -74,6 +74,15 @@ const base = z.object({
   ),
 
   MEETING_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
+
+  /**
+   * Optional Google Meet OAuth and Webhook configuration.
+   * Enables importing post-meeting transcripts directly from Google Meet.
+   */
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_REDIRECT_URI: z.string().url().optional(),
+  GOOGLE_WEBHOOK_SECRET: z.string().optional(),
 });
 
 /**

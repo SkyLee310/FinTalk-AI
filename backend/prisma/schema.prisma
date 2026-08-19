@@ -121,6 +121,12 @@ enum WhiteboardKind {
   DOCUMENT
 }
 
+enum CaptureSource {
+  MICROPHONE
+  UPLOAD
+  GOOGLE_MEET
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -154,6 +160,7 @@ model User {
   /// segments, and removing the row would orphan attribution the record depends
   /// on. Login refuses a deactivated account.
   deactivatedAt DateTime?
+  googleLinked  Boolean   @default(false)
 
   meetings          Meeting[]
   shariahReviews    ShariahFlag[]       @relation("ShariahReviewer")
@@ -163,6 +170,20 @@ model User {
   segmentsConfirmed TranscriptSegment[] @relation("SegmentConfirmer")
   settlements       Settlement[]        @relation("Settler")
   feedback          Feedback[]
+  googleToken       GoogleToken?
+}
+
+model GoogleToken {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  accessToken  String
+  refreshToken String
+  expiryDate   BigInt?
+  scope        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Meeting {
@@ -190,6 +211,9 @@ model Meeting {
   /// Existing rows default to false, which is accurate — those uploads were
   /// never shown the disclosure.
   transferAcknowledged Boolean  @default(false)
+  captureSource        CaptureSource @default(MICROPHONE)
+  meetLink             String?
+  googleConferenceId   String?
   createdById          String
   createdAt            DateTime @default(now())
   /// Archive, never delete: TermSheet/Approval/Settlement/ShariahFlag/Transcript

@@ -50,7 +50,7 @@ interface Participant {
 const EMPTY_PARTICIPANT: Participant = { name: '', role: '' };
 
 /** How the audio for this capture is being obtained. */
-type CaptureMode = 'record' | 'upload';
+type CaptureMode = 'record' | 'upload' | 'meet';
 
 /** A chosen attachment, tagged with the kind shown on its clickable badge. */
 interface Attachment {
@@ -156,10 +156,13 @@ export default function RecordPage() {
    * meeting — and Review is where a meeting is read, not where it starts.
    */
   const [mode, setMode] = useState<CaptureMode>('record');
+  const [meetLink, setMeetLink] = useState('');
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [boardFiles, setBoardFiles] = useState<Attachment[]>([]);
   const [dragging, setDragging] = useState(false);
   const [captionLanguage, setCaptionLanguage] = useState(CAPTION_LANGUAGES[0]!.value);
+
+  const googleStatus = useAsync(() => api.googleAuthStatus(), 'googleStatus');
 
   /**
    * Live captions via the browser's own speech recognition — separate from,
@@ -359,6 +362,50 @@ export default function RecordPage() {
     }
   }
 
+  async function submitMeet(): Promise<void> {
+    if (!armed || !meetLink.trim()) return;
+
+    setBusy(true);
+    setError(null);
+    setProgress('Connecting Google Meet session…');
+
+    const named = participants
+      .map((p) => ({ name: p.name.trim(), role: p.role.trim() }))
+      .filter((p) => p.name !== '');
+
+    try {
+      const { meetingId } = await api.connectMeet({
+        meetLink: meetLink.trim(),
+        title: title.trim(),
+        description: description.trim() || undefined,
+        occurredAt: new Date(occurredAt).toISOString(),
+        consentConfirmed: ack.consentConfirmed,
+        transferAcknowledged: ack.transferAcknowledged,
+        participants: named.length > 0 ? named : undefined,
+      });
+
+      if (boardFiles.length > 0) {
+        for (const attachment of boardFiles) {
+          const boardForm = new FormData();
+          boardForm.set('file', attachment.file);
+          boardForm.set('kind', attachment.kind);
+          try {
+            await api.uploadWhiteboard(meetingId, boardForm);
+          } catch {
+            // Best effort
+          }
+        }
+      }
+
+      setSubmitted(true);
+      router.push(`/meetings/${meetingId}`);
+    } catch (cause) {
+      setError(describeError(cause));
+      setProgress(null);
+      setBusy(false);
+    }
+  }
+
   if (session.loading) return <Spinner label="Checking your session" />;
 
   if (!mayCreate) {
@@ -548,6 +595,16 @@ export default function RecordPage() {
               />
               Upload a file
             </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="captureMode"
+                className="accent-brand"
+                checked={mode === 'meet'}
+                onChange={() => setMode('meet')}
+              />
+              Google Meet (Auto-Import)
+            </label>
           </fieldset>
 
           {mode === 'record' ? (
@@ -735,6 +792,57 @@ export default function RecordPage() {
                 </div>
               )}
             </div>
+          ) : mode === 'meet' ? (
+            <div className="rounded-lg border border-line bg-raised/60 p-6 space-y-4">
+              <div className="flex items-center gap-3 border-b border-line pb-4">
+                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand font-bold text-sm">
+                  GM
+                </span>
+                <div>
+                  <p className="text-sm font-semibold">Google Meet Integration</p>
+                  <p className="font-mono text-xs text-faint">Automatic post-meeting transcript ingestion</p>
+                </div>
+              </div>
+
+              {googleStatus.loading && <Spinner label="Checking Google account status..." />}
+
+              {googleStatus.data && !googleStatus.data.linked && (
+                <div className="rounded-md border border-warn/30 bg-warn-soft p-4 space-y-2">
+                  <p className="text-sm font-medium text-warn">Google Account Not Connected</p>
+                  <p className="text-xs text-muted">
+                    To automatically import transcripts from Google Meet, you need to connect your Google Workspace account first.
+                  </p>
+                  <Button
+                    variant="secondary"
+                    onClick={() => router.push('/settings')}
+                  >
+                    Go to Settings to Connect
+                  </Button>
+                </div>
+              )}
+
+              {googleStatus.data?.linked && (
+                <div className="space-y-3">
+                  <Field
+                    label="Google Meet Link or Code"
+                    htmlFor="meetLink"
+                    hint="Paste your meet.google.com link (e.g. https://meet.google.com/abc-defg-hij)"
+                  >
+                    <Input
+                      id="meetLink"
+                      type="text"
+                      placeholder="https://meet.google.com/abc-defg-hij"
+                      value={meetLink}
+                      disabled={busy || !armed}
+                      onChange={(event) => setMeetLink(event.target.value)}
+                    />
+                  </Field>
+                  <p className="text-xs text-faint">
+                    Ensure &ldquo;Transcripts&rdquo; or &ldquo;Recording&rdquo; is enabled in your Google Meet call. Once the meeting finishes, FinTalk AI will process the transcript and apply PDPA masking and Shariah screening.
+                  </p>
+                </div>
+              )}
+            </div>
           ) : (
             audioFile === null && (
               <Field label="Audio file" htmlFor="audioFile">
@@ -866,6 +974,26 @@ export default function RecordPage() {
                   }}
                 >
                   {mode === 'record' ? 'Discard and re-record' : 'Choose a different file'}
+                </Button>
+              </div>
+              {progress !== null && <p className="text-sm text-muted">{progress}</p>}
+            </div>
+          )}
+
+          {mode === 'meet' && googleStatus.data?.linked && meetLink.trim() !== '' && (
+            <div className="space-y-3 rounded-lg border border-line bg-raised p-4">
+              <p className="text-sm font-medium">Ready to Connect Meet</p>
+              <p className="text-xs text-muted">
+                FinTalk AI will register this Google Meet session and monitor for completed transcripts.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  disabled={busy || !armed}
+                  onClick={() => {
+                    void submitMeet();
+                  }}
+                >
+                  {busy ? 'Connecting…' : 'Connect Google Meet'}
                 </Button>
               </div>
               {progress !== null && <p className="text-sm text-muted">{progress}</p>}

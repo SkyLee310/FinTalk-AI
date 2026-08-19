@@ -8,6 +8,7 @@ import { ProfileMenu } from '@/components/profile-menu';
 import { ErrorNote, Spinner } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { api, can, type Session } from '@/lib/api';
+import { setSessionExpiredHandler } from '@/lib/api-client';
 import { isActive, visibleNav } from '@/lib/nav';
 
 /**
@@ -23,6 +24,20 @@ import { isActive, visibleNav } from '@/lib/nav';
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+
+  /**
+   * Registered for as long as this shell is mounted, i.e. for the whole
+   * signed-in app. apiFetch already tries one silent refresh before giving
+   * up (see api-client.ts), so this only fires once that has also failed —
+   * the session is actually gone, not merely due for a refresh — and it
+   * covers every request any page makes, not just this layout's own `/me`
+   * check below.
+   */
+  useEffect(() => {
+    setSessionExpiredHandler(() => router.replace('/login'));
+    return () => setSessionExpiredHandler(null);
+  }, [router]);
+
   const {
     data: session,
     error,

@@ -1,15 +1,32 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, apiFetch } from '../../src/lib/api-client';
+import { ApiError, apiFetch, setSessionExpiredHandler } from '../../src/lib/api-client';
 
 const BASE = 'http://localhost:8080';
 process.env.NEXT_PUBLIC_API_BASE_URL = BASE;
 
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => {
+  vi.unstubAllGlobals();
+  setSessionExpiredHandler(null);
+});
 
 function stubFetch(response: Response) {
   const spy = vi.fn().mockResolvedValue(response);
   vi.stubGlobal('fetch', spy);
   return spy;
+}
+
+/** Each call returns the next response in order, for retry/refresh flows. */
+function stubFetchSequence(...responses: Response[]) {
+  const spy = vi.fn();
+  for (const response of responses) spy.mockResolvedValueOnce(response);
+  vi.stubGlobal('fetch', spy);
+  return spy;
+}
+
+function jsonResponse(status: number, body: unknown) {
+  return new Response(JSON.stringify(body), {
+    status, headers: { 'content-type': 'application/json' },
+  });
 }
 
 describe('apiFetch', () => {
@@ -85,6 +102,61 @@ describe('apiFetch', () => {
     ));
     await expect(apiFetch('/auth/logout', { method: 'POST' })).rejects.toMatchObject({
       status: 400, detail: 'Body cannot be empty',
+    });
+  });
+
+  /**
+   * The access token expiring mid-session (JWT_ACCESS_TTL is 15 minutes) is
+   * routine, not a sign the user was logged out — these lock in that a 401
+   * triggers one silent refresh-and-retry before anything is shown as an
+   * error, and that only a 401 surviving that attempt reaches the caller.
+   */
+  describe('session refresh on 401', () => {
+    it('silently refreshes and retries once, returning the retried result', async () => {
+      const spy = stubFetchSequence(
+        jsonResponse(401, { detail: 'token expired' }),
+        new Response(null, { status: 200 }),
+        jsonResponse(200, { id: 'm1' }),
+      );
+      await expect(apiFetch('/meetings')).resolves.toEqual({ id: 'm1' });
+      expect(spy).toHaveBeenCalledTimes(3);
+      expect(spy.mock.calls[1]?.[0]).toBe(`${BASE}/auth/refresh`);
+      expect(spy.mock.calls[2]?.[0]).toBe(`${BASE}/meetings`);
+    });
+
+    it('calls the registered session-expired handler when refresh also fails', async () => {
+      const handler = vi.fn();
+      setSessionExpiredHandler(handler);
+      stubFetchSequence(
+        jsonResponse(401, { detail: 'token expired' }),
+        jsonResponse(401, { detail: 'no refresh cookie' }),
+      );
+      await expect(apiFetch('/meetings')).rejects.toMatchObject({
+        status: 401, detail: 'token expired',
+      });
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not attempt a refresh for the auth-flow endpoints themselves', async () => {
+      const handler = vi.fn();
+      setSessionExpiredHandler(handler);
+      const spy = stubFetchSequence(jsonResponse(401, { detail: 'invalid credentials' }));
+      await expect(apiFetch('/auth/login', { method: 'POST' })).rejects.toMatchObject({
+        status: 401, detail: 'invalid credentials',
+      });
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('throws the retried response’s error if it still fails after a refresh', async () => {
+      stubFetchSequence(
+        jsonResponse(401, { detail: 'token expired' }),
+        new Response(null, { status: 200 }),
+        jsonResponse(500, { message: 'database unavailable' }),
+      );
+      await expect(apiFetch('/meetings')).rejects.toMatchObject({
+        status: 500, detail: 'database unavailable',
+      });
     });
   });
 });

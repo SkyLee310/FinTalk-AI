@@ -311,7 +311,7 @@ model Transcript {
   ///
   /// Empty when not yet embedded. Derived from already-redacted text, so it
   /// encodes placeholders rather than identifiers.
-  summaryEmbedding Float[]
+  summaryEmbedding Float[] @default([])
 
   /// AI-drafted project kickoff, derived from the redacted transcript and
   /// re-verified with redactDerived before storage. Null when no provider
@@ -319,7 +319,7 @@ model Transcript {
   projectKickoffRedacted String?
   /// Probable follow-up actions, one prose line each. Same derivation and
   /// verification as the kickoff; empty when none were produced.
-  followUpsRedacted String[]
+  followUpsRedacted String[] @default([])
 
   meeting    Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   segments   TranscriptSegment[]

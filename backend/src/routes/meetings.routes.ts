@@ -546,12 +546,7 @@ export function registerMeetingRoutes(
 
       let entries;
       try {
-        // Try finding conference records for this space or meeting code
-        const conferenceRecordName = meeting.googleConferenceId.startsWith('conferenceRecords/')
-          ? meeting.googleConferenceId
-          : `conferenceRecords/${meeting.googleConferenceId}`;
-
-        entries = await fetchMeetTranscript(authClient, conferenceRecordName);
+        entries = await fetchMeetTranscript(authClient, meeting.googleConferenceId);
       } catch (err) {
         return sendProblem(
           reply,
@@ -566,7 +561,7 @@ export function registerMeetingRoutes(
           reply,
           404,
           'No transcript available yet',
-          'Google has not generated a transcript for this meeting yet. Please try again after the meeting ends.',
+          'Google Meet is still generating the transcript or the call has not ended. Please check that Transcripts was enabled and try again shortly.',
         );
       }
 
@@ -583,6 +578,11 @@ export function registerMeetingRoutes(
       };
 
       const actor = { id: request.authUser!.id, role: request.authUser!.role ?? 'MAKER' };
+
+      await prisma.meeting.update({
+        where: { id: meeting.id },
+        data: { status: 'PROCESSING', failureReason: null },
+      });
 
       deps.jobs.run(
         processTranscriptDirectly(deps, meeting.id, transcriptionResult, actor),

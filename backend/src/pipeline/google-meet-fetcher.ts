@@ -32,12 +32,70 @@ export function extractMeetingCode(input: string): string {
 }
 
 /**
- * Fetches all transcript entries for a given conference record from Google Meet REST API.
+ * Resolves a meeting code or conferenceRecord identifier to a valid conferenceRecord resource name.
+ * If given a meeting code like 'abc-defg-hij', queries conferenceRecords.list to find the latest conference record.
+ */
+export async function resolveConferenceRecordName(
+  authClient: Auth.OAuth2Client,
+  identifier: string,
+): Promise<string> {
+  const trimmed = identifier.trim();
+
+  // If already a full resource name like 'conferenceRecords/12345678-abcd-...'
+  if (trimmed.startsWith('conferenceRecords/')) {
+    const sub = trimmed.replace('conferenceRecords/', '');
+    // If it's not a 10-char space code like 'abc-defg-hij', it's a real conferenceRecord ID
+    if (!sub.match(/^[a-z]{3}-[a-z]{4}-[a-z]{3}$/i)) {
+      return trimmed;
+    }
+  }
+
+  const meetingCode = extractMeetingCode(trimmed);
+  const meet = google.meet({ version: 'v2', auth: authClient });
+
+  try {
+    const listRes = await meet.conferenceRecords.list({
+      filter: `space.meeting_code = "${meetingCode}"`,
+      pageSize: 10,
+    });
+
+    const records = listRes.data.conferenceRecords ?? [];
+    if (records.length === 0) {
+      throw new GoogleMeetFetcherError(
+        `No completed conference record found for Google Meet "${meetingCode}". Ensure the call has ended with Transcripts turned on.`,
+      );
+    }
+
+    // Sort by startTime desc to get the most recent session
+    records.sort((a, b) => {
+      const aTime = a.startTime ? new Date(a.startTime).getTime() : 0;
+      const bTime = b.startTime ? new Date(b.startTime).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    const latest = records[0];
+    if (!latest?.name) {
+      throw new GoogleMeetFetcherError(`Conference record name missing for meeting code "${meetingCode}"`);
+    }
+
+    return latest.name;
+  } catch (error) {
+    if (error instanceof GoogleMeetFetcherError) throw error;
+    throw new GoogleMeetFetcherError(
+      `Failed to look up conference records for Google Meet "${meetingCode}"`,
+      error,
+    );
+  }
+}
+
+/**
+ * Fetches all transcript entries for a given conference record or meeting code from Google Meet REST API.
  */
 export async function fetchMeetTranscript(
   authClient: Auth.OAuth2Client,
-  conferenceRecordName: string,
+  identifier: string,
 ): Promise<GoogleTranscriptEntry[]> {
+  const conferenceRecordName = await resolveConferenceRecordName(authClient, identifier);
   const meet = google.meet({ version: 'v2', auth: authClient });
 
   try {
@@ -79,6 +137,7 @@ export async function fetchMeetTranscript(
 
     return entries;
   } catch (error) {
+    if (error instanceof GoogleMeetFetcherError) throw error;
     throw new GoogleMeetFetcherError(
       `Failed to fetch transcript from Google Meet for ${conferenceRecordName}`,
       error,

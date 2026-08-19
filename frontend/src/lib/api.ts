@@ -199,6 +199,9 @@ export interface MeetingDetail {
   occurredAt: string;
   status: MeetingStatus;
   failureReason: string | null;
+  captureSource?: 'MICROPHONE' | 'UPLOAD' | 'GOOGLE_MEET' | null;
+  meetLink?: string | null;
+  googleConferenceId?: string | null;
   consentConfirmed: boolean;
   transferAcknowledged: boolean;
   transcript: {

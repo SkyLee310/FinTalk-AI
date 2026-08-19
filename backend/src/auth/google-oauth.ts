@@ -112,8 +112,11 @@ export async function refreshAccessToken(
  * Revokes Google access/refresh token.
  */
 export async function revokeGoogleToken(env: Env, token: string): Promise<void> {
-  const client = getGoogleOAuthClient(env);
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REDIRECT_URI) {
+    return;
+  }
   try {
+    const client = getGoogleOAuthClient(env);
     await client.revokeToken(token);
   } catch (error) {
     // If revocation fails remotely, log but don't crash — we'll still delete local row

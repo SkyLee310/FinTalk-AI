@@ -64,6 +64,13 @@ export default function SettingsPage() {
       </Section>
 
       <Section
+        title="Google Workspace & Meet"
+        description="Connect your Google account to automatically import transcripts from Google Meet calls."
+      >
+        <GoogleIntegration />
+      </Section>
+
+      <Section
         title="Feedback"
         description="Read by an administrator. Not anonymous — your name goes with it."
       >
@@ -247,3 +254,111 @@ function Account({ session }: { session: Session }) {
     </Card>
   );
 }
+
+function GoogleIntegration() {
+  const status = useAsync(() => api.googleAuthStatus(), 'googleAuthStatus');
+  const [connecting, setConnecting] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [successNote, setSuccessNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('google') === 'linked') {
+        setSuccessNote('Google account linked successfully!');
+        window.history.replaceState({}, '', window.location.pathname);
+      } else if (params.get('google_error')) {
+        setActionError(`Failed to link Google account: ${params.get('google_error')}`);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+  }, []);
+
+  async function handleConnect() {
+    setConnecting(true);
+    setActionError(null);
+    try {
+      const { url } = await api.googleAuthUrl();
+      window.location.href = url;
+    } catch (err) {
+      setActionError(describeError(err));
+      setConnecting(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    if (!confirm('Are you sure you want to disconnect your Google account?')) {
+      return;
+    }
+    setUnlinking(true);
+    setActionError(null);
+    try {
+      await api.unlinkGoogle();
+      setSuccessNote('Google account disconnected.');
+      status.reload();
+    } catch (err) {
+      setActionError(describeError(err));
+    } finally {
+      setUnlinking(false);
+    }
+  }
+
+  if (status.loading) {
+    return <Spinner label="Loading Google integration status..." />;
+  }
+
+  const isLinked = status.data?.linked ?? false;
+
+  return (
+    <Card className="p-5 space-y-4">
+      {successNote && <SuccessNote>{successNote}</SuccessNote>}
+      {actionError && <ErrorNote>{actionError}</ErrorNote>}
+      {status.error && <ErrorNote>{describeError(status.error)}</ErrorNote>}
+
+      <div className="flex items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-sm">Google Meet & Workspace</span>
+            {isLinked ? (
+              <Badge tone="ok">Connected</Badge>
+            ) : (
+              <Badge tone="neutral">Not Connected</Badge>
+            )}
+          </div>
+          <p className="text-caption text-muted">
+            {isLinked
+              ? `Connected to your Google Workspace account. Transcripts from connected Google Meet sessions will be automatically imported.`
+              : `Link your Google Workspace account to enable direct Google Meet transcript imports without uploading manual files.`}
+          </p>
+          {isLinked && status.data?.linkedAt && (
+            <p className="text-caption text-faint">
+              Connected since: {new Date(status.data.linkedAt).toLocaleDateString()}
+            </p>
+          )}
+        </div>
+
+        <div>
+          {isLinked ? (
+            <Button
+              variant="danger"
+              onClick={handleDisconnect}
+              disabled={unlinking}
+            >
+              {unlinking ? 'Disconnecting...' : 'Disconnect'}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              onClick={handleConnect}
+              disabled={connecting}
+            >
+              {connecting ? 'Redirecting...' : 'Connect Google'}
+            </Button>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+

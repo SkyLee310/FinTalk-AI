@@ -43,6 +43,29 @@ describe('parseEnv', () => {
       .toThrow(/GEMINI_API_KEY/);
   });
 
+  it('accepts valid Google Meet OAuth and webhook configuration', () => {
+    const env = parseEnv({
+      ...valid,
+      GOOGLE_CLIENT_ID: 'test-client-id.apps.googleusercontent.com',
+      GOOGLE_CLIENT_SECRET: 'test-client-secret',
+      GOOGLE_REDIRECT_URI: 'http://localhost:8080/auth/google/callback',
+      GOOGLE_WEBHOOK_SECRET: 'webhook-secret-123',
+    });
+    expect(env.GOOGLE_CLIENT_ID).toBe('test-client-id.apps.googleusercontent.com');
+    expect(env.GOOGLE_CLIENT_SECRET).toBe('test-client-secret');
+    expect(env.GOOGLE_REDIRECT_URI).toBe('http://localhost:8080/auth/google/callback');
+    expect(env.GOOGLE_WEBHOOK_SECRET).toBe('webhook-secret-123');
+  });
+
+  it('rejects an invalid GOOGLE_REDIRECT_URI format', () => {
+    expect(() =>
+      parseEnv({
+        ...valid,
+        GOOGLE_REDIRECT_URI: 'not-a-valid-url',
+      }),
+    ).toThrow(/GOOGLE_REDIRECT_URI/);
+  });
+
   it('does NOT require GEMINI_API_KEY when the provider is fake', () => {
     expect(() => parseEnv({ ...valid, TRANSCRIPTION_PROVIDER: 'fake' })).not.toThrow();
   });

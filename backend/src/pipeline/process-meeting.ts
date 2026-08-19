@@ -210,11 +210,7 @@ export async function processMeeting(
   audio: AudioInput,
   actor: AuditActor,
 ): Promise<ProcessResult> {
-  const { prisma, provider, vaultKey } = deps;
-
-  // Start the clock before anything else, so processingMs on the transcript
-  // reflects the whole pipeline the uploader waited on — transcription
-  // dominates it — up to the storing transaction below.
+  const { prisma, provider } = deps;
   const startedAt = Date.now();
 
   await prisma.meeting.update({
@@ -224,13 +220,56 @@ export async function processMeeting(
 
   const failed = async (stage: FailureStage, cause: unknown): Promise<PipelineError> => {
     const error = new PipelineError(stage, cause);
+    await prisma.$transaction(async (tx) => {
+      await tx.meeting.update({
+        where: { id: meetingId },
+        data: { status: 'FAILED', failureReason: error.persistableReason },
+      });
+      await appendAuditWithin(tx, {
+        at: new Date(),
+        actorId: actor.id,
+        actorRole: actor.role,
+        action: 'meeting.failed',
+        entityType: 'Meeting',
+        entityId: meetingId,
+        payload: { stage, reason: error.persistableReason },
+      });
+    });
+    return error;
+  };
 
-    /**
-     * The FAILED status and its audit entry commit together. A meeting that
-     * shows FAILED with no record of the failure would leave an operator
-     * guessing; persistableReason is PII-free by construction, carrying the
-     * stage and the error's class rather than the provider's message.
-     */
+  let transcription: TranscriptionResult;
+  try {
+    transcription = await provider.transcribe(audio);
+  } catch (cause) {
+    throw await failed('transcription', cause);
+  }
+
+  transcription = {
+    ...transcription,
+    segments: rescaleSegmentTimestamps(transcription.segments, audio.durationMs),
+  };
+
+  return processTranscriptDirectly(deps, meetingId, transcription, actor, startedAt);
+}
+
+export async function processTranscriptDirectly(
+  deps: PipelineDeps,
+  meetingId: string,
+  transcriptionInput: TranscriptionResult,
+  actor: AuditActor,
+  startedAt: number = Date.now(),
+): Promise<ProcessResult> {
+  const { prisma, provider, vaultKey } = deps;
+
+  await prisma.meeting.update({
+    where: { id: meetingId },
+    data: { status: 'PROCESSING', failureReason: null },
+  });
+
+  const failed = async (stage: FailureStage, cause: unknown): Promise<PipelineError> => {
+    const error = new PipelineError(stage, cause);
+
     await prisma.$transaction(async (tx) => {
       await tx.meeting.update({
         where: { id: meetingId },
@@ -251,25 +290,7 @@ export async function processMeeting(
     return error;
   };
 
-  let transcription: TranscriptionResult;
-  try {
-    transcription = await provider.transcribe(audio);
-  } catch (cause) {
-    throw await failed('transcription', cause);
-  }
-
-  /**
-   * Corrects the provider's self-reported timestamps against the audio's
-   * real, client-measured length before anything downstream — stored
-   * segments, redaction offsets, a Shariah finding's segment link — is built
-   * on them. Runs even when no duration was measured (audio.durationMs is
-   * then undefined): rescaleSegmentTimestamps still clamps the sequence to
-   * be non-decreasing in that case.
-   */
-  transcription = {
-    ...transcription,
-    segments: rescaleSegmentTimestamps(transcription.segments, audio.durationMs),
-  };
+  const transcription = transcriptionInput;
 
   let document: RedactedDocument;
   try {

@@ -16,11 +16,11 @@ type Mode = 'signin' | 'signup';
 
 const DEMO_PASSWORD = 'Demo!2345';
 const DEMO_ACCOUNTS: readonly { readonly role: string; readonly email: string }[] = [
-  { role: 'Maker', email: 'maker@fintalk.test' },
-  { role: 'Checker', email: 'checker@fintalk.test' },
-  { role: 'Shariah', email: 'shariah@fintalk.test' },
-  { role: 'Oversight', email: 'oversight@fintalk.test' },
-  { role: 'Admin', email: 'admin@fintalk.test' },
+  { role: 'Maker', email: 'maker@fintalk.ai' },
+  { role: 'Checker', email: 'checker@fintalk.ai' },
+  { role: 'Shariah', email: 'shariah@fintalk.ai' },
+  { role: 'Oversight', email: 'oversight@fintalk.ai' },
+  { role: 'Admin', email: 'admin@fintalk.ai' },
 ];
 
 /**

@@ -36,11 +36,11 @@ The fastest way to evaluate this project is to click a role and watch it sign in
 
 | Role | Email | Password | What they can do |
 |---|---|---|---|
-| **Maker** | `maker@fintalk.test` | `Demo!2345` | Record/upload meetings, draft term sheets |
-| **Checker** | `checker@fintalk.test` | `Demo!2345` | Approve term sheets, settle facilities (never their own draft) |
-| **Shariah** | `shariah@fintalk.test` | `Demo!2345` | Review and clear/confirm Shariah findings |
-| **Oversight** | `oversight@fintalk.test` | `Demo!2345` | Read-only view across meetings and the audit trail |
-| **Admin** | `admin@fintalk.test` | `Demo!2345` | Approve sign-ups, manage users |
+| **Maker** | `maker@fintalk.ai` | `Demo!2345` | Record/upload meetings, draft term sheets |
+| **Checker** | `checker@fintalk.ai` | `Demo!2345` | Approve term sheets, settle facilities (never their own draft) |
+| **Shariah** | `shariah@fintalk.ai` | `Demo!2345` | Review and clear/confirm Shariah findings |
+| **Oversight** | `oversight@fintalk.ai` | `Demo!2345` | Read-only view across meetings and the audit trail |
+| **Admin** | `admin@fintalk.ai` | `Demo!2345` | Approve sign-ups, manage users |
 
 > All five accounts run against **synthetic seed data only**. This is intentional, product-level scaffolding for demos (`frontend/src/app/login/page.tsx`) — not a security oversight.
 

@@ -29,7 +29,7 @@ beforeEach(async () => {
   userIds.clear();
 
   for (const role of ['MAKER', 'CHECKER', 'SHARIAH', 'ADMIN', 'OVERSIGHT'] as const) {
-    const email = `${role.toLowerCase()}@fintalk.test`;
+    const email = `${role.toLowerCase()}@fintalk.ai`;
     const user = await prisma.user.create({
       data: {
         email,

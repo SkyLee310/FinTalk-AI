@@ -32,7 +32,7 @@ async function sessionFor(
   suffix = '',
   oversight?: { canViewMeetings?: boolean; canViewAuditTrail?: boolean },
 ): Promise<string> {
-  const email = `${role.toLowerCase()}${suffix}@fintalk.test`;
+  const email = `${role.toLowerCase()}${suffix}@fintalk.ai`;
   await prisma.user.create({
     data: {
       email,

@@ -27,7 +27,7 @@ async function sessionFor(
   role: Role,
   oversight?: { canViewMeetings?: boolean; canViewAuditTrail?: boolean },
 ): Promise<string> {
-  const email = `${role.toLowerCase()}@fintalk.test`;
+  const email = `${role.toLowerCase()}@fintalk.ai`;
   await prisma.user.create({
     data: {
       email,

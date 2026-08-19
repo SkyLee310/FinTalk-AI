@@ -35,7 +35,7 @@ async function sessionFor(
   suffix = '',
   oversight?: { canViewMeetings?: boolean; canViewAuditTrail?: boolean },
 ): Promise<{ id: string; cookie: string }> {
-  const email = `${role.toLowerCase()}${suffix}@fintalk.test`;
+  const email = `${role.toLowerCase()}${suffix}@fintalk.ai`;
   const user = await prisma.user.create({
     data: {
       email,
@@ -60,7 +60,7 @@ async function sessionFor(
 }
 
 async function pendingApplicant(suffix: string): Promise<{ id: string; email: string }> {
-  const email = `pending${suffix}@fintalk.test`;
+  const email = `pending${suffix}@fintalk.ai`;
   await app.inject({
     method: 'POST',
     url: '/auth/register',
@@ -250,7 +250,7 @@ describe('PATCH /users/:id/active', () => {
     const before = await app.inject({
       method: 'POST',
       url: '/auth/login',
-      payload: { email: 'maker@fintalk.test', password: PASSWORD },
+      payload: { email: 'maker@fintalk.ai', password: PASSWORD },
     });
     expect(before.statusCode).toBe(200);
 
@@ -265,7 +265,7 @@ describe('PATCH /users/:id/active', () => {
     const after = await app.inject({
       method: 'POST',
       url: '/auth/login',
-      payload: { email: 'maker@fintalk.test', password: PASSWORD },
+      payload: { email: 'maker@fintalk.ai', password: PASSWORD },
     });
     expect(after.statusCode).toBe(403);
   });
@@ -303,7 +303,7 @@ describe('PATCH /users/:id/active', () => {
     const login = await app.inject({
       method: 'POST',
       url: '/auth/login',
-      payload: { email: 'maker@fintalk.test', password: PASSWORD },
+      payload: { email: 'maker@fintalk.ai', password: PASSWORD },
     });
     expect(login.statusCode).toBe(200);
   });
@@ -462,7 +462,7 @@ describe('GET /users pending row shape', () => {
     const body = response.json<{
       users: Array<{ email: string; accountStatus: string; role: string | null; capabilities: string[] }>;
     }>();
-    const row = body.users.find((u) => u.email === 'pendingshape1@fintalk.test');
+    const row = body.users.find((u) => u.email === 'pendingshape1@fintalk.ai');
 
     expect(row).toMatchObject({ accountStatus: 'PENDING', role: null, capabilities: [] });
   });

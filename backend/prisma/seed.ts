@@ -79,7 +79,7 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
   const users = await Promise.all(
     ROLES.map((role) =>
       prisma.user.upsert({
-        where: { email: `${role.toLowerCase()}@fintalk.test` },
+        where: { email: `${role.toLowerCase()}@fintalk.ai` },
         update: {
           displayName:
             role === 'OVERSIGHT'
@@ -91,7 +91,7 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
             : {}),
         },
         create: {
-          email: `${role.toLowerCase()}@fintalk.test`,
+          email: `${role.toLowerCase()}@fintalk.ai`,
           passwordHash,
           displayName:
             role === 'OVERSIGHT'
@@ -147,6 +147,8 @@ async function seedSmeLoanMeeting(prisma: PrismaClient, makerId: string): Promis
       languages: ['en', 'ms'],
       modelId: 'seed-fixture',
       promptVersion: 'seed-v1',
+      summaryEmbedding: [],
+      followUpsRedacted: [],
       segments: { create: SEGMENTS },
     },
   });
@@ -217,6 +219,7 @@ async function seedProjectKickoffMeeting(prisma: PrismaClient, makerId: string):
       languages: ['en', 'ms'],
       modelId: 'seed-fixture',
       promptVersion: 'seed-v1',
+      summaryEmbedding: [],
       segments: { create: KICKOFF_SEGMENTS },
       projectKickoffRedacted:
         'Kickoff: Zenith Heights Industries Sdn Bhd — Murabahah Term Financing Restructure. Objective: '

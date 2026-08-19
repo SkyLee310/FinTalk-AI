@@ -193,6 +193,7 @@ export interface MeetingDetail {
   id: string;
   title: string;
   description: string | null;
+  createdById: string;
   participants: ParticipantRow[];
   occurredAt: string;
   status: MeetingStatus;
@@ -581,6 +582,12 @@ export const api = {
    */
   ask: (question: string, history?: readonly AskHistoryTurn[]) =>
     apiFetch<AskAnswer>('/knowledge/ask', json({ question, history })),
+
+  /**
+   * Asks a question specifically about one meeting, directly grounded on its transcript.
+   */
+  askMeeting: (meetingId: string, question: string, history?: readonly AskHistoryTurn[]) =>
+    apiFetch<AskAnswer>(`/meetings/${meetingId}/ask`, json({ question, history })),
 
   users: () => apiFetch<{ users: ManagedUser[] }>('/users'),
 

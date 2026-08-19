@@ -567,6 +567,7 @@ export function registerMeetingRoutes(
           role: participant.role,
         })),
         occurredAt: meeting.occurredAt.toISOString(),
+        createdById: meeting.createdById,
         status: meeting.status,
         failureReason: meeting.failureReason,
         consentConfirmed: meeting.consentConfirmed,

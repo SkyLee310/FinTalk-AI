@@ -3,7 +3,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { appendAuditWithin } from '../audit/chain.js';
 import { requireAuth, requireCapability } from '../auth/middleware.js';
+import { ComplianceError } from '../compliance/errors.js';
 import { sendProblem } from '../http/problem.js';
+import { ask } from '../knowledge/assistant.js';
 import { createRedactionContext, redactDeclaredValue } from '../pdpa/redactor.js';
 import { sealedToRow } from '../pdpa/vault.js';
 import type { BackgroundJobs } from '../pipeline/background-jobs.js';
@@ -646,6 +648,67 @@ export function registerMeetingRoutes(
           dueDate: item.dueDate,
         })),
       });
+    },
+  );
+
+  const AskMeetingBody = z.object({
+    question: z.string().min(1).max(2_000),
+    history: z.array(
+      z.object({
+        role: z.enum(['user', 'assistant']),
+        content: z.string().min(1).max(2_000),
+      }),
+    ).max(10).optional(),
+  });
+
+  app.post(
+    '/meetings/:id/ask',
+    { preHandler: [requireAuth, requireCapability('meeting:read'), requireCapability('transcript:read')] },
+    async (request, reply) => {
+      const actor = request.authUser;
+      if (actor === undefined) {
+        return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
+      }
+
+      const params = request.params as { id?: string };
+      const meetingId = params.id;
+      if (meetingId === undefined || meetingId.trim() === '') {
+        return sendProblem(reply, 400, 'Invalid request', 'Meeting id is required.');
+      }
+
+      const body = AskMeetingBody.safeParse(request.body);
+      if (!body.success) {
+        return sendProblem(
+          reply,
+          400,
+          'Invalid request',
+          'A non-empty question string (up to 2,000 chars) is required.',
+        );
+      }
+
+      try {
+        const result = await ask(
+          { prisma: deps.prisma, provider: deps.provider },
+          {
+            question: body.data.question,
+            actor: { id: actor.id, role: actor.role },
+            history: body.data.history,
+            meetingId,
+          },
+        );
+        return reply.send(result);
+      } catch (error) {
+        if (error instanceof ComplianceError) {
+          return sendProblem(reply, error.status, error.code, error.message);
+        }
+        request.log.error({ err: error }, 'per-meeting assistant query failed');
+        return sendProblem(
+          reply,
+          503,
+          'Assistant unavailable',
+          'The assistant could not answer just now. Nothing was stored.',
+        );
+      }
     },
   );
 }

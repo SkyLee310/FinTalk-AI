@@ -669,3 +669,58 @@ describe('GET /meetings response shape', () => {
     expect(row?.createdById).toBeTruthy();
   });
 });
+
+describe('POST /meetings/:id/ask', () => {
+  it('answers a question grounded on the single meeting transcript and audits it', async () => {
+    const maker = await sessionFor('MAKER', '-ask-me');
+    const meetingId = await uploadAndWait(maker);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/meetings/${meetingId}/ask`,
+      headers: { cookie: maker },
+      payload: { question: 'What was discussed in this meeting?' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<{ answer: string; citations: Array<{ meetingId: string }> }>();
+    expect(body.answer).toBeTruthy();
+    expect(body.citations).toHaveLength(1);
+    expect(body.citations[0]?.meetingId).toBe(meetingId);
+
+    const audit = await prisma.auditEntry.findFirst({
+      where: { action: 'assistant.queried.meeting', entityId: meetingId },
+    });
+    expect(audit).not.toBeNull();
+    expect(audit?.entityType).toBe('Meeting');
+  });
+
+  it('refuses a question containing personal data (NRIC)', async () => {
+    const maker = await sessionFor('MAKER', '-ask-pii');
+    const meetingId = await uploadAndWait(maker);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/meetings/${meetingId}/ask`,
+      headers: { cookie: maker },
+      payload: { question: 'What did 881212-14-5678 say?' },
+    });
+
+    expect(response.statusCode).toBe(422);
+  });
+
+  it('returns unanswerable for an unknown meeting id', async () => {
+    const maker = await sessionFor('MAKER', '-ask-unknown');
+    const response = await app.inject({
+      method: 'POST',
+      url: '/meetings/non-existent-id/ask',
+      headers: { cookie: maker },
+      payload: { question: 'What is the facility amount?' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<{ unanswerable: boolean }>();
+    expect(body.unanswerable).toBe(true);
+  });
+});
+

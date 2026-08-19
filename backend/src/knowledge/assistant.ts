@@ -58,6 +58,11 @@ export interface AskInput {
    * mean "no history" here.
    */
   readonly history?: readonly AskHistoryTurn[] | undefined;
+  /**
+   * When present, scopes the question to this single meeting: skips ranking
+   * over the whole corpus and answers directly from this meeting's transcript.
+   */
+  readonly meetingId?: string | undefined;
 }
 
 /**
@@ -199,6 +204,93 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
       501,
       'This deployment has no assistant model configured.',
     );
+  }
+
+  if (input.meetingId !== undefined) {
+    const transcript = await prisma.transcript.findFirst({
+      where: { meetingId: input.meetingId, meeting: { status: 'READY', archivedAt: null } },
+      select: {
+        meetingId: true,
+        rawRedacted: true,
+        summaryEmbedding: true,
+        meeting: { select: { title: true, occurredAt: true } },
+      },
+    });
+
+    if (transcript === null) {
+      return {
+        answer: 'This meeting transcript is not available or has been archived.',
+        citations: [],
+        unanswerable: true,
+        modelId: 'none',
+        promptVersion: 'none',
+        retrieval: 'semantic',
+      };
+    }
+
+    const composite = withHistory(question, input.history);
+    const excerpts: GroundingExcerpt[] = [{
+      meetingId: transcript.meetingId,
+      title: transcript.meeting.title,
+      occurredAt: transcript.meeting.occurredAt.toISOString(),
+      text: transcript.rawRedacted.slice(0, EXCERPT_CHARS),
+    }];
+
+    const answer = await answerFromContext(composite, excerpts);
+
+    const citations: Citation[] = answer.citedMeetingIds.includes(transcript.meetingId)
+      ? [{
+          meetingId: transcript.meetingId,
+          title: transcript.meeting.title,
+          occurredAt: transcript.meeting.occurredAt.toISOString(),
+          score: 1.0,
+        }]
+      : [];
+
+    const unanswerable = answer.unanswerable || citations.length === 0;
+
+    const leaked = detectPii(answer.answer);
+    if (leaked.length > 0) {
+      const kinds = [...new Set(leaked.map((f) => f.kind))].sort().join(', ');
+      throw new ComplianceError(
+        'answer-contains-personal-data',
+        500,
+        `The assistant produced personal data (${kinds}) from redacted input, so the `
+        + 'answer was discarded. That is a fault in the system, not a limit of your '
+        + 'question.',
+      );
+    }
+
+    await appendAudit(prisma, {
+      at: new Date(),
+      actorId: input.actor.id,
+      actorRole: input.actor.role,
+      action: 'assistant.queried.meeting',
+      entityType: 'Meeting',
+      entityId: input.meetingId,
+      payload: {
+        question,
+        meetingId: input.meetingId,
+        retrievedMeetingIds: [transcript.meetingId],
+        citedMeetingIds: citations.map((c) => c.meetingId),
+        unanswerable,
+        retrieval: 'semantic',
+        modelId: answer.modelId,
+        promptVersion: answer.promptVersion,
+      },
+    });
+
+    return {
+      answer:
+        unanswerable && answer.answer.trim() === ''
+          ? 'This meeting transcript does not answer that question.'
+          : answer.answer,
+      citations,
+      unanswerable,
+      modelId: answer.modelId,
+      promptVersion: answer.promptVersion,
+      retrieval: 'semantic',
+    };
   }
 
   const transcripts = await prisma.transcript.findMany({

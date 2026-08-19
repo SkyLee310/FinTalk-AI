@@ -27,6 +27,7 @@ import { formatElapsed, recordingFilename, useRecorder } from '@/hooks/use-recor
 import { guessAttachmentKind, isKindFixed } from '@/lib/attachment-kind';
 import { api, can, type Session, type WhiteboardKind, WHITEBOARD_KIND_LABEL } from '@/lib/api';
 import { measureDurationMs } from '@/lib/audio-duration';
+import { formatTime } from '@/lib/format';
 
 /**
  * Record a meeting in the browser.
@@ -585,6 +586,7 @@ export default function RecordPage() {
                     type="button"
                     disabled={!armed || !recorder.supported || recorder.state === 'requesting'}
                     onClick={() => {
+                      liveCaptions.reset();
                       void recorder.start();
                     }}
                     aria-label={
@@ -673,7 +675,7 @@ export default function RecordPage() {
                     </Field>
                   </div>
 
-                  {recorder.state === 'recording' && (
+                  {(recorder.state === 'recording' || recorder.state === 'paused') && (
                     <>
                       {!liveCaptions.supported ? (
                         <p className="mt-3 text-xs text-faint">
@@ -683,22 +685,41 @@ export default function RecordPage() {
                         </p>
                       ) : (
                         <>
-                          <div className="mt-3 max-h-40 space-y-2 overflow-y-auto">
-                            {liveCaptions.lines.length === 0 && liveCaptions.interimText === '' ? (
-                              <p className="text-xs text-faint">Listening…</p>
-                            ) : (
-                              liveCaptions.lines.map((line) => (
-                                <p key={line.id} className="text-sm leading-relaxed">
-                                  <RedactedText text={line.textRedacted} />
-                                </p>
-                              ))
-                            )}
-                            {liveCaptions.interimText !== '' && (
-                              <p className="text-sm italic leading-relaxed text-faint">
-                                {liveCaptions.interimText}
-                              </p>
-                            )}
+                          {/*
+                            Two separate slots, not one shared list: the current
+                            sentence rewrites several times a second until it is
+                            final, so it needs a fixed place rather than jittering
+                            a growing list. Finalized lines below never disappear —
+                            recognition stopping and restarting under the hood
+                            (see use-live-captions.ts) doesn't clear them, and
+                            neither does pausing.
+                          */}
+                          <div className="mt-3 rounded-md border border-line-strong bg-base/60 px-3 py-2">
+                            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-faint">
+                              Live preview
+                            </p>
+                            <p className="mt-1 min-h-[1.25rem] text-sm italic leading-relaxed text-muted">
+                              {liveCaptions.interimText !== ''
+                                ? liveCaptions.interimText
+                                : recorder.state === 'recording'
+                                  ? 'Listening…'
+                                  : 'Paused'}
+                            </p>
                           </div>
+
+                          {liveCaptions.lines.length > 0 && (
+                            <div className="mt-3 max-h-48 space-y-3 overflow-y-auto pr-1">
+                              {[...liveCaptions.lines].reverse().map((line) => (
+                                <div key={line.id} className="flex gap-2 text-sm leading-relaxed">
+                                  <span className="mt-0.5 shrink-0 font-mono text-[0.65rem] tabular-nums text-faint">
+                                    {formatTime(new Date(line.timestampMs))}
+                                  </span>
+                                  <p><RedactedText text={line.textRedacted} /></p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
                           {liveCaptions.error !== null && (
                             <p className="mt-2 text-xs text-warn">{liveCaptions.error}</p>
                           )}
@@ -838,6 +859,7 @@ export default function RecordPage() {
                   onClick={() => {
                     if (mode === 'record') {
                       recorder.reset();
+                      liveCaptions.reset();
                     } else {
                       setAudioFile(null);
                     }

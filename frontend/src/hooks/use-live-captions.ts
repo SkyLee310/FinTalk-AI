@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 
 /**
@@ -63,6 +63,8 @@ declare global {
 export interface LiveCaptionLine {
   readonly id: number;
   readonly textRedacted: string;
+  /** When this line was finalized, for display next to it in the history list. */
+  readonly timestampMs: number;
 }
 
 export interface UseLiveCaptionsOptions {
@@ -83,6 +85,13 @@ export interface LiveCaptions {
   /** False when this browser has no speech recognition at all. */
   readonly supported: boolean;
   readonly error: string | null;
+  /**
+   * Clears accumulated lines. The hook itself never does this on its own —
+   * pausing and resuming a recording toggles `enabled` off and on without
+   * losing history, so only the caller knows when a truly new recording
+   * (not a resume) has started and the slate should actually be wiped.
+   */
+  readonly reset: () => void;
 }
 
 /** Permission/hardware failures a restart cannot recover from. */
@@ -105,6 +114,13 @@ export function useLiveCaptions({ enabled, language }: UseLiveCaptionsOptions): 
 
   const nextIdRef = useRef(0);
 
+  const reset = useCallback(() => {
+    setLines([]);
+    setInterimText('');
+    setError(null);
+    nextIdRef.current = 0;
+  }, []);
+
   useEffect(() => {
     if (!enabled) return undefined;
 
@@ -113,8 +129,6 @@ export function useLiveCaptions({ enabled, language }: UseLiveCaptionsOptions): 
       : window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (Constructor === undefined) return undefined;
 
-    setLines([]);
-    setInterimText('');
     setError(null);
 
     let cancelled = false;
@@ -144,10 +158,11 @@ export function useLiveCaptions({ enabled, language }: UseLiveCaptionsOptions): 
 
           const id = nextIdRef.current;
           nextIdRef.current += 1;
+          const timestampMs = Date.now();
           void api.redactLiveCaption(transcript).then(
             ({ textRedacted }) => {
               if (cancelled) return;
-              setLines((prev) => [...prev, { id, textRedacted }]);
+              setLines((prev) => [...prev, { id, textRedacted, timestampMs }]);
             },
             () => {
               if (cancelled) return;
@@ -193,5 +208,5 @@ export function useLiveCaptions({ enabled, language }: UseLiveCaptionsOptions): 
     };
   }, [enabled, language]);
 
-  return { lines, interimText, supported, error };
+  return { lines, interimText, supported, error, reset };
 }

@@ -32,3 +32,14 @@ export function formatDateTime(input: string | Date): string {
   const minutes = String(date.getMinutes()).padStart(2, '0');
   return `${formatDate(date)}, ${hours12}:${minutes} ${period}`;
 }
+
+/** "8:27:41 PM" — a same-day timestamp where only the time matters. */
+export function formatTime(input: string | Date): string {
+  const date = toDate(input);
+  const hours24 = date.getHours();
+  const period = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  return `${hours12}:${minutes}:${seconds} ${period}`;
+}

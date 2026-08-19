@@ -172,12 +172,13 @@ export function registerSearchRoutes(app: FastifyInstance, prisma: PrismaClient)
       // Knowledge Topics & Nodes
       prisma.meetingTopic.findMany({
         where: {
-          topic: { contains: query, mode: 'insensitive' },
+          label: { contains: query, mode: 'insensitive' },
         },
         select: {
           id: true,
-          topic: true,
-          relevance: true,
+          label: true,
+          kind: true,
+          weight: true,
           meeting: { select: { id: true, title: true } },
         },
         take: 5,
@@ -223,8 +224,8 @@ export function registerSearchRoutes(app: FastifyInstance, prisma: PrismaClient)
     const knowledgeResults: SearchItem[] = topics.map((t) => ({
       id: t.id,
       category: 'knowledge',
-      title: t.topic,
-      subtitle: `Node in Knowledge Graph (${t.meeting.title})`,
+      title: t.label,
+      subtitle: `Topic in ${t.meeting.title} (${t.kind})`,
       badge: 'Graph Node',
       href: `/knowledge`,
     }));

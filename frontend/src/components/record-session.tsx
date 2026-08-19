@@ -290,7 +290,7 @@ export function RecordSession({
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           {liveCaptionsConsent && (
             <Field label="Captions" htmlFor="captionLanguage">
               <Select
@@ -307,7 +307,12 @@ export function RecordSession({
               </Select>
             </Field>
           )}
-          <Button variant="secondary" disabled={busy} onClick={() => setWhiteboardOpen(true)}>
+          <Button
+            variant="secondary"
+            disabled={busy}
+            onClick={() => setWhiteboardOpen(true)}
+            className="h-[42px]"
+          >
             <Pencil aria-hidden="true" className="size-4" />
             Draw whiteboard
           </Button>

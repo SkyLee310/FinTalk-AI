@@ -1,15 +1,15 @@
 'use client';
 
 import {
-  AudioLines,
   CheckCheck,
+  ChevronsLeft,
+  ChevronsRight,
   Landmark,
   type LucideIcon,
   Network,
-  PanelLeftClose,
-  PanelLeftOpen,
   Settings2,
   ShieldCheck,
+  Video,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -23,14 +23,9 @@ const COLLAPSE_KEY = 'fintalk-sidebar-collapsed';
 
 /**
  * Icons keyed by href rather than folded into NavItem itself.
- *
- * lib/nav.ts is plain data consumed outside this component too (the layout
- * reads it for the active section's title, and it is unit-tested); keeping
- * React components out of it means that data stays serializable and
- * testable without a DOM.
  */
 const ICON: Record<string, LucideIcon> = {
-  '/record': AudioLines,
+  '/record': Video,
   '/meetings': ShieldCheck,
   '/approvals': CheckCheck,
   '/knowledge': Network,
@@ -52,10 +47,6 @@ export function AppSidebar({
 
   const [collapsed, setCollapsed] = useState(false);
 
-  // Read after mount, not as useState's initializer: server and the first
-  // client render must agree (both false) or hydration mismatches. A stored
-  // `true` then applies a moment later, same trade the theme toggle makes
-  // everywhere except the pre-paint script reserved for theme's own flash.
   useEffect(() => {
     try {
       if (window.localStorage.getItem(COLLAPSE_KEY) === 'true') setCollapsed(true);
@@ -76,112 +67,153 @@ export function AppSidebar({
     });
   }
 
-  // Width (.sidebar-rail, globals.css) and this opacity both ride CSS
-  // transitions rather than snapping. Opacity resolves faster than the
-  // width so labels finish fading before the rail finishes resizing,
-  // instead of visibly smearing across the resize.
   const labelVisibility = `transition-opacity duration-150 ${collapsed ? 'opacity-0' : 'opacity-0 md:opacity-100'}`;
+
+  const captureItem = items.find((i) => i.href === '/record');
+  const navItems = items.filter((i) => i.href !== '/record');
+  const isCaptureActive = captureItem ? isActive(pathname, captureItem) : false;
 
   return (
     <aside
-      className={`sidebar-rail sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-line bg-raised ${collapsed ? '' : 'md:w-64'}`}
+      className={`sidebar-rail sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-line bg-raised transition-all duration-200 ${collapsed ? '' : 'md:w-64'}`}
     >
-      <div className="border-b border-line">
-        <div className="flex h-16 items-center gap-2.5 px-4">
-          <Link
-            href={items[0]?.href ?? '/record'}
-            className="flex min-w-0 flex-1 items-center gap-2.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-          >
-            <Logo className="size-8 shrink-0" />
-            <span className={`min-w-0 ${labelVisibility}`}>
-              <span className="block truncate text-sm font-semibold tracking-tight">
-                FinTalk AI
-              </span>
-              <span className="block truncate font-mono text-[0.65rem] uppercase tracking-wide text-muted">
-                Secure
-              </span>
-            </span>
-          </Link>
-        </div>
-
-        {/* Below md the automatic breakpoint already forces icon-only, so the manual toggle has nothing to do there. */}
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="mx-3 mb-3 hidden w-[calc(100%-1.5rem)] items-center justify-center rounded-md py-1.5 text-faint transition hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand md:flex"
+      {/* Brand Header */}
+      <div className="flex h-16 items-center gap-2.5 border-b border-line px-4">
+        <Link
+          href={items[0]?.href ?? '/record'}
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
-          {collapsed ? (
-            <PanelLeftOpen aria-hidden="true" className="size-4" />
-          ) : (
-            <PanelLeftClose aria-hidden="true" className="size-4" />
-          )}
-        </button>
+          <Logo className="size-8 shrink-0" />
+          <span className={`min-w-0 ${labelVisibility}`}>
+            <span className="block truncate text-sm font-semibold tracking-tight">
+              FinTalk AI
+            </span>
+            <span className="block truncate font-mono text-[0.65rem] uppercase tracking-wide text-muted">
+              Secure
+            </span>
+          </span>
+        </Link>
       </div>
 
-      <nav aria-label="Primary" className="flex-1 space-y-1 p-2 md:p-3">
-        <p
-          className={`truncate px-2 pb-1 font-mono text-[0.62rem] tracking-widest text-faint uppercase ${labelVisibility}`}
-        >
-          Workspace
-        </p>
-        {items.map((item, index) => {
-          const active = isActive(pathname, item);
-          const Icon = ICON[item.href];
-          const badgeCount = item.href === '/admin' ? pendingUserCount : 0;
-          return (
+      <nav aria-label="Primary" className="flex-1 space-y-3 p-2 md:p-3">
+        {/* Apple-style Prominent Capture Button */}
+        {captureItem && (
+          <div>
             <Link
-              key={item.href}
-              href={item.href}
-              aria-current={active ? 'page' : undefined}
-              title={item.hint}
-              // Same real-navigation + direction bookkeeping the previous
-              // top-nav header used — only the button chrome moved.
+              href="/record"
+              aria-current={isCaptureActive ? 'page' : undefined}
+              title="Capture meeting or upload"
               onClick={(event) => {
                 if (
-                  event.metaKey
-                  || event.ctrlKey
-                  || event.shiftKey
-                  || event.altKey
-                  || event.button !== 0
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey ||
+                  event.button !== 0
                 ) {
                   return;
                 }
                 event.preventDefault();
-                document.documentElement.dataset.nav =
-                  currentIndex === -1 || index > currentIndex ? 'forward' : 'back';
-                navigateWithTransition(() => router.push(item.href));
+                document.documentElement.dataset.nav = 'forward';
+                navigateWithTransition(() => router.push('/record'));
               }}
-              className={`group relative flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors ${
-                active
-                  ? 'bg-brand-soft text-brand'
-                  : 'text-muted hover:bg-surface hover:text-text'
+              className={`group relative flex w-full items-center justify-center md:justify-start gap-2.5 rounded-full px-3 py-2.5 font-medium transition-all duration-200 active:scale-[0.97] shadow-sm hover:shadow ${
+                isCaptureActive
+                  ? 'bg-emerald-200/90 dark:bg-emerald-900/90 text-emerald-950 dark:text-emerald-100 border-2 border-emerald-500/80 dark:border-emerald-400 ring-2 ring-emerald-400/20'
+                  : 'bg-[#d1fae5] dark:bg-[#064e3b]/80 text-[#065f46] dark:text-[#a7f3d0] border border-[#a7f3d0] dark:border-[#047857] hover:bg-[#bbf7d0] dark:hover:bg-[#064e3b]'
               }`}
             >
-              {active && (
-                <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-brand shadow-[0_0_8px_var(--brand)]" />
-              )}
-              {Icon !== undefined && (
-                <Icon
-                  aria-hidden="true"
-                  className={`size-[1.125rem] shrink-0 ${active ? 'text-brand' : 'text-faint group-hover:text-text'}`}
-                />
-              )}
+              <div className="grid size-5 place-items-center shrink-0">
+                <Video aria-hidden="true" className="size-4 shrink-0 text-[#065f46] dark:text-[#a7f3d0]" />
+              </div>
               <span className={`min-w-0 flex-1 ${labelVisibility}`}>
-                <span className="block truncate text-sm font-medium">{item.label}</span>
-                <span className="block truncate text-[0.7rem] text-faint">{item.hint}</span>
-              </span>
-              {badgeCount > 0 && (
-                <span
-                  className={`shrink-0 rounded-full bg-warn-soft px-1.5 py-0.5 font-mono text-[0.65rem] font-semibold text-warn ${collapsed ? 'hidden' : 'hidden md:inline'}`}
-                >
-                  {badgeCount}
+                <span className="block truncate text-sm font-bold tracking-tight">
+                  Capture
                 </span>
-              )}
+              </span>
             </Link>
-          );
-        })}
+          </div>
+        )}
+
+        {/* Workspace section with <<< collapse button on the right */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between px-2 pb-1 pt-1">
+            <p
+              className={`truncate font-mono text-[0.62rem] font-bold tracking-widest text-faint uppercase ${labelVisibility}`}
+            >
+              Workspace
+            </p>
+            {/* Collapse toggle right beside WORKSPACE word */}
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              className="hidden md:inline-flex size-5 items-center justify-center rounded text-faint hover:bg-surface hover:text-text transition-colors focus-visible:outline-2 focus-visible:outline-brand"
+            >
+              {collapsed ? (
+                <ChevronsRight aria-hidden="true" className="size-3.5" />
+              ) : (
+                <ChevronsLeft aria-hidden="true" className="size-3.5" />
+              )}
+            </button>
+          </div>
+
+          {navItems.map((item, index) => {
+            const active = isActive(pathname, item);
+            const Icon = ICON[item.href];
+            const badgeCount = item.href === '/admin' ? pendingUserCount : 0;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? 'page' : undefined}
+                title={item.hint}
+                onClick={(event) => {
+                  if (
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey ||
+                    event.button !== 0
+                  ) {
+                    return;
+                  }
+                  event.preventDefault();
+                  document.documentElement.dataset.nav =
+                    currentIndex === -1 || index > currentIndex ? 'forward' : 'back';
+                  navigateWithTransition(() => router.push(item.href));
+                }}
+                className={`group relative flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors ${
+                  active
+                    ? 'bg-brand-soft text-brand'
+                    : 'text-muted hover:bg-surface hover:text-text'
+                }`}
+              >
+                {active && (
+                  <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-brand shadow-[0_0_8px_var(--brand)]" />
+                )}
+                {Icon !== undefined && (
+                  <Icon
+                    aria-hidden="true"
+                    className={`size-[1.125rem] shrink-0 ${active ? 'text-brand' : 'text-faint group-hover:text-text'}`}
+                  />
+                )}
+                <span className={`min-w-0 flex-1 ${labelVisibility}`}>
+                  <span className="block truncate text-sm font-medium">{item.label}</span>
+                  <span className="block truncate text-[0.7rem] text-faint">{item.hint}</span>
+                </span>
+                {badgeCount > 0 && (
+                  <span
+                    className={`shrink-0 rounded-full bg-warn-soft px-1.5 py-0.5 font-mono text-[0.65rem] font-semibold text-warn ${collapsed ? 'hidden' : 'hidden md:inline'}`}
+                  >
+                    {badgeCount}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
       </nav>
 
       <div className="border-t border-line p-3">

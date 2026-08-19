@@ -133,6 +133,21 @@ export default function MeetingDetailPage() {
   const [highlightedSegmentId, setHighlightedSegmentId] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState<'archive' | 'delete' | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [syncingMeet, setSyncingMeet] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  async function handleSyncMeet() {
+    setSyncingMeet(true);
+    setSyncError(null);
+    try {
+      await api.syncMeet(id);
+      meeting.reload();
+    } catch (err) {
+      setSyncError(describeError(err));
+    } finally {
+      setSyncingMeet(false);
+    }
+  }
 
   const meetingStatus = meeting.data?.status;
   useEffect(() => {
@@ -140,7 +155,7 @@ export default function MeetingDetailPage() {
     const poll = setInterval(() => {
       meeting.reload({ silent: true });
       whiteboards.reload({ silent: true });
-    }, 4000);
+    }, 3000);
     return () => clearInterval(poll);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- meeting.reload and whiteboards.reload are stable
   }, [meetingStatus]);
@@ -245,6 +260,42 @@ export default function MeetingDetailPage() {
           {data.transferAcknowledged && <Badge tone="ok">Cross-border transfer acknowledged</Badge>}
         </div>
       </div>
+
+      {/* Google Meet Ingestion Card */}
+      {data.captureSource === 'GOOGLE_MEET' && data.status !== 'READY' && (
+        <div className="rounded-xl border border-brand/30 bg-raised/80 p-5 space-y-3 backdrop-blur-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm">Google Meet Connected</span>
+                {data.meetLink && (
+                  <a
+                    href={data.meetLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-xs text-brand hover:underline"
+                  >
+                    {data.meetLink}
+                  </a>
+                )}
+              </div>
+              <p className="text-xs text-muted">
+                Google automatically finalizes transcript entries after your call concludes with transcription enabled.
+              </p>
+            </div>
+
+            <Button
+              variant="primary"
+              disabled={syncingMeet || data.status === 'PROCESSING'}
+              onClick={handleSyncMeet}
+            >
+              {syncingMeet ? 'Checking Google Meet…' : 'Sync Transcript Now'}
+            </Button>
+          </div>
+
+          {syncError && <ErrorNote>{syncError}</ErrorNote>}
+        </div>
+      )}
 
       {/* Pipeline Status if still processing or failed */}
       {data.status !== 'READY' && (

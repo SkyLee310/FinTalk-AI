@@ -1,4 +1,4 @@
-import { google, type meet_v2 } from 'googleapis';
+import { google, type meet_v2, type Auth } from 'googleapis';
 import type { SegmentDraft } from '../ai/provider.js';
 
 export interface GoogleTranscriptEntry {
@@ -11,7 +11,7 @@ export interface GoogleTranscriptEntry {
 }
 
 export class GoogleMeetFetcherError extends Error {
-  constructor(message: string, readonly cause?: unknown) {
+  constructor(message: string, override readonly cause?: unknown) {
     super(message);
     this.name = 'GoogleMeetFetcherError';
   }
@@ -35,7 +35,7 @@ export function extractMeetingCode(input: string): string {
  * Fetches all transcript entries for a given conference record from Google Meet REST API.
  */
 export async function fetchMeetTranscript(
-  authClient: any,
+  authClient: Auth.OAuth2Client,
   conferenceRecordName: string,
 ): Promise<GoogleTranscriptEntry[]> {
   const meet = google.meet({ version: 'v2', auth: authClient });
@@ -53,7 +53,7 @@ export async function fetchMeetTranscript(
 
     // 2. Fetch entries from the primary transcript
     const primaryTranscript = transcripts[0];
-    if (!primaryTranscript.name) {
+    if (!primaryTranscript || !primaryTranscript.name) {
       return [];
     }
 
@@ -61,12 +61,15 @@ export async function fetchMeetTranscript(
     let pageToken: string | undefined = undefined;
 
     do {
-      const entriesRes: { data: meet_v2.Schema$ListTranscriptEntriesResponse } =
-        await meet.conferenceRecords.transcripts.entries.list({
-          parent: primaryTranscript.name,
-          pageToken,
-          pageSize: 100,
-        });
+      const params: meet_v2.Params$Resource$Conferencerecords$Transcripts$Entries$List = {
+        parent: primaryTranscript.name,
+        pageSize: 100,
+      };
+      if (pageToken !== undefined) {
+        params.pageToken = pageToken;
+      }
+
+      const entriesRes = await meet.conferenceRecords.transcripts.entries.list(params);
 
       if (entriesRes.data.transcriptEntries) {
         entries.push(...entriesRes.data.transcriptEntries);

@@ -1,4 +1,3 @@
-import type { PrismaClient } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Env } from '../config/env.js';
@@ -12,10 +11,16 @@ import {
   type PipelineDeps,
   processTranscriptDirectly,
 } from '../pipeline/process-meeting.js';
+import type { BackgroundJobs } from '../pipeline/background-jobs.js';
+
+export interface GoogleWebhookDeps extends PipelineDeps {
+  readonly env: Env;
+  readonly jobs: BackgroundJobs;
+}
 
 export function registerGoogleWebhookRoutes(
   app: FastifyInstance,
-  deps: PipelineDeps & { env: Env },
+  deps: GoogleWebhookDeps,
 ) {
   const { prisma, env } = deps;
 
@@ -57,7 +62,7 @@ export function registerGoogleWebhookRoutes(
 
     // Extract conference record ID (e.g. 'conferenceRecords/abc-defg-hij' -> 'abc-defg-hij')
     const match = resource.match(/conferenceRecords\/([^/]+)/);
-    const conferenceId = match ? match[1] : resource;
+    const conferenceId = (match && match[1]) ? match[1] : resource;
 
     // Look for pending Google Meet meetings matching this conferenceId
     const matchingMeetings = await prisma.meeting.findMany({
@@ -77,7 +82,7 @@ export function registerGoogleWebhookRoutes(
       try {
         const authClient = await getUserGoogleClient(env, prisma, meeting.createdById);
         const conferenceRecordName = resource.startsWith('conferenceRecords/')
-          ? resource.split('/transcripts')[0]
+          ? (resource.split('/transcripts')[0] ?? resource)
           : `conferenceRecords/${conferenceId}`;
 
         const entries = await fetchMeetTranscript(authClient, conferenceRecordName);

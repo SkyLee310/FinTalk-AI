@@ -9,7 +9,7 @@ export const GOOGLE_MEET_SCOPES = [
 ] as const;
 
 export class GoogleOAuthError extends Error {
-  constructor(message: string, readonly cause?: unknown) {
+  constructor(message: string, override readonly cause?: unknown) {
     super(message);
     this.name = 'GoogleOAuthError';
   }
@@ -37,12 +37,15 @@ export function getGoogleOAuthClient(env: Env) {
  */
 export function getAuthUrl(env: Env, state?: string): string {
   const client = getGoogleOAuthClient(env);
-  return client.generateAuthUrl({
+  const opts: Parameters<typeof client.generateAuthUrl>[0] = {
     access_type: 'offline',
     prompt: 'consent',
     scope: [...GOOGLE_MEET_SCOPES],
-    state,
-  });
+  };
+  if (state !== undefined) {
+    opts.state = state;
+  }
+  return client.generateAuthUrl(opts);
 }
 
 export interface GoogleTokens {

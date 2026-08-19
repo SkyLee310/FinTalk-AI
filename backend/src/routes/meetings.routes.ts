@@ -21,6 +21,7 @@ import {
   fetchMeetTranscript,
 } from '../pipeline/google-meet-fetcher.js';
 import { getUserGoogleClient } from '../auth/google-oauth.js';
+import { getEnv, type Env } from '../config/env.js';
 import { needsReconciliation, reconcileStaleFlags } from '../shariah/reconcile.js';
 import { SHARIAH_RULES } from '../shariah/rules.js';
 
@@ -68,6 +69,7 @@ function parseParticipants(raw: string | undefined): z.infer<typeof Participants
 export interface MeetingRouteDeps extends PipelineDeps {
   readonly prisma: PrismaClient;
   readonly jobs: BackgroundJobs;
+  readonly env?: Env;
 }
 
 export function registerMeetingRoutes(
@@ -365,7 +367,6 @@ export function registerMeetingRoutes(
           400,
           'Invalid request',
           'Malformed request payload.',
-          parsed.error.errors,
         );
       }
 
@@ -532,7 +533,8 @@ export function registerMeetingRoutes(
 
       let authClient;
       try {
-        authClient = await getUserGoogleClient(deps.env, prisma, meeting.createdById);
+        const env = deps.env ?? getEnv();
+        authClient = await getUserGoogleClient(env, prisma, meeting.createdById);
       } catch (err) {
         return sendProblem(
           reply,
@@ -580,7 +582,7 @@ export function registerMeetingRoutes(
         promptVersion: 'google-v2',
       };
 
-      const actor = { id: request.user.id, role: request.user.role ?? 'MAKER' };
+      const actor = { id: request.authUser!.id, role: request.authUser!.role ?? 'MAKER' };
 
       deps.jobs.run(
         processTranscriptDirectly(deps, meeting.id, transcriptionResult, actor),

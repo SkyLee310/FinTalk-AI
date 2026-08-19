@@ -91,8 +91,8 @@ describe('Google Meet Capture & Webhook Integration', () => {
       expect(meeting.meetLink).toBe('https://meet.google.com/abc-defg-hij');
       expect(meeting.googleConferenceId).toBe('abc-defg-hij');
       expect(meeting.participants).toHaveLength(2);
-      expect(meeting.participants[0].nameRedacted).toBe('[PERSON_NAME_1]');
-      expect(meeting.participants[1].nameRedacted).toBe('[PERSON_NAME_2]');
+      expect(meeting.participants[0]?.nameRedacted).toBe('[PERSON_NAME_1]');
+      expect(meeting.participants[1]?.nameRedacted).toBe('[PERSON_NAME_2]');
     });
 
     it('rejects connection if consent is missing', async () => {

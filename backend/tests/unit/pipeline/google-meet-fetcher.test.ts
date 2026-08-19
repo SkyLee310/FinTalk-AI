@@ -69,9 +69,9 @@ describe('google-meet-fetcher', () => {
       });
 
       // Same participant as segment 0 -> same speaker label
-      expect(segments[2].speakerLabel).toBe('Speaker 1');
-      expect(segments[2].startMs).toBe(11000);
-      expect(segments[2].endMs).toBe(15000);
+      expect(segments[2]?.speakerLabel).toBe('Speaker 1');
+      expect(segments[2]?.startMs).toBe(11000);
+      expect(segments[2]?.endMs).toBe(15000);
     });
 
     it('returns empty array when entries are empty', () => {

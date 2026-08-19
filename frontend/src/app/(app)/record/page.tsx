@@ -1,6 +1,6 @@
 'use client';
 
-import { FileText, Image as ImageIcon, type LucideIcon, Presentation, Upload } from 'lucide-react';
+import { FileText, Image as ImageIcon, type LucideIcon, Mic, Presentation, Upload, Video } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/badge';
@@ -52,7 +52,72 @@ const EMPTY_PARTICIPANT: Participant = { name: '', role: '' };
 /** How the audio for this capture is being obtained. */
 type CaptureMode = 'record' | 'upload' | 'meet';
 
-/** A chosen attachment, tagged with the kind shown on its clickable badge. */
+const CAPTURE_MODES: readonly { value: CaptureMode; label: string; icon: LucideIcon }[] = [
+  { value: 'record', label: 'Record here', icon: Mic },
+  { value: 'upload', label: 'Upload a file', icon: Upload },
+  { value: 'meet', label: 'Google Meet', icon: Video },
+];
+
+function SegmentedControl({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: CaptureMode;
+  onChange: (mode: CaptureMode) => void;
+  disabled?: boolean;
+}) {
+  const activeIndex = CAPTURE_MODES.findIndex((m) => m.value === value);
+
+  return (
+    <div
+      className={`relative grid grid-cols-3 max-w-lg rounded-xl bg-raised/90 p-1 border border-line/80 shadow-inner backdrop-blur-sm ${
+        disabled ? 'pointer-events-none opacity-60' : ''
+      }`}
+      role="radiogroup"
+      aria-label="Capture mode"
+    >
+      {/* Apple-style sliding pill indicator */}
+      <span
+        className="absolute top-1 bottom-1 rounded-lg bg-surface shadow-[0_1px_4px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.04)] border border-line-strong/60 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+        style={{
+          width: 'calc(33.333% - 5.33px)',
+          left: '4px',
+          transform: `translateX(calc(${String(activeIndex * 100)}% + ${String(activeIndex * 4)}px))`,
+        }}
+        aria-hidden="true"
+      />
+      {CAPTURE_MODES.map((option) => {
+        const Icon = option.icon;
+        const isSelected = value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={isSelected}
+            disabled={disabled}
+            onClick={() => onChange(option.value)}
+            className={`relative z-10 flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold tracking-tight transition-colors duration-200 ${
+              isSelected
+                ? 'text-foreground'
+                : 'text-muted hover:text-foreground'
+            }`}
+          >
+            <Icon
+              className={`size-3.5 transition-colors duration-200 ${
+                isSelected ? 'text-brand' : 'text-faint'
+              }`}
+              aria-hidden="true"
+            />
+            <span>{option.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 interface Attachment {
   readonly file: File;
   readonly kind: WhiteboardKind;
@@ -570,42 +635,10 @@ export default function RecordPage() {
       >
         <div className="space-y-4">
           <p className="text-xs text-faint">
-            Record here, or upload a file captured elsewhere — a phone, a Zoom export.
+            Record here, upload a file captured elsewhere, or import from Google Meet.
           </p>
 
-          <fieldset className="flex flex-wrap gap-4" disabled={busy}>
-            <legend className="sr-only">How was this meeting recorded</legend>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="captureMode"
-                className="accent-brand"
-                checked={mode === 'record'}
-                onChange={() => setMode('record')}
-              />
-              Record here
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="captureMode"
-                className="accent-brand"
-                checked={mode === 'upload'}
-                onChange={() => setMode('upload')}
-              />
-              Upload a file
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="captureMode"
-                className="accent-brand"
-                checked={mode === 'meet'}
-                onChange={() => setMode('meet')}
-              />
-              Google Meet (Auto-Import)
-            </label>
-          </fieldset>
+          <SegmentedControl value={mode} onChange={setMode} disabled={busy} />
 
           {mode === 'record' ? (
             <div className="rounded-lg border border-line bg-raised/60 p-6">

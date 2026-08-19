@@ -282,7 +282,14 @@ function GoogleIntegration() {
       const { url } = await api.googleAuthUrl();
       window.location.href = url;
     } catch (err) {
-      setActionError(describeError(err));
+      const msg = describeError(err);
+      if (msg.toLowerCase().includes('not configured')) {
+        setActionError(
+          'Google OAuth is not configured on this server. Please ensure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI are set in backend/.env (or Railway environment variables).',
+        );
+      } else {
+        setActionError(msg);
+      }
       setConnecting(false);
     }
   }

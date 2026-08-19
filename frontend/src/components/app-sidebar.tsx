@@ -96,9 +96,9 @@ export function AppSidebar({
       </div>
 
       <nav aria-label="Primary" className="flex-1 space-y-3 p-2 md:p-3">
-        {/* Apple-style Prominent Capture Button */}
+        {/* Apple-style Prominent Central-Aligned Light-Blue Capture Button with Floating Hover Effect */}
         {captureItem && (
-          <div className={collapsed ? 'flex justify-center' : ''}>
+          <div className="px-0.5">
             <Link
               href="/record"
               aria-current={isCaptureActive ? 'page' : undefined}
@@ -117,24 +117,25 @@ export function AppSidebar({
                 document.documentElement.dataset.nav = 'forward';
                 navigateWithTransition(() => router.push('/record'));
               }}
-              className={`group relative flex items-center gap-2.5 rounded-full transition-all duration-200 active:scale-[0.96] shadow-sm hover:shadow ${
+              className={`group relative flex items-center justify-center gap-2 rounded-full font-semibold transition-all duration-200 ease-out active:scale-[0.97] active:translate-y-0 ${
                 collapsed
-                  ? 'size-10 justify-center p-0'
-                  : 'w-full px-3.5 py-2.5 justify-start'
+                  ? 'size-10 mx-auto p-0 hover:-translate-y-0.5 hover:shadow-md hover:shadow-brand/20'
+                  : 'w-full px-4 py-2.5 hover:-translate-y-0.5 hover:shadow-md hover:shadow-brand/20'
               } ${
                 isCaptureActive
-                  ? 'bg-emerald-200 dark:bg-emerald-900/90 text-emerald-950 dark:text-emerald-100 border-2 border-emerald-500/80 dark:border-emerald-400 ring-2 ring-emerald-400/20'
-                  : 'bg-[#d1fae5] dark:bg-[#064e3b]/80 text-[#065f46] dark:text-[#a7f3d0] border border-[#a7f3d0] dark:border-[#047857] hover:bg-[#bbf7d0] dark:hover:bg-[#064e3b]'
+                  ? 'bg-brand text-canvas border border-brand shadow-md shadow-brand/25 ring-2 ring-brand/30'
+                  : 'bg-brand-soft/90 dark:bg-brand/20 text-brand-strong dark:text-sky-300 border border-brand/30 dark:border-brand/40 hover:bg-brand-soft hover:border-brand/50 dark:hover:bg-brand/30'
               }`}
             >
-              <div className="grid size-5 place-items-center shrink-0">
-                <Video aria-hidden="true" className="size-4 shrink-0 text-[#065f46] dark:text-[#a7f3d0]" />
-              </div>
+              <Video
+                aria-hidden="true"
+                className={`size-4 shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                  isCaptureActive ? 'text-canvas' : 'text-brand dark:text-sky-300'
+                }`}
+              />
               {!collapsed && (
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-bold tracking-tight">
-                    Capture
-                  </span>
+                <span className="text-sm font-bold tracking-tight text-center">
+                  Capture
                 </span>
               )}
             </Link>

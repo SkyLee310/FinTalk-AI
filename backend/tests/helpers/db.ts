@@ -9,7 +9,8 @@ export async function resetDb(): Promise<void> {
     TRUNCATE TABLE
       "AuditEntry", "HumanEdit", "AiOutputSnapshot", "Approval", "TermSheet",
       "ShariahFlag", "Whiteboard", "Redaction", "PiiVault", "Feedback",
-      "MeetingParticipant", "TranscriptSegment", "Transcript", "GoogleToken", "Meeting", "User"
+      "Notification", "MeetingParticipant", "TranscriptSegment", "Transcript",
+      "GoogleToken", "Meeting", "User"
     RESTART IDENTITY CASCADE
   `);
   await prisma.$executeRawUnsafe('ALTER TABLE "AuditEntry" ENABLE TRIGGER USER');

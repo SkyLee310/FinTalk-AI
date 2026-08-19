@@ -8,6 +8,7 @@ import type {
   TermSheet,
 } from '@prisma/client';
 import { appendAuditWithin } from '../audit/chain.js';
+import { notifyCapabilityHolders, notifyUser } from '../notifications/service.js';
 import { detectPii } from '../pdpa/detectors.js';
 import { ComplianceError } from './errors.js';
 
@@ -249,6 +250,12 @@ export async function submitForApproval(
       payload: { approvalId: approval.id, meetingId: sheet.meetingId },
     });
 
+    await notifyCapabilityHolders(tx, 'termsheet:approve', {
+      type: 'TERMSHEET_SUBMITTED',
+      message: 'A term sheet was submitted and is waiting on your approval.',
+      relatedMeetingId: sheet.meetingId,
+    });
+
     return approval;
   });
 }
@@ -328,6 +335,12 @@ export async function decideApproval(
         decision,
         note,
       },
+    });
+
+    await notifyUser(tx, approval.makerId, {
+      type: 'TERMSHEET_DECIDED',
+      message: `Your term sheet was ${decision === 'APPROVED' ? 'approved' : 'rejected'}.`,
+      relatedMeetingId: approval.termSheet.meetingId,
     });
 
     return decided;

@@ -34,6 +34,25 @@
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
 
+  /*
+   * Decorative only — a user's self-chosen avatar accent, never a status
+   * signal. Kept separate from brand/ok/warn/danger above so picking a
+   * color for your own initials circle can never accidentally read as a
+   * warning or an error state elsewhere in the app.
+   */
+  --color-avatar-violet: var(--avatar-violet);
+  --color-avatar-violet-soft: var(--avatar-violet-soft);
+  --color-avatar-rose: var(--avatar-rose);
+  --color-avatar-rose-soft: var(--avatar-rose-soft);
+  --color-avatar-teal: var(--avatar-teal);
+  --color-avatar-teal-soft: var(--avatar-teal-soft);
+  --color-avatar-indigo: var(--avatar-indigo);
+  --color-avatar-indigo-soft: var(--avatar-indigo-soft);
+  --color-avatar-sky: var(--avatar-sky);
+  --color-avatar-sky-soft: var(--avatar-sky-soft);
+  --color-avatar-orange: var(--avatar-orange);
+  --color-avatar-orange-soft: var(--avatar-orange-soft);
+
   --color-glass-bg: var(--glass-bg);
   --color-glass-border: var(--glass-border);
   --color-glass-highlight: var(--glass-highlight);
@@ -127,6 +146,25 @@
   --danger-soft: #fdeae8;
 
   /*
+   * Six preset avatar accents. Standard, widely-used accessible pairings
+   * (not individually hand-checked against --canvas the way brand/ok/warn/
+   * danger above are) — appropriate for a decorative, low-stakes picker
+   * rather than a status color.
+   */
+  --avatar-violet: #6d28d9;
+  --avatar-violet-soft: #ede9fe;
+  --avatar-rose: #be123c;
+  --avatar-rose-soft: #ffe4e6;
+  --avatar-teal: #0f766e;
+  --avatar-teal-soft: #ccfbf1;
+  --avatar-indigo: #4338ca;
+  --avatar-indigo-soft: #e0e7ff;
+  --avatar-sky: #0369a1;
+  --avatar-sky-soft: #e0f2fe;
+  --avatar-orange: #c2410c;
+  --avatar-orange-soft: #ffedd5;
+
+  /*
    * Glass tokens, additive to the opaque surface scale above. `--glass-bg`
    * is deliberately mostly-opaque (not a thin 10-20% tint): backdrop-blur
    * already erodes effective contrast versus a flat color, so the alpha
@@ -184,6 +222,19 @@
     --danger: #ef4444;
     --danger-soft: rgb(239 68 68 / 15%);
 
+    --avatar-violet: #a78bfa;
+    --avatar-violet-soft: rgb(167 139 250 / 18%);
+    --avatar-rose: #fb7185;
+    --avatar-rose-soft: rgb(251 113 133 / 18%);
+    --avatar-teal: #2dd4bf;
+    --avatar-teal-soft: rgb(45 212 191 / 18%);
+    --avatar-indigo: #818cf8;
+    --avatar-indigo-soft: rgb(129 140 248 / 18%);
+    --avatar-sky: #38bdf8;
+    --avatar-sky-soft: rgb(56 189 248 / 18%);
+    --avatar-orange: #fb923c;
+    --avatar-orange-soft: rgb(251 146 60 / 18%);
+
     --glass-bg: rgb(15 23 38 / 62%);
     --glass-border: rgb(255 255 255 / 8%);
     --glass-highlight: rgb(255 255 255 / 6%);
@@ -222,6 +273,19 @@
   --warn-soft: rgb(245 158 11 / 15%);
   --danger: #ef4444;
   --danger-soft: rgb(239 68 68 / 15%);
+
+  --avatar-violet: #a78bfa;
+  --avatar-violet-soft: rgb(167 139 250 / 18%);
+  --avatar-rose: #fb7185;
+  --avatar-rose-soft: rgb(251 113 133 / 18%);
+  --avatar-teal: #2dd4bf;
+  --avatar-teal-soft: rgb(45 212 191 / 18%);
+  --avatar-indigo: #818cf8;
+  --avatar-indigo-soft: rgb(129 140 248 / 18%);
+  --avatar-sky: #38bdf8;
+  --avatar-sky-soft: rgb(56 189 248 / 18%);
+  --avatar-orange: #fb923c;
+  --avatar-orange-soft: rgb(251 146 60 / 18%);
 
   --glass-bg: rgb(15 23 38 / 62%);
   --glass-border: rgb(255 255 255 / 8%);

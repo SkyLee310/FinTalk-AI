@@ -25,6 +25,21 @@ const LoginBody = z.object({
   password: z.string().min(1),
 });
 
+/**
+ * Mirrors AVATAR_COLORS in frontend/src/lib/avatar-colors.ts.
+ *
+ * Kept in sync by hand rather than shared across the fetch boundary — the
+ * palette changes rarely enough that duplicating six literals costs less
+ * than a build-time contract for it. Enforced here regardless of what the
+ * UI offers, because the value flows into a Tailwind class name client-side
+ * and an unvalidated string could smuggle anything into that attribute.
+ */
+const AVATAR_COLORS = ['violet', 'rose', 'teal', 'indigo', 'sky', 'orange'] as const;
+
+const UpdateMeBody = z.object({
+  avatarColor: z.enum(AVATAR_COLORS).nullable(),
+});
+
 const RegisterBody = z.object({
   displayName: z.string().min(1).max(200),
   email: z.string().email(),
@@ -230,6 +245,7 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
         email: user.email,
         displayName: user.displayName,
         role: user.role,
+        avatarColor: user.avatarColor,
         capabilities: capabilitiesOf({
           role: user.role,
           canViewMeetings: user.canViewMeetings,
@@ -262,12 +278,43 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
       email: user.email,
       displayName: user.displayName,
       role: user.role,
+      avatarColor: user.avatarColor,
       capabilities: capabilitiesOf({
         role: user.role,
         canViewMeetings: user.canViewMeetings,
         canViewAuditTrail: user.canViewAuditTrail,
       }),
     });
+  });
+
+  /**
+   * Self-service only: a caller can change nothing but their own row, and
+   * nothing but this one decorative field. No capability gate beyond being
+   * authenticated — there is nothing here an administrator needs to
+   * moderate, unlike role or account status.
+   */
+  app.patch('/auth/me', { preHandler: requireAuth }, async (request, reply) => {
+    const authUser = request.authUser;
+    if (authUser === undefined) {
+      return sendProblem(reply, 401, 'Unauthenticated', UNAUTHENTICATED);
+    }
+
+    const body = UpdateMeBody.safeParse(request.body);
+    if (!body.success) {
+      return sendProblem(
+        reply,
+        400,
+        'Invalid request',
+        body.error.issues[0]?.message ?? 'Invalid input.',
+      );
+    }
+
+    const user = await prisma.user.update({
+      where: { id: authUser.id },
+      data: { avatarColor: body.data.avatarColor },
+    });
+
+    return reply.send({ avatarColor: user.avatarColor });
   });
 
   app.post('/auth/refresh', async (request, reply) => {

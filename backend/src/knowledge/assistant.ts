@@ -63,6 +63,16 @@ export interface AskInput {
    * over the whole corpus and answers directly from this meeting's transcript.
    */
   readonly meetingId?: string | undefined;
+  /**
+   * Redacted text already extracted from one Ask FinTalk AI attachment
+   * (extract-attachment.ts), for this question only. Never persisted — the
+   * route discards the source file and this string once `ask()` returns.
+   * Folded into the model's grounding context as one extra excerpt
+   * alongside whatever transcripts were retrieved, so a question can be
+   * answered from an attachment even when the corpus has no relevant (or
+   * any) meeting. Same `exactOptionalPropertyTypes` reasoning as `history`.
+   */
+  readonly attachmentExcerpt?: string | undefined;
 }
 
 /**
@@ -305,7 +315,13 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
     },
   });
 
-  if (transcripts.length === 0) {
+  // Trimmed once, checked by identity everywhere below — `attachmentExcerpt
+  // !== undefined` is what TS narrows on, so every gate re-checks this local
+  // rather than a derived boolean.
+  const attachmentExcerptRaw = input.attachmentExcerpt?.trim();
+  const attachmentExcerpt = attachmentExcerptRaw === '' ? undefined : attachmentExcerptRaw;
+
+  if (transcripts.length === 0 && attachmentExcerpt === undefined) {
     return {
       answer: 'There are no transcripts to search yet. Capture a meeting first.',
       citations: [],
@@ -339,9 +355,15 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
    * quietly serving the weaker path.
    */
   let retrieval: 'semantic' | 'keyword' = 'semantic';
-  let ranked = await rankSemantically(embed, composite, transcripts);
+  // Skipped (rather than calling embed() on zero candidates) when there are
+  // no transcripts at all — an attachment-only question has nothing for
+  // either ranker to rank, so both stay empty and only the excerpt below
+  // grounds the answer.
+  let ranked = transcripts.length === 0
+    ? []
+    : await rankSemantically(embed, composite, transcripts);
 
-  if (ranked.length === 0) {
+  if (ranked.length === 0 && transcripts.length > 0) {
     retrieval = 'keyword';
     // Not `composite` — see keywordQuery. The model's own prior prose would
     // otherwise outweigh the question in a term-overlap score.
@@ -352,7 +374,7 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
     );
   }
 
-  if (ranked.length === 0) {
+  if (ranked.length === 0 && attachmentExcerpt === undefined) {
     return {
       answer:
         'No stored meeting matches this question. Try naming the facility, the '
@@ -367,17 +389,29 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
 
   const byId = new Map(transcripts.map((t) => [t.meetingId, t]));
 
-  const excerpts: GroundingExcerpt[] = ranked.flatMap((scored) => {
-    const transcript = byId.get(scored.meetingId);
-    if (transcript === undefined) return [];
-    return [{
-      meetingId: scored.meetingId,
-      title: transcript.meeting.title,
-      occurredAt: transcript.meeting.occurredAt.toISOString(),
-      // Already redacted — the whole reason the vault is never touched.
-      text: transcript.rawRedacted.slice(0, EXCERPT_CHARS),
-    }];
-  });
+  const excerpts: GroundingExcerpt[] = [
+    ...ranked.flatMap((scored) => {
+      const transcript = byId.get(scored.meetingId);
+      if (transcript === undefined) return [];
+      return [{
+        meetingId: scored.meetingId,
+        title: transcript.meeting.title,
+        occurredAt: transcript.meeting.occurredAt.toISOString(),
+        // Already redacted — the whole reason the vault is never touched.
+        text: transcript.rawRedacted.slice(0, EXCERPT_CHARS),
+      }];
+    }),
+    // A sentinel id, never a real meetingId — see the citation filter below,
+    // which is what keeps this from ever rendering as a fake meeting link.
+    ...(attachmentExcerpt === undefined
+      ? []
+      : [{
+          meetingId: 'attachment',
+          title: 'attached file',
+          occurredAt: new Date().toISOString(),
+          text: attachmentExcerpt.slice(0, EXCERPT_CHARS),
+        }]),
+  ];
 
   const answer = await answerFromContext(composite, excerpts);
 
@@ -406,13 +440,19 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
 
   /**
    * An answer claiming to be grounded but citing nothing is treated as
-   * unanswerable.
+   * unanswerable — unless an attachment was supplied.
    *
    * That combination means the model either found no support or did not say where
    * its support came from, and in both cases presenting the prose as an answer
-   * would lend it authority it has not earned.
+   * would lend it authority it has not earned. But the attachment excerpt above
+   * carries a sentinel id that is deliberately never in `supplied`, so a
+   * citations-only check would mark every attachment-grounded answer
+   * unanswerable even when the model used it correctly — with an attachment
+   * present, the model's own `unanswerable` flag is trusted instead.
    */
-  const unanswerable = answer.unanswerable || citations.length === 0;
+  const unanswerable = attachmentExcerpt === undefined
+    ? answer.unanswerable || citations.length === 0
+    : answer.unanswerable;
 
   /**
    * The model's text is checked for identifiers before it is returned.
@@ -456,6 +496,7 @@ export async function ask(deps: AssistantDeps, input: AskInput): Promise<AskResu
       question,
       retrievedMeetingIds: ranked.map((r) => r.meetingId),
       citedMeetingIds: citations.map((c) => c.meetingId),
+      attachmentUsed: attachmentExcerpt !== undefined,
       unanswerable,
       // How those meetings were found, not just which. An auditor rereading
       // this entry cannot otherwise tell whether the answer rested on meaning

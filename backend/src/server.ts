@@ -14,6 +14,7 @@ import { registerFeedbackRoutes } from './routes/feedback.routes.js';
 import { registerGoogleAuthRoutes } from './routes/google-auth.routes.js';
 import { registerGoogleWebhookRoutes } from './routes/google-webhook.routes.js';
 import { registerKnowledgeRoutes } from './routes/knowledge.routes.js';
+import { registerNotificationRoutes } from './routes/notifications.routes.js';
 import { registerLiveCaptionRoutes } from './routes/live-caption.routes.js';
 import { registerMeetingRoutes } from './routes/meetings.routes.js';
 import { registerUserRoutes } from './routes/users.routes.js';
@@ -74,10 +75,11 @@ export function buildServer(deps?: Partial<ServerDeps>) {
   registerLiveCaptionRoutes(app, { vaultKey });
   registerComplianceRoutes(app, { prisma, provider });
   registerUserRoutes(app, prisma);
-  registerKnowledgeRoutes(app, { prisma, provider });
+  registerKnowledgeRoutes(app, { prisma, provider, vaultKey });
   registerFeedbackRoutes(app, prisma);
   registerGoogleAuthRoutes(app, env, prisma);
   registerGoogleWebhookRoutes(app, { prisma, provider, vaultKey, jobs, env });
+  registerNotificationRoutes(app, prisma);
 
   /**
    * A restart kills in-flight capture, and the code that would have marked the

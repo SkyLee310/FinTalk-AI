@@ -86,21 +86,38 @@ export function AppSidebar({
     <aside
       className={`sidebar-rail sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-line bg-raised ${collapsed ? '' : 'md:w-64'}`}
     >
-      <div className="flex h-16 items-center gap-2.5 border-b border-line px-4">
-        <Link
-          href={items[0]?.href ?? '/record'}
-          className="flex items-center gap-2.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      <div className="border-b border-line">
+        <div className="flex h-16 items-center gap-2.5 px-4">
+          <Link
+            href={items[0]?.href ?? '/record'}
+            className="flex min-w-0 flex-1 items-center gap-2.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+          >
+            <Logo className="size-8 shrink-0" />
+            <span className={`min-w-0 ${labelVisibility}`}>
+              <span className="block truncate text-sm font-semibold tracking-tight">
+                FinTalk AI
+              </span>
+              <span className="block truncate font-mono text-[0.65rem] uppercase tracking-wide text-muted">
+                Secure
+              </span>
+            </span>
+          </Link>
+        </div>
+
+        {/* Below md the automatic breakpoint already forces icon-only, so the manual toggle has nothing to do there. */}
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="mx-3 mb-3 hidden w-[calc(100%-1.5rem)] items-center justify-center rounded-md py-1.5 text-faint transition hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand md:flex"
         >
-          <Logo className="size-8 shrink-0" />
-          <span className={`min-w-0 ${labelVisibility}`}>
-            <span className="block truncate text-sm font-semibold tracking-tight">
-              FinTalk AI
-            </span>
-            <span className="block truncate font-mono text-[0.65rem] uppercase tracking-wide text-muted">
-              Secure
-            </span>
-          </span>
-        </Link>
+          {collapsed ? (
+            <PanelLeftOpen aria-hidden="true" className="size-4" />
+          ) : (
+            <PanelLeftClose aria-hidden="true" className="size-4" />
+          )}
+        </button>
       </div>
 
       <nav aria-label="Primary" className="flex-1 space-y-1 p-2 md:p-3">
@@ -169,22 +186,37 @@ export function AppSidebar({
 
       <div className="border-t border-line p-3">
         <div
-          className={`mx-auto size-2 rounded-full bg-ok shadow-[0_0_8px_var(--ok)] ${collapsed ? '' : 'md:hidden'}`}
+          className={`mx-auto mb-2 size-2 rounded-full bg-ok shadow-[0_0_8px_var(--ok)] ${collapsed ? '' : 'md:hidden'}`}
         />
-        {/* Below md the automatic breakpoint already forces icon-only, so the manual toggle has nothing to do there. */}
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="mt-2 hidden w-full items-center justify-center rounded-md py-1.5 text-faint transition hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand md:flex"
+        <Link
+          href="/settings"
+          aria-current={pathname.startsWith('/settings') ? 'page' : undefined}
+          title="Settings"
+          className={`group flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors ${
+            pathname.startsWith('/settings')
+              ? 'bg-brand-soft text-brand'
+              : 'text-muted hover:bg-surface hover:text-text'
+          }`}
         >
-          {collapsed ? (
-            <PanelLeftOpen aria-hidden="true" className="size-4" />
-          ) : (
-            <PanelLeftClose aria-hidden="true" className="size-4" />
-          )}
-        </button>
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            className={`size-[1.125rem] shrink-0 ${pathname.startsWith('/settings') ? 'text-brand' : 'text-faint group-hover:text-text'}`}
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6 1.65 1.65 0 0 0 10 3.09V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+          <span className={`min-w-0 flex-1 ${labelVisibility}`}>
+            <span className="block truncate text-sm font-medium">Settings</span>
+          </span>
+        </Link>
       </div>
     </aside>
   );

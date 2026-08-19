@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import type { ReactNode } from 'react';
-import { SiteFooter } from '@/components/site-footer';
 import { ThemeWatcher } from '@/components/theme-watcher';
 import { Toaster } from '@/components/toast';
 import './globals.css';
@@ -74,13 +73,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
         {/*
           No header here: the signed-in area supplies its own in
-          app/(app)/layout.tsx, and the sign-in page deliberately has none. The
-          footer's data-handling and non-certification notices apply everywhere.
+          app/(app)/layout.tsx, and the sign-in page deliberately has none.
         */}
-        <div className="flex min-h-screen flex-col">
-          <div className="flex-1">{children}</div>
-          <SiteFooter />
-        </div>
+        {children}
       </body>
     </html>
   );

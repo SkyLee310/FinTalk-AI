@@ -47,6 +47,7 @@ export interface Session {
   email: string;
   displayName: string;
   role: Role;
+  avatarColor: string | null;
   capabilities: Capability[];
 }
 
@@ -344,6 +345,25 @@ export interface AskAnswer {
   retrieval: 'semantic' | 'keyword';
 }
 
+/** POST /knowledge/ask's normal outcome — everything AskAnswer already carried, tagged. */
+export interface AskAnswerResult extends AskAnswer {
+  type: 'answer';
+}
+
+/**
+ * The one scoped agent action Ask FinTalk AI recognizes: a request to open
+ * the capture page, never a mutation performed on the caller's behalf. The
+ * caller still walks through consent and presses record themselves.
+ */
+export interface StartCaptureAction {
+  type: 'action';
+  action: 'start_capture';
+  title: string;
+}
+
+/** POST /knowledge/ask's response — callers branch on `type` before rendering. */
+export type AskResponse = AskAnswerResult | StartCaptureAction;
+
 export interface ManagedUser {
   id: string;
   email: string;
@@ -386,6 +406,18 @@ export interface FeedbackRow {
     /** Never null in practice: a PENDING account has no role and never receives a session. */
     role: Role;
   };
+}
+
+export type NotificationKind = 'TERMSHEET_SUBMITTED' | 'TERMSHEET_DECIDED' | 'SHARIAH_FLAGGED';
+
+/** One alert, as GET /notifications returns it — always the caller's own. */
+export interface NotificationRow {
+  id: string;
+  type: NotificationKind;
+  message: string;
+  relatedMeetingId: string | null;
+  read: boolean;
+  createdAt: string;
 }
 
 export interface AuditIntegrity {
@@ -442,6 +474,12 @@ export const api = {
     apiFetch<Session>('/auth/login', json({ email, password })),
 
   me: () => apiFetch<Session>('/auth/me'),
+
+  updateAvatarColor: (avatarColor: string | null) =>
+    apiFetch<{ avatarColor: string | null }>('/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ avatarColor }),
+    }),
 
   logout: () => apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
 
@@ -579,9 +617,21 @@ export const api = {
    * bound the client could have respected. Omitted entirely (not sent as
    * an empty array) when there is no prior turn, so a first question is
    * byte-identical to the pre-history request shape.
+   *
+   * `file`, when passed, switches the request to multipart/form-data — the
+   * one other shape POST /knowledge/ask accepts — rather than adding a
+   * second URL for what is still fundamentally "ask a question."
    */
-  ask: (question: string, history?: readonly AskHistoryTurn[]) =>
-    apiFetch<AskAnswer>('/knowledge/ask', json({ question, history })),
+  ask: (question: string, history?: readonly AskHistoryTurn[], file?: File) => {
+    if (file === undefined) {
+      return apiFetch<AskResponse>('/knowledge/ask', json({ question, history }));
+    }
+    const form = new FormData();
+    form.append('question', question);
+    if (history !== undefined) form.append('history', JSON.stringify(history));
+    form.append('file', file);
+    return apiFetch<AskResponse>('/knowledge/ask', { method: 'POST', body: form });
+  },
 
   /**
    * Asks a question specifically about one meeting, directly grounded on its transcript.
@@ -685,6 +735,13 @@ export const api = {
     apiFetch<{ meetingId: string; status: string; segmentCount: number; pollUrl: string }>(`/meetings/${id}/sync-meet`, {
       method: 'POST',
     }),
+
+  /** Own inbox, unread first — see notification-bell.tsx for the poll loop. */
+  notifications: () =>
+    apiFetch<{ unreadCount: number; notifications: NotificationRow[] }>('/notifications'),
+
+  markNotificationRead: (id: string) =>
+    apiFetch<{ id: string; read: boolean }>(`/notifications/${id}/read`, { method: 'PATCH' }),
 };
 
 export interface GoogleAuthStatus {

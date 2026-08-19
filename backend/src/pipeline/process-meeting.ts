@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { appendAuditWithin, type AuditActor } from '../audit/chain.js';
+import { notifyCapabilityHolders } from '../notifications/service.js';
 import type {
   AudioInput,
   TranscriptionProvider,
@@ -400,6 +401,12 @@ export async function processTranscriptDirectly(
               confidence: finding.confidence,
             })),
           },
+        });
+
+        await notifyCapabilityHolders(tx, 'shariah:review', {
+          type: 'SHARIAH_FLAGGED',
+          message: 'A meeting raised new Shariah compliance findings.',
+          relatedMeetingId: meetingId,
         });
 
         return created.count;

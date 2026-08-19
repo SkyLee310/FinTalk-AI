@@ -51,7 +51,7 @@ export const NAV: readonly NavItem[] = [
   },
   {
     href: '/knowledge',
-    label: 'Knowledge',
+    label: 'Knowledge Graph',
     hint: 'Ask across every meeting, and see how they connect',
     needs: ['transcript:read'],
   },

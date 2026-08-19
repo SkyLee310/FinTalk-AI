@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@/lib/api';
+import { avatarClasses } from '@/lib/avatar-colors';
 import { Badge } from './badge';
 import { Button } from './ui';
 
@@ -90,7 +91,7 @@ export function ProfileMenu({
       >
         <span
           aria-hidden="true"
-          className="grid size-6 place-items-center rounded-full bg-brand-soft text-caption font-semibold text-brand"
+          className={`grid size-6 place-items-center rounded-full text-caption font-semibold ${avatarClasses(session.avatarColor)}`}
         >
           {initials(session.displayName)}
         </span>
@@ -190,7 +191,7 @@ export function ProfileMenu({
  * Falls back to a single character rather than rendering an empty circle, and
  * to nothing at all only for a blank name — which the backend does not allow.
  */
-function initials(displayName: string): string {
+export function initials(displayName: string): string {
   const words = displayName.trim().split(/\s+/).filter((word) => word.length > 0);
   if (words.length === 0) return '';
   if (words.length === 1) return words[0]!.slice(0, 1).toUpperCase();

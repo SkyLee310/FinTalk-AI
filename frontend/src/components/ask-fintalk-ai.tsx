@@ -1,6 +1,8 @@
 'use client';
 
+import { Paperclip, X as RemoveIcon } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   type Dispatch,
   type FormEvent,
@@ -12,6 +14,8 @@ import {
 import { describeError } from '@/hooks/use-async';
 import { api, type AskCitation } from '@/lib/api';
 import { GlassPanel } from './glass-panel';
+import { Logo } from './logo';
+import { MicIcon } from './record-session';
 import { Button, ErrorNote, Spinner, Textarea } from './ui';
 
 /**
@@ -48,6 +52,73 @@ export const EXAMPLES = [
 
 /** Server-side cap is 10 turns (backend AskBody.history.max(10)) — sliced here so a long chat never 400s. */
 const MAX_HISTORY_TURNS = 10;
+
+/** Same accepted types as record/page.tsx's whiteboard dropzone — this attachment feeds the same extraction path. */
+const ATTACHMENT_ACCEPT = 'image/*,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+/**
+ * Voice-to-text for the question box.
+ *
+ * Reuses use-live-captions.ts's SpeechRecognition pattern — and its ambient
+ * `Window.SpeechRecognition`/`webkitSpeechRecognition` types, declared
+ * globally there — but simpler in two ways. It is a deliberate press-to-talk
+ * action rather than a continuous background listener tied to a recording's
+ * lifetime, so it does not need that hook's onend-restart loop. And it skips
+ * the redact-before-display round trip: live captions redact because they
+ * render as a quasi-permanent record of the meeting, while dictated text only
+ * fills an editable box the user reviews and can change before sending —
+ * the same trust level as anything else typed into it.
+ */
+function useDictation(onResult: (text: string) => void): {
+  listening: boolean;
+  supported: boolean;
+  toggle: () => void;
+} {
+  const [listening, setListening] = useState(false);
+  const [supported, setSupported] = useState(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const onResultRef = useRef(onResult);
+  onResultRef.current = onResult;
+
+  useEffect(() => {
+    setSupported(
+      typeof window !== 'undefined'
+      && (window.SpeechRecognition !== undefined || window.webkitSpeechRecognition !== undefined),
+    );
+    return () => {
+      recognitionRef.current?.stop();
+    };
+  }, []);
+
+  function toggle(): void {
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    const Constructor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    if (Constructor === undefined) return;
+
+    const recognition = new Constructor();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+    recognition.onresult = (event) => {
+      let text = '';
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        text += event.results[i]?.[0]?.transcript ?? '';
+      }
+      if (text.trim() !== '') onResultRef.current(text.trim());
+    };
+    recognition.onend = () => setListening(false);
+    recognition.onerror = () => setListening(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+    setListening(true);
+  }
+
+  return { listening, supported, toggle };
+}
 
 /**
  * Header button that opens the panel. A chat-bubble glyph next to
@@ -87,7 +158,12 @@ export function AskFinTalkAITrigger({ onClick }: { onClick: () => void }) {
 function Bubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex items-start gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+      {!isUser && (
+        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand-soft">
+          <Logo className="size-4" />
+        </span>
+      )}
       <div
         className={`max-w-[85%] rounded-lg px-4 py-2.5 text-body ${
           isUser ? 'bg-brand text-canvas' : 'border border-line bg-raised'
@@ -130,10 +206,10 @@ function Bubble({ message }: { message: ChatMessage }) {
 }
 
 /**
- * The centred modal itself. Message state lives in the caller
+ * The full-section slide-over itself. Message state lives in the caller
  * ((app)/layout.tsx) so it survives navigation between pages and resets on
  * reload or sign-out for free — this component only owns its own
- * in-progress input text and busy/error flags.
+ * in-progress input text, attachment, and busy/error flags.
  */
 export function AskFinTalkAI({
   open,
@@ -146,9 +222,16 @@ export function AskFinTalkAI({
   messages: ChatMessage[];
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
 }) {
+  const router = useRouter();
   const [question, setQuestion] = useState('');
+  const [attachment, setAttachment] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const dictation = useDictation((text) => {
+    setQuestion((prev) => (prev.trim() === '' ? text : `${prev} ${text}`));
+  });
 
   /**
    * Stays mounted through its exit instead of `if (!open) return null`
@@ -179,6 +262,8 @@ export function AskFinTalkAI({
     setError(null);
     setBusy(true);
     setQuestion('');
+    const file = attachment;
+    setAttachment(null);
     // Sliced before the request, not after: the server enforces the same
     // cap and rejects rather than truncates an over-cap request, so
     // respecting it here is what keeps a long-running chat from ever
@@ -189,7 +274,28 @@ export function AskFinTalkAI({
     setMessages((prev) => [...prev, { role: 'user', content: text }]);
 
     try {
-      const result = await api.ask(text, history);
+      const result = await api.ask(text, history, file ?? undefined);
+
+      if (result.type === 'action') {
+        setMessages((prev) => [...prev, { role: 'assistant', content: 'Opening a new capture…' }]);
+        onClose();
+        const target = `/record?title=${encodeURIComponent(result.title)}`;
+        // record/page.tsx only reads the title query param in a mount-only
+        // effect (see its own comment on why — avoiding useSearchParams'
+        // Suspense requirement). A router.push to the same route is a soft
+        // navigation that doesn't remount, so the title would silently never
+        // apply when the request comes in from Record itself — which,
+        // since Record is the Maker's post-login landing page, is the
+        // common case rather than an edge case. A hard navigation forces
+        // the remount that mount-only effect needs.
+        if (window.location.pathname === '/record') {
+          window.location.href = target;
+        } else {
+          router.push(target);
+        }
+        return;
+      }
+
       setMessages((prev) => [
         ...prev,
         {
@@ -214,7 +320,7 @@ export function AskFinTalkAI({
   if (!open && !closing) return null;
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center">
+    <div className="fixed inset-0 z-30 flex justify-end p-3 sm:p-4">
       <button
         type="button"
         aria-label="Close Ask FinTalk AI"
@@ -227,19 +333,24 @@ export function AskFinTalkAI({
       />
 
       <GlassPanel
-        className={`relative z-10 flex max-h-[85vh] w-[calc(100%-2rem)] max-w-[540px] flex-col p-0 ${
+        className={`relative z-10 flex h-full w-full flex-col p-0 md:w-[min(100%,900px)] ${
           closing
-            ? 'animate-[modal-out_var(--dur-base)_var(--ease-out)_both]'
-            : 'animate-[modal-in_var(--dur-base)_var(--ease-out)_both]'
+            ? 'animate-[slide-out-right_var(--dur-base)_var(--ease-out)_both]'
+            : 'animate-[slide-in-right_var(--dur-base)_var(--ease-out)_both]'
         }`}
         onAnimationEnd={() => {
           if (closing) setClosing(false);
         }}
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
-          <div>
-            <h2 className="text-base font-semibold tracking-tight">Ask FinTalk AI</h2>
-            <p className="text-caption text-muted">Answered only from stored meetings.</p>
+          <div className="flex items-center gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-soft">
+              <Logo className="size-5" />
+            </span>
+            <div>
+              <h2 className="text-base font-semibold tracking-tight">Ask FinTalk AI</h2>
+              <p className="text-caption text-muted">Answered only from stored meetings.</p>
+            </div>
           </div>
           <Button type="button" variant="secondary" onClick={onClose} aria-label="Close">
             <svg
@@ -292,24 +403,77 @@ export function AskFinTalkAI({
           {error !== null && <ErrorNote>{error}</ErrorNote>}
         </div>
 
-        <form onSubmit={submit} className="flex items-end gap-2 border-t border-line px-5 py-4">
-          <Textarea
-            value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            disabled={busy}
-            placeholder="Ask a question…"
-            rows={1}
-            className="flex-1 resize-none"
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                void send(question);
-              }
-            }}
-          />
-          <Button type="submit" disabled={busy || question.trim().length < 3}>
-            Send
-          </Button>
+        <form onSubmit={submit} className="border-t border-line px-5 py-4">
+          {attachment !== null && (
+            <div className="mb-2 flex items-center gap-2 rounded-md border border-line-strong bg-raised px-2.5 py-1.5 text-caption">
+              <Paperclip aria-hidden="true" className="size-3.5 shrink-0 text-faint" />
+              <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+              <button
+                type="button"
+                onClick={() => setAttachment(null)}
+                aria-label="Remove attachment"
+                className="shrink-0 rounded p-0.5 text-faint transition hover:bg-surface hover:text-text"
+              >
+                <RemoveIcon aria-hidden="true" className="size-3.5" />
+              </button>
+            </div>
+          )}
+          <div className="flex items-end gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ATTACHMENT_ACCEPT}
+              className="sr-only"
+              onChange={(event) => {
+                setAttachment(event.target.files?.[0] ?? null);
+                event.target.value = '';
+              }}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={busy}
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Attach a file"
+            >
+              <Paperclip aria-hidden="true" className="size-4" />
+            </Button>
+            {dictation.supported && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={dictation.toggle}
+                aria-label={dictation.listening ? 'Stop dictating' : 'Dictate your question'}
+                className={dictation.listening ? 'relative text-danger' : 'relative'}
+              >
+                <MicIcon />
+                {dictation.listening && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute right-1 top-1 size-1.5 animate-pulse-ring rounded-full bg-danger"
+                  />
+                )}
+              </Button>
+            )}
+            <Textarea
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              disabled={busy}
+              placeholder="Ask a question…"
+              rows={1}
+              className="flex-1 resize-none"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  void send(question);
+                }
+              }}
+            />
+            <Button type="submit" disabled={busy || question.trim().length < 3}>
+              Send
+            </Button>
+          </div>
         </form>
       </GlassPanel>
     </div>

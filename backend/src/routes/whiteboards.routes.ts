@@ -54,7 +54,7 @@ const SEPARATOR = '\n';
  * redaction replaces "1234567890" with "[ACCOUNT_1]" rather than producing invalid
  * JSON like {"account":[ACCOUNT_1]}. Preserves full nested object/array structure.
  */
-function quotePrimitives(val: unknown): unknown {
+export function quotePrimitives(val: unknown): unknown {
   if (val === null || val === undefined) return val;
   if (typeof val === 'number' || typeof val === 'boolean') return String(val);
   if (typeof val === 'string') return val;

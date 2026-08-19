@@ -131,3 +131,21 @@ export function capabilitiesOf(context: CapabilityContext): readonly Capability[
 export function can(context: CapabilityContext, capability: Capability): boolean {
   return capabilitiesOf(context).includes(capability);
 }
+
+/**
+ * The reverse of capabilitiesOf: every role whose static table grants this
+ * capability. OVERSIGHT is deliberately excluded — its grants are
+ * per-account (canViewMeetings/canViewAuditTrail), not knowable from the
+ * capability alone, so a caller needing to reach OVERSIGHT holders must
+ * query User directly instead of going through this helper.
+ *
+ * Built for notifications/service.ts's "everyone holding capability X"
+ * triggers, where `shariah:review` and `termsheet:approve` each resolve to
+ * exactly one role — see this file's header comment for why that's a
+ * safety property, not a coincidence.
+ */
+export function rolesWithCapability(capability: Capability): readonly Role[] {
+  return (Object.keys(CAPABILITIES) as Exclude<Role, 'OVERSIGHT'>[]).filter((role) =>
+    CAPABILITIES[role].includes(capability),
+  );
+}

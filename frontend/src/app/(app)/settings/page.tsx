@@ -3,6 +3,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { Badge } from '@/components/badge';
 import { Card, DataRow } from '@/components/card';
+import { initials } from '@/components/profile-menu';
 import {
   Button,
   ErrorNote,
@@ -16,6 +17,8 @@ import {
 } from '@/components/ui';
 import { describeError, useAsync } from '@/hooks/use-async';
 import { api, type FeedbackCategory, type Session } from '@/lib/api';
+import { AVATAR_COLORS, type AvatarColor, avatarClasses, avatarSwatchClass } from '@/lib/avatar-colors';
+import { notifySessionChanged } from '@/lib/session-refresh';
 import { readStoredPreference, setTheme, type ThemePreference } from '@/lib/theme';
 
 /**
@@ -52,6 +55,17 @@ export default function SettingsPage() {
         description="Applies to this browser only — it is not stored on your account."
       >
         <Appearance />
+      </Section>
+
+      <Section
+        title="Avatar"
+        description="A color for your initials circle, shown in the sidebar and profile menu. No photo is uploaded or stored."
+      >
+        {session.loading && <Spinner label="Loading your account" />}
+        {session.error !== null && <ErrorNote>Could not load your account.</ErrorNote>}
+        {session.data !== null && (
+          <AvatarPicker session={session.data} onChanged={() => session.reload({ silent: true })} />
+        )}
       </Section>
 
       <Section
@@ -212,6 +226,68 @@ function Appearance() {
           </label>
         ))}
       </fieldset>
+    </Card>
+  );
+}
+
+function AvatarPicker({
+  session,
+  onChanged,
+}: {
+  session: Session;
+  onChanged: () => void;
+}) {
+  const [color, setColor] = useState(session.avatarColor);
+  const [busy, setBusy] = useState<AvatarColor | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function choose(next: AvatarColor): Promise<void> {
+    if (busy !== null || next === color) return;
+    setBusy(next);
+    setError(null);
+    try {
+      await api.updateAvatarColor(next);
+      setColor(next);
+      // Updates this page's own copy and the shell's (sidebar, profile
+      // menu) — two separate useAsync('session') instances that share no
+      // state, per lib/session-refresh.ts.
+      onChanged();
+      notifySessionChanged();
+    } catch (cause) {
+      setError(describeError(cause));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Card className="p-5">
+      {error !== null && <ErrorNote>{error}</ErrorNote>}
+      <div className="flex items-center gap-5">
+        <span
+          aria-hidden="true"
+          className={`grid size-12 shrink-0 place-items-center rounded-full text-body font-semibold ${avatarClasses(color)}`}
+        >
+          {initials(session.displayName)}
+        </span>
+        <div className="flex flex-wrap gap-2.5">
+          {AVATAR_COLORS.map((option) => (
+            <button
+              key={option}
+              type="button"
+              aria-label={`Use ${option}`}
+              aria-pressed={color === option}
+              disabled={busy !== null}
+              onClick={() => void choose(option)}
+              className={`size-8 rounded-full transition disabled:opacity-60 ${avatarSwatchClass(option)} ${
+                color === option
+                  ? 'ring-2 ring-text ring-offset-2 ring-offset-surface'
+                  : 'hover:opacity-80'
+              }`}
+            />
+          ))}
+        </div>
+      </div>
     </Card>
   );
 }

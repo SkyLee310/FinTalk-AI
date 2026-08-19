@@ -4,6 +4,7 @@ import { FileText, Image as ImageIcon, type LucideIcon, Mic, Presentation, Uploa
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/badge';
+import { CAPTION_LANGUAGES, RecordSession } from '@/components/record-session';
 import {
   isFullyAcknowledged,
   NO_ACKNOWLEDGEMENT,
@@ -17,7 +18,6 @@ import {
   Field,
   Input,
   PageHeader,
-  Select,
   Spinner,
   Textarea,
 } from '@/components/ui';
@@ -27,7 +27,6 @@ import { formatElapsed, recordingFilename, useRecorder } from '@/hooks/use-recor
 import { guessAttachmentKind, isKindFixed } from '@/lib/attachment-kind';
 import { api, can, type Session, type WhiteboardKind, WHITEBOARD_KIND_LABEL } from '@/lib/api';
 import { measureDurationMs } from '@/lib/audio-duration';
-import { formatTime } from '@/lib/format';
 
 /**
  * Record a meeting in the browser.
@@ -132,75 +131,11 @@ const KIND_ICON: Record<WhiteboardKind, LucideIcon> = {
 /** The order a click on a tag cycles through. */
 const KIND_CYCLE: readonly WhiteboardKind[] = ['WHITEBOARD', 'SLIDE', 'DOCUMENT'];
 
-/** BCP-47 tags for SpeechRecognition, matching the app's transcription languages. */
-const CAPTION_LANGUAGES: readonly { value: string; label: string }[] = [
-  { value: 'en-US', label: 'English' },
-  { value: 'ms-MY', label: 'Malay' },
-  { value: 'zh-CN', label: 'Chinese' },
-];
-
 /** Local time in the format a datetime-local input expects. */
 function localDateTimeValue(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
     + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function LevelMeter({ level, active }: { level: number; active: boolean }) {
-  const bars = 24;
-  const lit = active ? Math.round(level * bars) : 0;
-
-  return (
-    <div
-      className="flex items-end gap-[3px]"
-      role="meter"
-      aria-label="Microphone input level"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.round(level * 100)}
-    >
-      {Array.from({ length: bars }, (_, index) => (
-        <span
-          key={index}
-          aria-hidden="true"
-          className={`w-[3px] rounded-full transition-[background-color] duration-75 ${
-            index < lit ? 'bg-brand' : 'bg-line-strong'
-          }`}
-          style={{ height: `${String(6 + (index / bars) * 22)}px` }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function MicIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z" />
-    </svg>
-  );
-}
-
-/** Renders redaction placeholders as visible chips, matching the meeting detail page. */
-function RedactedText({ text }: { text: string }) {
-  const parts = text.split(/(\[[A-Z_]+_\d+\])/g);
-  return (
-    <>
-      {parts.map((part, index) =>
-        /^\[[A-Z_]+_\d+\]$/.test(part) ? (
-          <span
-            key={`${part}-${String(index)}`}
-            title="Personal data, redacted before storage"
-            className="mx-0.5 rounded border border-brand/40 bg-brand-soft px-1 font-mono text-xs text-brand"
-          >
-            {part}
-          </span>
-        ) : (
-          part
-        ),
-      )}
-    </>
-  );
 }
 
 export default function RecordPage() {
@@ -213,6 +148,20 @@ export default function RecordPage() {
   const [occurredAt, setOccurredAt] = useState(() => localDateTimeValue(new Date()));
   const [participants, setParticipants] = useState<Participant[]>([EMPTY_PARTICIPANT]);
   const [ack, setAck] = useState<TransferAcknowledgement>(NO_ACKNOWLEDGEMENT);
+
+  /**
+   * Seeds the title from Ask FinTalk AI's "start a capture" action
+   * (?title=…), once, on mount — not a live binding to the URL, the same
+   * choice login/page.tsx makes for its own `?mode=` param, so typing in
+   * the field afterward isn't fighting a query string that never changes
+   * again. Read via window.location directly rather than useSearchParams()
+   * to avoid that hook's Suspense-boundary requirement on a page this deep
+   * in the authenticated app shell.
+   */
+  useEffect(() => {
+    const fromQuery = new URLSearchParams(window.location.search).get('title');
+    if (fromQuery !== null && fromQuery.trim() !== '') setTitle(fromQuery);
+  }, []);
 
   /**
    * Upload is the fallback for a browser that cannot record, or a recording
@@ -641,190 +590,18 @@ export default function RecordPage() {
           <SegmentedControl value={mode} onChange={setMode} disabled={busy} />
 
           {mode === 'record' ? (
-            <div className="rounded-lg border border-line bg-raised/60 p-6">
-              <div className="mb-6 flex items-center justify-between border-b border-line pb-4">
-                <div className="flex items-center gap-3">
-                  <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
-                    <MicIcon />
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold">Audio capture</p>
-                    <p className="font-mono text-xs text-faint">Real-time secure recording</p>
-                  </div>
-                </div>
-                <span
-                  className={`inline-flex items-center gap-1.5 rounded-full border border-danger/20 bg-danger-soft px-2.5 py-1 text-xs font-bold tracking-wide text-danger ${
-                    recorder.state === 'recording' ? '' : 'invisible'
-                  }`}
-                >
-                  <span aria-hidden="true" className="size-1.5 animate-pulse-ring rounded-full bg-danger" />
-                  REC
-                </span>
-              </div>
-
-              {!recorder.supported && (
-                <ErrorNote>
-                  This browser cannot record audio. Switch to &ldquo;Upload a
-                  file&rdquo; above instead.
-                </ErrorNote>
-              )}
-              {recorder.error !== null && <ErrorNote>{recorder.error}</ErrorNote>}
-
-              <div className="flex flex-col items-center gap-5">
-                {(recorder.state === 'idle' || recorder.state === 'requesting') && (
-                  <button
-                    type="button"
-                    disabled={!armed || !recorder.supported || recorder.state === 'requesting'}
-                    onClick={() => {
-                      liveCaptions.reset();
-                      void recorder.start();
-                    }}
-                    aria-label={
-                      recorder.state === 'requesting' ? 'Opening microphone' : 'Start recording'
-                    }
-                    className="grid size-[90px] place-items-center rounded-full border-4 border-danger/25 bg-danger/10 transition hover:scale-[1.04] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <span aria-hidden="true" className="size-[22px] rounded-full bg-danger" />
-                  </button>
-                )}
-
-                {(recorder.state === 'recording' || recorder.state === 'paused') && (
-                  <button
-                    type="button"
-                    onClick={recorder.stop}
-                    aria-label="Stop recording"
-                    className="grid size-[90px] place-items-center rounded-full border-4 border-danger/25 bg-danger/10 transition hover:scale-[1.04] active:scale-[0.98]"
-                  >
-                    <span aria-hidden="true" className="size-5 rounded bg-danger" />
-                  </button>
-                )}
-
-                <LevelMeter level={recorder.level} active={recorder.state === 'recording'} />
-
-                <p
-                  className="font-mono text-[2.2rem] font-bold tabular-nums tracking-tight"
-                  aria-label={`Elapsed ${formatElapsed(recorder.elapsedMs)}`}
-                >
-                  {formatElapsed(recorder.elapsedMs)}
-                </p>
-
-                {recorder.state === 'recording' && (
-                  <Button variant="secondary" onClick={recorder.pause}>
-                    Pause
-                  </Button>
-                )}
-                {recorder.state === 'paused' && (
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-warn">Paused</span>
-                    <Button variant="secondary" onClick={recorder.resume}>
-                      Resume
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              {/*
-                aria-live lives on its own node, away from the timer. Announcing
-                every tick would make a screen reader unusable; announcing state
-                changes is what a listener actually needs.
-              */}
-              <p className="sr-only" aria-live="polite">
-                {recorder.state === 'recording'
-                  ? 'Recording'
-                  : recorder.state === 'paused'
-                    ? 'Paused'
-                    : recorder.state === 'stopped'
-                      ? 'Recording finished'
-                      : ''}
-              </p>
-
-              {(recorder.state === 'recording' || recorder.state === 'paused') && (
-                <p className="mt-4 text-center text-xs text-faint">
-                  Keep this tab open. The audio is only in this browser until you
-                  upload it, so closing the tab loses the recording.
-                </p>
-              )}
-
-              {ack.liveCaptionsConsent && (
-                <div className="mt-4 rounded-lg border border-line bg-raised/60 p-4">
-                  <div className="flex flex-wrap items-end justify-between gap-3">
-                    <p className="text-xs font-semibold text-muted">Live captions</p>
-                    <Field label="Caption language" htmlFor="captionLanguage">
-                      <Select
-                        id="captionLanguage"
-                        value={captionLanguage}
-                        disabled={recorder.state === 'recording' || recorder.state === 'paused'}
-                        onChange={(event) => setCaptionLanguage(event.target.value)}
-                      >
-                        {CAPTION_LANGUAGES.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                  </div>
-
-                  {(recorder.state === 'recording' || recorder.state === 'paused') && (
-                    <>
-                      {!liveCaptions.supported ? (
-                        <p className="mt-3 text-xs text-faint">
-                          This browser has no built-in speech recognition, so live captions
-                          are unavailable here. The full transcript is still generated after
-                          you finish recording.
-                        </p>
-                      ) : (
-                        <>
-                          {/*
-                            Two separate slots, not one shared list: the current
-                            sentence rewrites several times a second until it is
-                            final, so it needs a fixed place rather than jittering
-                            a growing list. Finalized lines below never disappear —
-                            recognition stopping and restarting under the hood
-                            (see use-live-captions.ts) doesn't clear them, and
-                            neither does pausing.
-                          */}
-                          <div className="mt-3 rounded-md border border-line-strong bg-base/60 px-3 py-2">
-                            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-faint">
-                              Live preview
-                            </p>
-                            <p className="mt-1 min-h-[1.25rem] text-sm italic leading-relaxed text-muted">
-                              {liveCaptions.interimText !== ''
-                                ? liveCaptions.interimText
-                                : recorder.state === 'recording'
-                                  ? 'Listening…'
-                                  : 'Paused'}
-                            </p>
-                          </div>
-
-                          {liveCaptions.lines.length > 0 && (
-                            <div className="mt-3 max-h-48 space-y-3 overflow-y-auto pr-1">
-                              {[...liveCaptions.lines].reverse().map((line) => (
-                                <div key={line.id} className="flex gap-2 text-sm leading-relaxed">
-                                  <span className="mt-0.5 shrink-0 font-mono text-[0.65rem] tabular-nums text-faint">
-                                    {formatTime(new Date(line.timestampMs))}
-                                  </span>
-                                  <p><RedactedText text={line.textRedacted} /></p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {liveCaptions.error !== null && (
-                            <p className="mt-2 text-xs text-warn">{liveCaptions.error}</p>
-                          )}
-                        </>
-                      )}
-                      <p className="mt-3 text-xs text-faint">
-                        A rough guide only — no speaker labels, one language at a time, and
-                        not the final transcript. The full transcript, with speakers and all
-                        three languages, is generated after you finish recording.
-                      </p>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+            <RecordSession
+              title={title}
+              participants={participants}
+              recorder={recorder}
+              armed={armed}
+              busy={busy}
+              liveCaptionsConsent={ack.liveCaptionsConsent}
+              liveCaptions={liveCaptions}
+              captionLanguage={captionLanguage}
+              onCaptionLanguageChange={setCaptionLanguage}
+              onAddWhiteboard={(file) => addFiles([file])}
+            />
           ) : mode === 'meet' ? (
             <div className="rounded-lg border border-line bg-raised/60 p-6 space-y-4">
               <div className="flex items-center gap-3 border-b border-line pb-4">
@@ -891,45 +668,49 @@ export default function RecordPage() {
           )}
 
           <div>
-            <label
-              htmlFor="boardFile"
-              className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed px-6 py-8 text-center transition-colors ${
-                dragging
-                  ? 'border-brand bg-brand-soft/40'
-                  : 'border-line-strong bg-raised/40 hover:bg-raised/60'
-              } ${busy ? 'pointer-events-none opacity-60' : ''}`}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={(event) => {
-                event.preventDefault();
-                setDragging(false);
-                addFiles(Array.from(event.dataTransfer.files));
-              }}
-            >
-              <Upload aria-hidden="true" className="size-6 text-faint" />
-              <span className="text-sm font-medium">
-                Drop whiteboards, slides, PDFs or documents
-              </span>
-              <span className="text-xs text-faint">Or click to browse. Optional, any number.</span>
-              <input
-                id="boardFile"
-                type="file"
-                className="sr-only"
-                accept="image/*,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                multiple
-                disabled={busy}
-                onChange={(event) => {
-                  addFiles(Array.from(event.target.files ?? []));
-                  // Cleared so picking the same file again (after removing it
-                  // below) still fires onChange — a file input does not fire
-                  // on a value it already holds.
-                  event.target.value = '';
+            {mode === 'upload' && (
+              <label
+                htmlFor="boardFile"
+                className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed px-6 py-8 text-center transition-colors ${
+                  dragging
+                    ? 'border-brand bg-brand-soft/40'
+                    : 'border-line-strong bg-raised/40 hover:bg-raised/60'
+                } ${busy ? 'pointer-events-none opacity-60' : ''}`}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDragging(true);
                 }}
-              />
-            </label>
+                onDragLeave={() => setDragging(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDragging(false);
+                  addFiles(Array.from(event.dataTransfer.files));
+                }}
+              >
+                <Upload aria-hidden="true" className="size-6 text-faint" />
+                <span className="text-sm font-medium">
+                  Drop whiteboards, slides, PDFs or documents
+                </span>
+                <span className="text-xs text-faint">
+                  Or click to browse. Optional, any number.
+                </span>
+                <input
+                  id="boardFile"
+                  type="file"
+                  className="sr-only"
+                  accept="image/*,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  multiple
+                  disabled={busy}
+                  onChange={(event) => {
+                    addFiles(Array.from(event.target.files ?? []));
+                    // Cleared so picking the same file again (after removing it
+                    // below) still fires onChange — a file input does not fire
+                    // on a value it already holds.
+                    event.target.value = '';
+                  }}
+                />
+              </label>
+            )}
 
             {boardFiles.length > 0 && (
               <div className="mt-3 space-y-2">

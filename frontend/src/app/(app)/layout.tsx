@@ -4,12 +4,15 @@ import { usePathname, useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 import { AppSidebar } from '@/components/app-sidebar';
 import { AskFinTalkAI, AskFinTalkAITrigger, type ChatMessage } from '@/components/ask-fintalk-ai';
+import { NotificationBell } from '@/components/notification-bell';
 import { ProfileMenu } from '@/components/profile-menu';
+import { TopSearch } from '@/components/top-search';
 import { ErrorNote, Spinner } from '@/components/ui';
 import { useAsync } from '@/hooks/use-async';
 import { api, can, type Session } from '@/lib/api';
 import { setSessionExpiredHandler } from '@/lib/api-client';
 import { isActive, visibleNav } from '@/lib/nav';
+import { setSessionChangedHandler } from '@/lib/session-refresh';
 
 /**
  * The signed-in shell.
@@ -45,6 +48,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     loading,
     reload,
   } = useAsync<Session>(() => api.me(), 'session');
+
+  // See lib/session-refresh.ts — a page below this shell (Settings' avatar
+  // picker) has no prop path back up here, so it reaches this reload the
+  // same way a session-expiry event does.
+  useEffect(() => {
+    setSessionChangedHandler(() => reload({ silent: true }));
+    return () => setSessionChangedHandler(null);
+  }, [reload]);
 
   // Lives here, not inside AskFinTalkAI, so a page navigation does not
   // clear the conversation. Both still reset for free: this whole layout
@@ -120,9 +131,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           id="app-header"
           className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-line bg-canvas/85 px-5 backdrop-blur-md"
         >
-          <span className="truncate text-sm font-semibold tracking-tight">
-            {active?.label ?? 'FinTalk AI'}
-          </span>
+          <div className="flex min-w-0 flex-1 items-center gap-4">
+            <span className="shrink-0 truncate text-sm font-semibold tracking-tight">
+              {active?.label ?? 'FinTalk AI'}
+            </span>
+            <TopSearch />
+          </div>
 
           <div className="flex shrink-0 items-center gap-3">
             {/*
@@ -139,6 +153,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             {can(session, 'transcript:read') && (
               <AskFinTalkAITrigger onClick={() => setChatOpen(true)} />
             )}
+            <NotificationBell />
             <ProfileMenu
               session={session}
               onSignOut={() => {

@@ -127,6 +127,14 @@ enum CaptureSource {
   GOOGLE_MEET
 }
 
+/// The three events a person can't otherwise discover without polling —
+/// see Notification's own comment for why each fires and who receives it.
+enum NotificationType {
+  TERMSHEET_SUBMITTED
+  TERMSHEET_DECIDED
+  SHARIAH_FLAGGED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -154,6 +162,11 @@ model User {
   /// Same nullability reasoning as username. No uniqueness constraint: an
   /// employer's staff ID scheme is not this app's to enforce.
   staffId String?
+  /// A fixed palette key (see frontend AVATAR_COLORS), never a stored image —
+  /// this app keeps no binary uploads. Null renders the existing default
+  /// brand-tinted initials circle, so every account predating this column
+  /// needs no backfill.
+  avatarColor String?
   createdAt DateTime @default(now())
   /// Set when an administrator revokes access. Deactivated, never deleted: a
   /// User is referenced by audit entries, approvals, settlements and confirmed
@@ -171,6 +184,7 @@ model User {
   settlements       Settlement[]        @relation("Settler")
   feedback          Feedback[]
   googleToken       GoogleToken?
+  notifications     Notification[]
 }
 
 model GoogleToken {
@@ -335,6 +349,12 @@ model Transcript {
   ///
   /// Empty when not yet embedded. Derived from already-redacted text, so it
   /// encodes placeholders rather than identifiers.
+  ///
+  /// @default([]) is load-bearing, not decoration: transcript-store.ts's
+  /// storeTranscript() never sets this column, relying entirely on the
+  /// default to satisfy NOT NULL. Dropping it (as one migration briefly did
+  /// by accident, since fixed) breaks every new capture at the persistence
+  /// stage.
   summaryEmbedding Float[] @default([])
 
   /// AI-drafted project kickoff, derived from the redacted transcript and
@@ -637,4 +657,31 @@ model Feedback {
   author User @relation(fields: [authorId], references: [id])
 
   @@index([createdAt])
+}
+
+/// Self-scoped alerts for the three events a person can't otherwise discover
+/// without polling a list themselves: a term sheet needs their approval
+/// (TERMSHEET_SUBMITTED, to every CHECKER), their own term sheet was decided
+/// (TERMSHEET_DECIDED, to its maker), or a meeting raised a new Shariah
+/// finding (SHARIAH_FLAGGED, to every SHARIAH reviewer). See
+/// src/notifications/service.ts for where these are created.
+///
+/// relatedMeetingId is a loose reference, not a foreign key: meetings can be
+/// hard-deleted (DELETE /meetings/:id), and a notification's history should
+/// survive that — a dangling id just means the deep link 404s, same as any
+/// other stale link would.
+model Notification {
+  id               String           @id @default(cuid())
+  userId           String
+  type             NotificationType
+  message          String
+  relatedMeetingId String?
+  read             Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+
+  /// No onDelete: Cascade, same reasoning as Feedback.author — accounts are
+  /// deactivated, never deleted.
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, read, createdAt])
 }

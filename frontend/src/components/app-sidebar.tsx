@@ -98,7 +98,7 @@ export function AppSidebar({
       <nav aria-label="Primary" className="flex-1 space-y-3 p-2 md:p-3">
         {/* Apple-style Prominent Capture Button */}
         {captureItem && (
-          <div>
+          <div className={collapsed ? 'flex justify-center' : ''}>
             <Link
               href="/record"
               aria-current={isCaptureActive ? 'page' : undefined}
@@ -117,44 +117,54 @@ export function AppSidebar({
                 document.documentElement.dataset.nav = 'forward';
                 navigateWithTransition(() => router.push('/record'));
               }}
-              className={`group relative flex w-full items-center justify-center md:justify-start gap-2.5 rounded-full px-3 py-2.5 font-medium transition-all duration-200 active:scale-[0.97] shadow-sm hover:shadow ${
+              className={`group relative flex items-center gap-2.5 rounded-full transition-all duration-200 active:scale-[0.96] shadow-sm hover:shadow ${
+                collapsed
+                  ? 'size-10 justify-center p-0'
+                  : 'w-full px-3.5 py-2.5 justify-start'
+              } ${
                 isCaptureActive
-                  ? 'bg-emerald-200/90 dark:bg-emerald-900/90 text-emerald-950 dark:text-emerald-100 border-2 border-emerald-500/80 dark:border-emerald-400 ring-2 ring-emerald-400/20'
+                  ? 'bg-emerald-200 dark:bg-emerald-900/90 text-emerald-950 dark:text-emerald-100 border-2 border-emerald-500/80 dark:border-emerald-400 ring-2 ring-emerald-400/20'
                   : 'bg-[#d1fae5] dark:bg-[#064e3b]/80 text-[#065f46] dark:text-[#a7f3d0] border border-[#a7f3d0] dark:border-[#047857] hover:bg-[#bbf7d0] dark:hover:bg-[#064e3b]'
               }`}
             >
               <div className="grid size-5 place-items-center shrink-0">
                 <Video aria-hidden="true" className="size-4 shrink-0 text-[#065f46] dark:text-[#a7f3d0]" />
               </div>
-              <span className={`min-w-0 flex-1 ${labelVisibility}`}>
-                <span className="block truncate text-sm font-bold tracking-tight">
-                  Capture
+              {!collapsed && (
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-bold tracking-tight">
+                    Capture
+                  </span>
                 </span>
-              </span>
+              )}
             </Link>
           </div>
         )}
 
         {/* Workspace section with <<< collapse button on the right */}
         <div className="space-y-1">
-          <div className="flex items-center justify-between px-2 pb-1 pt-1">
-            <p
-              className={`truncate font-mono text-[0.62rem] font-bold tracking-widest text-faint uppercase ${labelVisibility}`}
-            >
-              Workspace
-            </p>
-            {/* Collapse toggle right beside WORKSPACE word */}
+          <div
+            className={`flex items-center pt-1 pb-1 ${
+              collapsed ? 'justify-center' : 'justify-between px-2'
+            }`}
+          >
+            {!collapsed && (
+              <p className="truncate font-mono text-[0.62rem] font-bold tracking-widest text-faint uppercase">
+                Workspace
+              </p>
+            )}
+            {/* Collapse toggle right beside WORKSPACE word (or centered when collapsed) */}
             <button
               type="button"
               onClick={toggleCollapsed}
               aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              className="hidden md:inline-flex size-5 items-center justify-center rounded text-faint hover:bg-surface hover:text-text transition-colors focus-visible:outline-2 focus-visible:outline-brand"
+              className="hidden md:inline-flex size-6 items-center justify-center rounded-md text-faint hover:bg-surface hover:text-text transition-colors focus-visible:outline-2 focus-visible:outline-brand"
             >
               {collapsed ? (
-                <ChevronsRight aria-hidden="true" className="size-3.5" />
+                <ChevronsRight aria-hidden="true" className="size-4" />
               ) : (
-                <ChevronsLeft aria-hidden="true" className="size-3.5" />
+                <ChevronsLeft aria-hidden="true" className="size-4" />
               )}
             </button>
           </div>

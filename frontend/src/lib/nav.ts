@@ -39,7 +39,7 @@ export const NAV: readonly NavItem[] = [
   },
   {
     href: '/meetings',
-    label: 'Review',
+    label: 'Review Meetings',
     hint: 'Transcripts, redactions and Shariah findings',
     needs: ['transcript:read'],
   },

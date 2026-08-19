@@ -1,117 +1,252 @@
 'use client';
 
-import { Search } from 'lucide-react';
+import {
+  CheckSquare,
+  FileText,
+  type LucideIcon,
+  Network,
+  Scale,
+  Search,
+  ShieldAlert,
+  Sparkles,
+} from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type MeetingSummary } from '@/lib/api';
-import { formatDate } from '@/lib/format';
+import { api, type SearchResultItem } from '@/lib/api';
 
-/** Longest match list shown at once — a scroll of fifty rows is not a search result. */
-const MAX_RESULTS = 8;
+const CATEGORY_META: Record<
+  SearchResultItem['category'],
+  { label: string; icon: LucideIcon; color: string }
+> = {
+  feature: {
+    label: 'Features',
+    icon: Sparkles,
+    color: 'text-brand bg-brand-soft/80',
+  },
+  meeting: {
+    label: 'Meetings',
+    icon: FileText,
+    color: 'text-sky-600 bg-sky-100 dark:bg-sky-950/70 dark:text-sky-300',
+  },
+  decision: {
+    label: 'Decisions',
+    icon: Scale,
+    color: 'text-indigo-600 bg-indigo-100 dark:bg-indigo-950/70 dark:text-indigo-300',
+  },
+  action_item: {
+    label: 'Action Items',
+    icon: CheckSquare,
+    color: 'text-amber-600 bg-amber-100 dark:bg-amber-950/70 dark:text-amber-300',
+  },
+  shariah: {
+    label: 'Shariah Findings',
+    icon: ShieldAlert,
+    color: 'text-rose-600 bg-rose-100 dark:bg-rose-950/70 dark:text-rose-300',
+  },
+  knowledge: {
+    label: 'Knowledge Graph',
+    icon: Network,
+    color: 'text-emerald-600 bg-emerald-100 dark:bg-emerald-950/70 dark:text-emerald-300',
+  },
+};
 
 /**
- * Search across meetings by title, from the header, on every signed-in page.
- *
- * v1 filters the same list GET /meetings already returns for the Review page —
- * fetched once, lazily, on first focus, and matched client-side. No new backend
- * endpoint: this corpus is small enough that a second round trip per keystroke
- * would be pure overhead. A server-side search is the natural next step once a
- * workspace's meeting count outgrows one page of results.
+ * Universal Search across meetings, decisions, graph nodes, knowledge, action items, Shariah flags, and app features.
  */
 export function TopSearch() {
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
-  const [meetings, setMeetings] = useState<MeetingSummary[] | null>(null);
+  const [results, setResults] = useState<SearchResultItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const ensureLoaded = useCallback(() => {
-    if (meetings !== null || loading) return;
+  // Global Cmd+K / Ctrl+K shortcut
+  useEffect(() => {
+    function onGlobalKeyDown(event: KeyboardEvent): void {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+        event.preventDefault();
+        inputRef.current?.focus();
+        setOpen(true);
+      }
+    }
+    window.addEventListener('keydown', onGlobalKeyDown);
+    return () => window.removeEventListener('keydown', onGlobalKeyDown);
+  }, []);
+
+  // Debounced search query
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed === '') {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
-    api.meetings()
-      .then((result) => setMeetings(result.meetings))
-      .catch(() => setMeetings([]))
-      .finally(() => setLoading(false));
-  }, [meetings, loading]);
+    const timer = setTimeout(() => {
+      api
+        .search(trimmed)
+        .then((res) => {
+          setResults(res.results);
+          setSelectedIndex(-1);
+        })
+        .catch(() => {
+          setResults([]);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    }, 150);
 
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  // Click outside and Escape handling
   useEffect(() => {
     if (!open) return undefined;
 
     function onPointerDown(event: PointerEvent): void {
       const container = containerRef.current;
-      if (container !== null && !container.contains(event.target as Node)) setOpen(false);
-    }
-    function onKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') setOpen(false);
+      if (container !== null && !container.contains(event.target as Node)) {
+        setOpen(false);
+      }
     }
 
     document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
     };
   }, [open]);
 
-  const trimmed = query.trim().toLowerCase();
-  const results = trimmed === ''
-    ? []
-    : (meetings ?? [])
-      .filter((meeting) => meeting.title.toLowerCase().includes(trimmed))
-      .slice(0, MAX_RESULTS);
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (!open || results.length === 0) {
+        if (event.key === 'Escape') setOpen(false);
+        return;
+      }
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setSelectedIndex((prev) => (prev < results.length - 1 ? prev + 1 : 0));
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : results.length - 1));
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        const selected = results[selectedIndex] ?? results[0];
+        if (selected) {
+          setOpen(false);
+          setQuery('');
+          router.push(selected.href);
+        }
+      } else if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    },
+    [open, results, selectedIndex, router],
+  );
+
+  const trimmed = query.trim();
 
   return (
-    <div ref={containerRef} className="relative hidden w-64 shrink-0 sm:block">
+    <div ref={containerRef} className="relative hidden w-72 md:w-80 shrink-0 sm:block">
       <Search
         aria-hidden="true"
-        className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint"
+        className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-faint"
       />
       <input
+        ref={inputRef}
         type="search"
         value={query}
-        onFocus={() => {
-          ensureLoaded();
-          setOpen(true);
-        }}
+        onFocus={() => setOpen(true)}
         onChange={(event) => {
           setQuery(event.target.value);
           setOpen(true);
         }}
-        placeholder="Search meetings"
-        aria-label="Search meetings"
-        className="w-full rounded-full border border-line-strong bg-surface py-1.5 pl-9 pr-3 text-sm transition placeholder:text-faint hover:bg-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        onKeyDown={handleKeyDown}
+        placeholder="Search meetings, decisions, graph, Shariah..."
+        aria-label="Universal search"
+        className="w-full rounded-full border border-line-strong/80 bg-surface/90 py-1.5 pl-10 pr-12 text-xs transition placeholder:text-faint hover:bg-raised focus:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand backdrop-blur-sm shadow-inner"
       />
+      <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-line px-1.5 py-0.5 font-mono text-[0.62rem] font-semibold text-faint bg-raised/70">
+        ⌘K
+      </kbd>
 
       {open && trimmed !== '' && (
         <div
           role="listbox"
-          aria-label="Meeting results"
-          className="absolute left-0 top-[calc(100%+0.5rem)] z-30 w-80 overflow-hidden rounded-lg border border-line bg-surface shadow-lg"
+          aria-label="Universal search results"
+          className="absolute left-0 top-[calc(100%+0.5rem)] z-50 w-96 max-h-[28rem] overflow-y-auto rounded-xl border border-line bg-surface/95 shadow-2xl backdrop-blur-md transition-all"
         >
           {loading && (
-            <p className="px-4 py-3 text-sm text-faint">Loading meetings…</p>
+            <div className="flex items-center gap-2 px-4 py-3.5 text-xs text-faint">
+              <span className="size-3.5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+              Searching meetings, decisions, knowledge & rules…
+            </div>
           )}
+
           {!loading && results.length === 0 && (
-            <p className="px-4 py-3 text-sm text-faint">
-              No meetings match &ldquo;{query.trim()}&rdquo;.
-            </p>
+            <div className="px-4 py-5 text-center text-xs text-faint">
+              No results found for &ldquo;<span className="text-text font-medium">{trimmed}</span>&rdquo;.
+              <p className="mt-1 text-[0.7rem] text-faint">
+                Try searching meeting titles, topics, decisions, action items, or Shariah terms.
+              </p>
+            </div>
           )}
-          {!loading && results.map((meeting) => (
-            <Link
-              key={meeting.id}
-              href={`/meetings/${meeting.id}`}
-              role="option"
-              aria-selected={false}
-              onClick={() => {
-                setOpen(false);
-                setQuery('');
-              }}
-              className="flex flex-col gap-0.5 border-b border-line px-4 py-2.5 text-sm last:border-b-0 hover:bg-raised"
-            >
-              <span className="truncate font-medium">{meeting.title}</span>
-              <span className="text-[0.7rem] text-faint">{formatDate(meeting.occurredAt)}</span>
-            </Link>
-          ))}
+
+          {!loading && results.length > 0 && (
+            <div className="py-1.5 divide-y divide-line/60">
+              {results.map((item, index) => {
+                const meta = CATEGORY_META[item.category] ?? CATEGORY_META.feature;
+                const Icon = meta.icon;
+                const isSelected = selectedIndex === index;
+
+                return (
+                  <Link
+                    key={`${item.category}-${item.id}-${String(index)}`}
+                    href={item.href}
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => {
+                      setOpen(false);
+                      setQuery('');
+                    }}
+                    className={`flex items-start gap-3 px-3.5 py-2.5 transition-colors text-left ${
+                      isSelected ? 'bg-brand-soft/70' : 'hover:bg-raised/80'
+                    }`}
+                  >
+                    <span
+                      className={`grid size-7 shrink-0 place-items-center rounded-lg ${meta.color}`}
+                    >
+                      <Icon className="size-3.5" aria-hidden="true" />
+                    </span>
+
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-xs font-semibold text-text">
+                          {item.title}
+                        </span>
+                        {item.badge && (
+                          <span className="shrink-0 rounded bg-raised px-1.5 py-0.5 font-mono text-[0.62rem] font-medium text-faint border border-line">
+                            {item.badge}
+                          </span>
+                        )}
+                      </div>
+                      {item.subtitle && (
+                        <p className="truncate text-[0.72rem] text-muted">
+                          {item.subtitle}
+                        </p>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

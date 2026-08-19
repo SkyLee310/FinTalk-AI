@@ -745,7 +745,24 @@ export const api = {
 
   markNotificationRead: (id: string) =>
     apiFetch<{ id: string; read: boolean }>(`/notifications/${id}/read`, { method: 'PATCH' }),
+
+  /** Universal search across meetings, decisions, action items, Shariah flags, graph nodes, and features */
+  search: (q: string) =>
+    apiFetch<SearchResultsResponse>(`/search?q=${encodeURIComponent(q)}`),
 };
+
+export interface SearchResultItem {
+  readonly id: string;
+  readonly category: 'meeting' | 'decision' | 'action_item' | 'shariah' | 'knowledge' | 'feature';
+  readonly title: string;
+  readonly subtitle?: string;
+  readonly badge?: string;
+  readonly href: string;
+}
+
+export interface SearchResultsResponse {
+  readonly results: SearchResultItem[];
+}
 
 export interface GoogleAuthStatus {
   linked: boolean;

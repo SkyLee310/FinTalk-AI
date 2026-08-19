@@ -66,6 +66,8 @@ describe('Redaction parentage', () => {
         languages: ['en'],
         modelId: 'test-fixture',
         promptVersion: 'v1',
+        summaryEmbedding: [],
+        followUpsRedacted: [],
       },
     });
 
@@ -117,6 +119,8 @@ describe('Redaction parentage', () => {
         languages: ['en', 'ms'],
         modelId: 'test-fixture',
         promptVersion: 'v1',
+        summaryEmbedding: [],
+        followUpsRedacted: [],
       },
     });
 

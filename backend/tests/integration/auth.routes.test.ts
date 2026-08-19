@@ -5,7 +5,7 @@ import { buildServer } from '../../src/server.js';
 import { prisma, resetDb } from '../helpers/db.js';
 
 const PASSWORD = 'Demo!2345';
-const EMAIL = 'maker@fintalk.test';
+const EMAIL = 'maker@fintalk.ai';
 
 const app = buildServer({ prisma });
 
@@ -90,7 +90,7 @@ describe('POST /auth/login', () => {
    * holds an account.
    */
   it('gives an unknown address exactly the same answer as a wrong password', async () => {
-    const unknown = await login('nobody@fintalk.test', PASSWORD);
+    const unknown = await login('nobody@fintalk.ai', PASSWORD);
     const wrong = await login(EMAIL, 'wrong-password');
 
     expect(unknown.statusCode).toBe(wrong.statusCode);
@@ -114,7 +114,7 @@ describe('POST /auth/register', () => {
       url: '/auth/register',
       payload: {
         displayName: 'New Applicant',
-        email: 'applicant@fintalk.test',
+        email: 'applicant@fintalk.ai',
         password: 'Demo!2345',
         username: 'applicant1',
         staffId: 'STF-9001',
@@ -125,7 +125,7 @@ describe('POST /auth/register', () => {
     expect(response.json()).toMatchObject({ accountStatus: 'PENDING' });
     expect(cookiesOf(response)).toHaveLength(0);
 
-    const stored = await prisma.user.findUniqueOrThrow({ where: { email: 'applicant@fintalk.test' } });
+    const stored = await prisma.user.findUniqueOrThrow({ where: { email: 'applicant@fintalk.ai' } });
     expect(stored.role).toBeNull();
     expect(stored.accountStatus).toBe('PENDING');
   });
@@ -136,14 +136,14 @@ describe('POST /auth/register', () => {
       url: '/auth/register',
       payload: {
         displayName: 'Waiting Applicant',
-        email: 'waiting@fintalk.test',
+        email: 'waiting@fintalk.ai',
         password: 'Demo!2345',
         username: 'waitingapp',
         staffId: 'STF-9002',
       },
     });
 
-    const response = await login('waiting@fintalk.test', 'Demo!2345');
+    const response = await login('waiting@fintalk.ai', 'Demo!2345');
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({ detail: expect.stringContaining('administrator approval') });
   });
@@ -151,7 +151,7 @@ describe('POST /auth/register', () => {
   it('refuses a duplicate email', async () => {
     const payload = {
       displayName: 'Dup Email',
-      email: 'dupemail@fintalk.test',
+      email: 'dupemail@fintalk.ai',
       password: 'Demo!2345',
       username: 'dupemail1',
       staffId: 'STF-9003',
@@ -168,7 +168,7 @@ describe('POST /auth/register', () => {
   it('refuses a duplicate username', async () => {
     const first = {
       displayName: 'Dup Username One',
-      email: 'dupuser1@fintalk.test',
+      email: 'dupuser1@fintalk.ai',
       password: 'Demo!2345',
       username: 'shared-handle',
       staffId: 'STF-9004',
@@ -177,7 +177,7 @@ describe('POST /auth/register', () => {
     const second = await app.inject({
       method: 'POST',
       url: '/auth/register',
-      payload: { ...first, email: 'dupuser2@fintalk.test' },
+      payload: { ...first, email: 'dupuser2@fintalk.ai' },
     });
     expect(second.statusCode).toBe(409);
   });
@@ -188,7 +188,7 @@ describe('POST /auth/register', () => {
       url: '/auth/register',
       payload: {
         displayName: 'Short Password',
-        email: 'shortpw@fintalk.test',
+        email: 'shortpw@fintalk.ai',
         password: 'short1',
         username: 'shortpw1',
         staffId: 'STF-9005',
@@ -203,7 +203,7 @@ describe('POST /auth/register', () => {
       url: '/auth/register',
       payload: {
         displayName: 'Audited Applicant',
-        email: 'audited@fintalk.test',
+        email: 'audited@fintalk.ai',
         password: 'Demo!2345',
         username: 'auditedapp',
         staffId: 'STF-9006',
@@ -214,7 +214,7 @@ describe('POST /auth/register', () => {
     expect(entry).not.toBeNull();
     expect(entry?.actorId).toBeNull();
     expect(entry?.payload).toMatchObject({
-      email: 'audited@fintalk.test',
+      email: 'audited@fintalk.ai',
       username: 'auditedapp',
       staffId: 'STF-9006',
     });

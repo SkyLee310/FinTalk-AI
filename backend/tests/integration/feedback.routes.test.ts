@@ -29,7 +29,7 @@ afterAll(async () => {
 });
 
 async function sessionFor(role: Role, suffix = ''): Promise<{ id: string; cookie: string }> {
-  const email = `${role.toLowerCase()}${suffix}@fintalk.test`;
+  const email = `${role.toLowerCase()}${suffix}@fintalk.ai`;
   const user = await prisma.user.create({
     data: {
       email,

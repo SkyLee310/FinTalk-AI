@@ -64,6 +64,8 @@ export async function storeTranscript(
         languages: [...input.languages],
         modelId: input.modelId,
         promptVersion: input.promptVersion,
+        summaryEmbedding: [],
+        followUpsRedacted: [],
         // null, not undefined: "not measured" is an explicit value, the same
         // treatment segment confidence gets just below.
         processingMs: input.processingMs ?? null,

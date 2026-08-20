@@ -50,7 +50,7 @@ describe('createTranscriptionProvider', () => {
       GCP_SERVICE_ACCOUNT_KEY: JSON.stringify({
         type: 'service_account',
         project_id: 'test-project',
-        private_key: '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDkh/ZABmm/U5Gv\n-----END PRIVATE KEY-----\n',
+        private_key: 'mock-private-key',
         client_email: 'test@test-project.iam.gserviceaccount.com',
       }),
       VERTEX_MODEL_TRANSCRIBE: 'gemini-3.5-flash',

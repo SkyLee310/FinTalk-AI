@@ -32,16 +32,16 @@ export interface NavItem {
 
 export const NAV: readonly NavItem[] = [
   {
-    href: '/record',
-    label: 'Capture',
-    hint: 'Record or upload a meeting',
-    needs: ['meeting:create'],
-  },
-  {
     href: '/meetings',
     label: 'Review Meetings',
     hint: 'Transcripts, redactions and Shariah findings',
     needs: ['transcript:read'],
+  },
+  {
+    href: '/record',
+    label: 'Capture',
+    hint: 'Record or upload a meeting',
+    needs: ['meeting:create'],
   },
   {
     href: '/approvals',

@@ -80,7 +80,7 @@ export function AppSidebar({
       {/* Brand Header */}
       <div className="flex h-16 items-center gap-2.5 border-b border-line px-4">
         <Link
-          href={items[0]?.href ?? '/record'}
+          href={items[0]?.href ?? '/meetings'}
           className="flex min-w-0 flex-1 items-center gap-2.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
           <Logo className="size-8 shrink-0" />

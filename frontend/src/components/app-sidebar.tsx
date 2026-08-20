@@ -88,8 +88,8 @@ export function AppSidebar({
             <span className="block truncate text-sm font-semibold tracking-tight">
               FinTalk AI
             </span>
-            <span className="block truncate font-mono text-[0.65rem] uppercase tracking-wide text-muted">
-              Secure
+            <span className="block truncate text-[0.625rem] font-medium uppercase tracking-wider text-muted">
+              YOUR MEETING INTELLIGENCE
             </span>
           </span>
         </Link>

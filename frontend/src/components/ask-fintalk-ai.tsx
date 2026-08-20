@@ -19,12 +19,19 @@ import { CaptureWizardStep } from './capture-wizard';
 import { MicIcon } from './record-session';
 import { Button, ErrorNote, Spinner, Textarea } from './ui';
 import {
+  addBoardFile,
   advanceFromConsent,
   type CaptureWizardState,
+  chooseAudioFile,
   chooseImportAudio,
+  finishWhiteboard,
+  startSubmitting,
   startWizard,
   submitTitle,
 } from '@/lib/capture-wizard-state';
+import { guessAttachmentKind } from '@/lib/attachment-kind';
+import { measureDurationMs } from '@/lib/audio-duration';
+import { submitCapture } from '@/lib/submit-capture';
 
 /**
  * A chatbot, not a search form: the header-anchored panel that replaced the
@@ -45,6 +52,8 @@ export interface ChatMessage {
   content: string;
   citations?: AskCitation[];
   retrieval?: 'semantic' | 'keyword';
+  /** Set only on the wizard's own success message, once its meeting exists. */
+  createdMeeting?: { meetingId: string; title: string };
 }
 
 /**
@@ -194,6 +203,17 @@ function Bubble({ message }: { message: ChatMessage }) {
           </ul>
         )}
 
+        {message.createdMeeting !== undefined && (
+          <p className="mt-2">
+            <Link
+              href={`/meetings/${message.createdMeeting.meetingId}`}
+              className="inline-flex items-center rounded-full border border-line-strong bg-surface px-2 py-0.5 text-caption text-brand underline underline-offset-2"
+            >
+              Open {message.createdMeeting.title}
+            </Link>
+          </p>
+        )}
+
         {/*
           Said plainly, once, under the answer it applies to.
           Keyword matching finds meetings that share words with the question
@@ -290,6 +310,74 @@ export function AskFinTalkAI({
       ...prev,
       { role: 'assistant', content: 'Choose the audio file to import.' },
     ]);
+  }
+
+  function handleChooseAudioFile(file: File): void {
+    if (wizard?.step !== 'audio') return;
+    setWizard(chooseAudioFile(wizard, file));
+    setMessages((prev) => [
+      ...prev,
+      { role: 'assistant', content: 'Any whiteboard photos to attach? Add one or more, or skip.' },
+    ]);
+  }
+
+  function handleAddBoardFile(file: File): void {
+    if (wizard?.step !== 'whiteboard') return;
+    setWizard(addBoardFile(wizard, { file, kind: guessAttachmentKind(file) }));
+  }
+
+  function handleWhiteboardDone(): void {
+    if (wizard?.step !== 'whiteboard') return;
+    setWizard(finishWhiteboard(wizard));
+  }
+
+  async function handleConfirmCapture(): Promise<void> {
+    if (wizard?.step !== 'confirm') return;
+    const toSubmit = wizard;
+    setWizard(startSubmitting(toSubmit));
+    setError(null);
+
+    try {
+      const durationMs = await measureDurationMs(toSubmit.audio);
+      const result = await submitCapture({
+        title: toSubmit.title,
+        occurredAt: new Date().toISOString(),
+        consentConfirmed: toSubmit.ack.consentConfirmed,
+        transferAcknowledged: toSubmit.ack.transferAcknowledged,
+        audio: toSubmit.audio,
+        audioFilename: toSubmit.audio.name,
+        durationMs,
+        boardFiles: toSubmit.boardFiles,
+      });
+
+      let note = '';
+      if (result.boardExtractedCount > 0) {
+        note = ` ${String(result.boardExtractedCount)} attachment${result.boardExtractedCount === 1 ? '' : 's'}`
+          + ` extracted, ${String(result.boardMaskedCount)} identifier(s) masked.`;
+      }
+      if (result.boardFailures.length > 0) {
+        note += ` ${String(result.boardFailures.length)} failed: ${result.boardFailures.join('; ')}.`;
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: `Meeting created — transcribing now, this takes a few minutes.${note}`,
+          createdMeeting: { meetingId: result.meetingId, title: toSubmit.title },
+        },
+      ]);
+      setWizard(null);
+    } catch (cause) {
+      setError(describeError(cause));
+      // Only resurrect the wizard if the panel is still open. If the user
+      // closed it while this request was in flight, Task 3's own
+      // open-triggered effect already reset wizard to null — the design
+      // spec (§4) requires it stay that way, since a closed wizard is
+      // never resumed, even by a request that was already in flight at
+      // the moment of closing.
+      if (open) setWizard(toSubmit);
+    }
   }
 
   /**

@@ -43,8 +43,21 @@ export function ProfileMenu({
    * give the effect below a new identity on every toggle, tearing down and
    * rebuilding its listeners for nothing.
    */
+  const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const close = useCallback(() => {
     setClosing(true);
+    if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+    closeTimeoutRef.current = setTimeout(() => {
+      setClosing(false);
+      setOpen(false);
+    }, 150);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -54,12 +67,11 @@ export function ProfileMenu({
       if (event.key === 'Escape') close();
     }
 
-    // pointerdown rather than click: a press that begins outside and releases
-    // inside should still count as "the user went elsewhere", and pointerdown
-    // is what makes the dismissal feel immediate.
     function onPointerDown(event: PointerEvent): void {
       const container = containerRef.current;
-      if (container !== null && !container.contains(event.target as Node)) close();
+      if (container !== null && !container.contains(event.target as Node)) {
+        close();
+      }
     }
 
     document.addEventListener('keydown', onKeyDown);
@@ -79,11 +91,10 @@ export function ProfileMenu({
         aria-expanded={open}
         onClick={() => {
           if (open) {
-            close();
+            setClosing(false);
+            setOpen(false);
             return;
           }
-          // Cleared on the way in, so a panel that was left mid-close never
-          // reopens already playing its exit animation.
           setClosing(false);
           setOpen(true);
         }}

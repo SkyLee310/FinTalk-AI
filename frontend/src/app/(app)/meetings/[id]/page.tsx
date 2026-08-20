@@ -17,6 +17,7 @@ import { formatDuration } from '@/lib/duration';
 import { MeetingDetailTabs, type MeetingDetailTab } from '@/components/meeting-detail/tabs';
 import { SummarySection } from '@/components/meeting-detail/summary-section';
 import { TranscriptSection } from '@/components/meeting-detail/transcript-section';
+import { ShariahSection } from '@/components/meeting-detail/shariah-section';
 import { TermSheetSection } from '@/components/meeting-detail/term-sheet-section';
 
 const SOFT_TIMEOUT_MS = 4 * 60 * 1000;
@@ -326,6 +327,7 @@ export default function MeetingDetailPage() {
                   setActiveTab('transcript');
                   setHighlightedSegmentId(segId);
                 }}
+                onJumpToShariahTab={() => setActiveTab('shariah')}
               />
             )}
 
@@ -335,6 +337,18 @@ export default function MeetingDetailPage() {
                 session={session.data}
                 highlightedSegmentId={highlightedSegmentId}
                 onRefresh={() => meeting.reload({ silent: true })}
+              />
+            )}
+
+            {activeTab === 'shariah' && (
+              <ShariahSection
+                meeting={data}
+                session={session.data}
+                onRefresh={() => meeting.reload({ silent: true })}
+                onJumpToTranscriptSegment={(segId) => {
+                  setActiveTab('transcript');
+                  setHighlightedSegmentId(segId);
+                }}
               />
             )}
 

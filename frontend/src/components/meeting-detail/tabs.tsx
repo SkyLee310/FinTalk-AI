@@ -1,6 +1,6 @@
 'use client';
 
-export type MeetingDetailTab = 'summary' | 'transcript' | 'term-sheet';
+export type MeetingDetailTab = 'summary' | 'transcript' | 'shariah' | 'term-sheet';
 
 interface TabItem {
   id: MeetingDetailTab;
@@ -24,6 +24,7 @@ export function MeetingDetailTabs({
   const tabs: readonly TabItem[] = [
     { id: 'summary', label: 'Summary' },
     { id: 'transcript', label: 'Transcript' },
+    { id: 'shariah', label: 'Shariah Compliance', count: flagCount },
     { id: 'term-sheet', label: 'Term Sheet', count: termSheetCount },
   ];
 

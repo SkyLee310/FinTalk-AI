@@ -224,6 +224,7 @@ export interface SummarySectionProps {
   session: Session | null;
   onRefresh: () => void;
   onJumpToTranscriptSegment?: (segmentId: string) => void;
+  onJumpToShariahTab?: () => void;
 }
 
 export function SummarySection({
@@ -232,6 +233,7 @@ export function SummarySection({
   session,
   onRefresh,
   onJumpToTranscriptSegment,
+  onJumpToShariahTab,
 }: SummarySectionProps) {
   const isShariahReviewer = can(session, 'shariah:review');
 
@@ -421,6 +423,17 @@ export function SummarySection({
         <CardHeader
           title="Shariah Compliance Screening"
           description={`Screened against ${String(meeting.shariahRuleCount ?? 6)} AAOIFI & SAC BNM rules.`}
+          action={
+            onJumpToShariahTab ? (
+              <Button
+                variant="secondary"
+                onClick={onJumpToShariahTab}
+                className="text-xs"
+              >
+                Open Full Shariah Tab →
+              </Button>
+            ) : undefined
+          }
         />
         <div className="p-4 sm:p-6 space-y-4">
           {flagEntries.length === 0 ? (

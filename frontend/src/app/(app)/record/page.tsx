@@ -160,8 +160,16 @@ export default function RecordPage() {
    * in the authenticated app shell.
    */
   useEffect(() => {
-    const fromQuery = new URLSearchParams(window.location.search).get('title');
+    const query = new URLSearchParams(window.location.search);
+    const fromQuery = query.get('title');
     if (fromQuery !== null && fromQuery.trim() !== '') setTitle(fromQuery);
+    // Set only when the Ask FinTalk AI capture wizard already collected this
+    // exact consent moments earlier — see transfer-notice.tsx's own "never
+    // pre-ticked" rule, which this does not violate: it carries forward a
+    // real affirmative click, it does not default one.
+    if (query.get('consent') === '1') {
+      setAck({ consentConfirmed: true, transferAcknowledged: true, liveCaptionsConsent: false });
+    }
   }, []);
 
   /**

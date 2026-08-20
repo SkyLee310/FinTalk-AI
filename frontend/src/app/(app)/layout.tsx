@@ -8,6 +8,7 @@ import { NotificationBell } from '@/components/notification-bell';
 import { ProfileMenu } from '@/components/profile-menu';
 import { TopSearch } from '@/components/top-search';
 import { ErrorNote, Spinner } from '@/components/ui';
+import { type CaptureWizardState } from '@/lib/capture-wizard-state';
 import { useAsync } from '@/hooks/use-async';
 import { api, can, type Session } from '@/lib/api';
 import { setSessionExpiredHandler } from '@/lib/api-client';
@@ -58,11 +59,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }, [reload]);
 
   // Lives here, not inside AskFinTalkAI, so a page navigation does not
-  // clear the conversation. Both still reset for free: this whole layout
-  // unmounts on sign-out (redirect to /login, outside this route group)
-  // and on a hard reload (fresh component instance, fresh useState).
+  // clear the conversation. All three still reset for free: this whole
+  // layout unmounts on sign-out (redirect to /login, outside this route
+  // group) and on a hard reload (fresh component instance, fresh useState).
+  // chatWizard additionally resets on a plain panel close — see
+  // AskFinTalkAI's own effect for that, since open/close is that
+  // component's concern, not this layout's.
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatWizard, setChatWizard] = useState<CaptureWizardState | null>(null);
 
   const mayManageUsers = can(session, 'user:manage');
   /**
@@ -178,6 +183,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         onClose={() => setChatOpen(false)}
         messages={chatMessages}
         setMessages={setChatMessages}
+        wizard={chatWizard}
+        setWizard={setChatWizard}
       />
     </div>
   );

@@ -131,4 +131,41 @@ export function registerFeedbackRoutes(app: FastifyInstance, prisma: PrismaClien
       });
     },
   );
+
+  app.delete<{ Params: { id: string } }>(
+    '/feedback/:id',
+    { preHandler: [requireAuth, requireCapability('user:manage')] },
+    async (request, reply) => {
+      const actor = request.authUser;
+      if (actor === undefined) {
+        return sendProblem(reply, 401, 'Unauthenticated', 'A valid session is required.');
+      }
+
+      const feedback = await prisma.feedback.findUnique({
+        where: { id: request.params.id },
+      });
+      if (feedback === null) {
+        return sendProblem(reply, 404, 'Not found', 'No feedback entry exists with that id.');
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await appendAuditWithin(tx, {
+          at: new Date(),
+          actorId: actor.id,
+          actorRole: actor.role,
+          action: 'feedback.deleted',
+          entityType: 'Feedback',
+          entityId: feedback.id,
+          payload: { category: feedback.category },
+        });
+
+        await tx.feedback.delete({
+          where: { id: feedback.id },
+        });
+      });
+
+      return reply.send({ ok: true });
+    },
+  );
 }
+

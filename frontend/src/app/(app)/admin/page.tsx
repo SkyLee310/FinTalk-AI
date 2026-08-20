@@ -1,10 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { Badge } from '@/components/badge';
 import { Card } from '@/components/card';
-import { EmptyState, ErrorNote, PageHeader, Section, Spinner } from '@/components/ui';
-import { useAsync } from '@/hooks/use-async';
+import { Button, EmptyState, ErrorNote, PageHeader, Section, Spinner } from '@/components/ui';
+import { describeError, useAsync } from '@/hooks/use-async';
 import { api, can, type Capability, type FeedbackRow, type Session } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 
@@ -170,7 +171,12 @@ export default function AdminPage() {
         >
           {feedback.loading && <Spinner label="Loading feedback" />}
           {feedback.error !== null && <ErrorNote>{feedback.error}</ErrorNote>}
-          {feedback.data !== null && <FeedbackList rows={feedback.data.feedback} />}
+          {feedback.data !== null && (
+            <FeedbackList
+              rows={feedback.data.feedback}
+              onDeleted={() => feedback.reload()}
+            />
+          )}
         </Section>
       )}
     </div>
@@ -183,7 +189,13 @@ const CATEGORY_TONE = {
   OTHER: 'neutral',
 } as const;
 
-function FeedbackList({ rows }: { rows: FeedbackRow[] }) {
+function FeedbackList({
+  rows,
+  onDeleted,
+}: {
+  rows: FeedbackRow[];
+  onDeleted: () => void;
+}) {
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -196,24 +208,99 @@ function FeedbackList({ rows }: { rows: FeedbackRow[] }) {
   return (
     <ul className="space-y-3">
       {rows.map((row) => (
-        <li key={row.id}>
-          <Card className="p-4">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-              <div className="flex items-baseline gap-2">
-                <Badge tone={CATEGORY_TONE[row.category]}>{row.category}</Badge>
-                <span className="text-sm font-medium">{row.author.displayName}</span>
-                <span className="text-caption text-faint">{row.author.role}</span>
-              </div>
-              <time dateTime={row.createdAt} className="text-caption text-faint">
-                {formatDateTime(row.createdAt)}
-              </time>
-            </div>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted">
-              {row.message}
-            </p>
-          </Card>
-        </li>
+        <FeedbackItem key={row.id} row={row} onDeleted={onDeleted} />
       ))}
     </ul>
   );
 }
+
+function FeedbackItem({
+  row,
+  onDeleted,
+}: {
+  row: FeedbackRow;
+  onDeleted: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function remove(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.deleteFeedback(row.id);
+      onDeleted();
+    } catch (cause) {
+      setError(describeError(cause));
+      setBusy(false);
+      setConfirming(false);
+    }
+  }
+
+  return (
+    <li>
+      <Card className="p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <div className="flex items-baseline gap-2">
+            <Badge tone={CATEGORY_TONE[row.category]}>{row.category}</Badge>
+            <span className="text-sm font-medium">{row.author.displayName}</span>
+            <span className="text-caption text-faint">{row.author.role}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <time dateTime={row.createdAt} className="text-caption text-faint">
+              {formatDateTime(row.createdAt)}
+            </time>
+            {!confirming && (
+              <Button
+                variant="danger"
+                className="px-2.5 py-1 text-xs"
+                onClick={() => setConfirming(true)}
+              >
+                Delete
+              </Button>
+            )}
+          </div>
+        </div>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted">
+          {row.message}
+        </p>
+
+        {error !== null && (
+          <div className="mt-3">
+            <ErrorNote>{error}</ErrorNote>
+          </div>
+        )}
+
+        {confirming && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
+            <span className="text-caption text-danger">
+              Delete permanently? This cannot be undone.
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                className="px-2.5 py-1 text-xs"
+                disabled={busy}
+                onClick={() => setConfirming(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                className="px-2.5 py-1 text-xs"
+                disabled={busy}
+                onClick={() => {
+                  void remove();
+                }}
+              >
+                {busy ? 'Deleting…' : 'Confirm delete'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+    </li>
+  );
+}
+

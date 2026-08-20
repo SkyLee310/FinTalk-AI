@@ -37,8 +37,21 @@ export function NotificationBell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload is useCallback-stable; re-running this effect on every render would restart the interval on every tick.
   }, []);
 
+  const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const close = useCallback(() => {
     setClosing(true);
+    if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+    closeTimeoutRef.current = setTimeout(() => {
+      setClosing(false);
+      setOpen(false);
+    }, 150);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -47,11 +60,11 @@ export function NotificationBell() {
     function onKeyDown(event: KeyboardEvent): void {
       if (event.key === 'Escape') close();
     }
-    // pointerdown rather than click: a press that begins outside and releases
-    // inside should still count as "the user went elsewhere".
     function onPointerDown(event: PointerEvent): void {
       const container = containerRef.current;
-      if (container !== null && !container.contains(event.target as Node)) close();
+      if (container !== null && !container.contains(event.target as Node)) {
+        close();
+      }
     }
 
     document.addEventListener('keydown', onKeyDown);
@@ -94,7 +107,8 @@ export function NotificationBell() {
         }
         onClick={() => {
           if (open) {
-            close();
+            setClosing(false);
+            setOpen(false);
             return;
           }
           setClosing(false);

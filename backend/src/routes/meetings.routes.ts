@@ -925,6 +925,9 @@ export function registerMeetingRoutes(
           task: item.task,
           dueDate: item.dueDate,
         })),
+        captureSource: meeting.captureSource,
+        meetLink: meeting.meetLink,
+        googleConferenceId: meeting.googleConferenceId,
       });
     },
   );

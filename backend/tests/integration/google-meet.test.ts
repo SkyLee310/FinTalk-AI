@@ -138,6 +138,37 @@ describe('Google Meet Capture & Webhook Integration', () => {
     });
   });
 
+  describe('GET /meetings/:id', () => {
+    it('includes captureSource, meetLink and googleConferenceId for a Google Meet capture', async () => {
+      const auth = await login();
+      const created = await app.inject({
+        method: 'POST',
+        url: '/meetings/connect-meet',
+        headers: { cookie: cookieHeader(auth) },
+        payload: {
+          meetLink: 'https://meet.google.com/abc-defg-hij',
+          title: 'Credit Committee — Google Meet Session',
+          occurredAt: '2026-08-19T10:00:00Z',
+          consentConfirmed: true,
+          transferAcknowledged: true,
+        },
+      });
+      const { meetingId } = created.json();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/meetings/${meetingId}`,
+        headers: { cookie: cookieHeader(auth) },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const json = res.json();
+      expect(json.captureSource).toBe('GOOGLE_MEET');
+      expect(json.meetLink).toBe('https://meet.google.com/abc-defg-hij');
+      expect(json.googleConferenceId).toBe('abc-defg-hij');
+    });
+  });
+
   describe('POST /webhooks/google-meet', () => {
     it('accepts valid webhook payload gracefully even if meeting not found', async () => {
       const res = await app.inject({

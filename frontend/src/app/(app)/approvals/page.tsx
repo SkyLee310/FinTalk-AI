@@ -3,14 +3,13 @@
 import Link from 'next/link';
 import { type FormEvent, useState } from 'react';
 import { Badge, type Tone } from '@/components/badge';
-import { Card, CardHeader, DataRow } from '@/components/card';
+import { Card, DataRow } from '@/components/card';
 import {
   Button,
   EmptyState,
   ErrorNote,
   Field,
   PageHeader,
-  Section,
   Select,
   Spinner,
   SuccessNote,
@@ -35,15 +34,14 @@ const DECISION_TONE: Record<ApprovalStatus, Tone> = {
   WITHDRAWN: 'neutral',
 };
 
-/**
- * Same-origin, and that is the whole point.
- *
- * These are real <a href> downloads, so clicking one is a top-level navigation.
- * Pointed at the backend's own origin it was a cross-site navigation carrying no
- * cookie in Safari, so the browser rendered the API's raw 401 JSON at the user
- * instead of a file. /api is rewritten to the backend by next.config.ts, which
- * makes the session cookie first-party and the download just work.
- */
+const DECISION_LABEL: Record<ApprovalStatus, string> = {
+  DRAFT: 'DRAFT',
+  PENDING_CHECKER: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  WITHDRAWN: 'WITHDRAWN',
+};
+
 const API_BASE = '/api';
 
 function DecideForm({ approval, onDone }: { approval: ApprovalRow; onDone: () => void }) {
@@ -69,7 +67,7 @@ function DecideForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
       onSubmit={(event: FormEvent) => {
         event.preventDefault();
       }}
-      className="mt-4 space-y-3 border-t border-line pt-4"
+      className="mt-4 space-y-3 rounded-lg border border-line bg-raised/50 p-4"
     >
       {error && <ErrorNote>{error}</ErrorNote>}
 
@@ -82,18 +80,19 @@ function DecideForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
           id={`note-${approval.id}`}
           rows={2}
           value={note}
+          placeholder="Add review notes, rationale or conditions…"
           onChange={(event) => setNote(event.target.value)}
         />
       </Field>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2.5 pt-1">
         <Button
           disabled={busy !== null}
           onClick={() => {
             void decide('APPROVED');
           }}
         >
-          {busy === 'APPROVED' ? 'Approving…' : 'Approve'}
+          {busy === 'APPROVED' ? 'Approving…' : 'Approve facility'}
         </Button>
         <Button
           variant="danger"
@@ -102,7 +101,7 @@ function DecideForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
             void decide('REJECTED');
           }}
         >
-          {busy === 'REJECTED' ? 'Rejecting…' : 'Reject'}
+          {busy === 'REJECTED' ? 'Rejecting…' : 'Reject facility'}
         </Button>
       </div>
     </form>
@@ -114,14 +113,6 @@ const RAIL_LABEL: Record<SettlementRail, string> = {
   RENTAS: 'RENTAS',
 };
 
-/**
- * Mirrors the backend's settlement_duitnow_business_ceiling /
- * settlement_rentas_floor CHECK constraints (see mock-settlement.ts), so the
- * checker is never offered a rail the server is going to reject. DuitNow
- * Business and RENTAS each have their own real limit, not a shared size
- * cutoff — a facility between RM10,000 and RM10,000,000 is valid on either.
- * MYR only: any other currency leaves both rails open.
- */
 const DUITNOW_BUSINESS_CEILING_MINOR = 1_000_000_000n; // RM10,000,000
 const RENTAS_FLOOR_MINOR = 1_000_000n; // RM10,000
 
@@ -134,15 +125,6 @@ function validRails(currency: string, principalMinor: string): SettlementRail[] 
   return rails;
 }
 
-/**
- * Simulated settlement.
- *
- * Every surface here says so, and that repetition is deliberate rather than
- * clumsy: the reference itself carries MOCK-, the badge says Simulated, and the
- * copy states plainly that no funds moved and no bank was contacted. Someone
- * screenshotting this for a demo must not be able to crop it into looking like a
- * real payment confirmation.
- */
 function SettleForm({ approval, onDone }: { approval: ApprovalRow; onDone: () => void }) {
   const options = validRails(approval.termSheet.currency, approval.termSheet.principalMinor);
   const [rail, setRail] = useState<SettlementRail>(options[0] ?? 'DUITNOW');
@@ -153,7 +135,7 @@ function SettleForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
 
   if (settlement !== null) {
     return (
-      <div className="mt-4 space-y-2 border-t border-line pt-4">
+      <div className="mt-4 space-y-3 rounded-lg border border-line bg-raised/50 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="ok" dot>
             Settled
@@ -175,15 +157,14 @@ function SettleForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
           </DataRow>
         </dl>
         <p className="text-xs text-faint">
-          No funds moved and no bank was contacted. This is a simulated record for
-          demonstration, and the reference is not a real DuitNow Business or RENTAS reference.
+          No funds moved and no bank was contacted. This is a simulated record for demonstration.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="mt-4 space-y-3 border-t border-line pt-4">
+    <div className="mt-4 space-y-3 rounded-lg border border-line bg-raised/50 p-4">
       {error !== null && <ErrorNote>{error}</ErrorNote>}
 
       <Field
@@ -191,10 +172,8 @@ function SettleForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
         htmlFor={`rail-${approval.id}`}
         hint={
           options.length === 1
-            ? `Only ${RAIL_LABEL[options[0] ?? rail]} applies at this facility's size. Nothing `
-              + 'is sent to any bank.'
-            : 'Nothing is sent to any bank. The amount is taken from the approved figures, not '
-              + 'from this form.'
+            ? `Only ${RAIL_LABEL[options[0] ?? rail]} applies at this facility size.`
+            : 'Select settlement rail for simulated disbursement.'
         }
       >
         <Select
@@ -233,12 +212,9 @@ function SettleForm({ approval, onDone }: { approval: ApprovalRow; onDone: () =>
 }
 
 /**
- * One facility. Reused across both sections below unchanged — DecideForm
- * only ever shows for a PENDING_CHECKER row and SettleForm already branches
- * on whether it is settled, so the same card is correct whichever section
- * (or sub-list) renders it.
+ * Compact Box with expandable "More details" for decision terms.
  */
-function ApprovalCard({
+function ApprovalBox({
   approval,
   mayDecide,
   maySettle,
@@ -253,106 +229,224 @@ function ApprovalCard({
   onDecided: () => void;
   onSettled: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const sheet = approval.termSheet;
   const pending = approval.decision === 'PENDING_CHECKER';
   const rateBps = sheet.profitRateBps ?? sheet.interestRateBps ?? 0;
 
   return (
-    <li>
-      <Card>
-        <CardHeader
-          title={sheet.applicantName}
-          description={`Submitted by ${approval.makerName} on ${formatDateTime(
-            approval.submittedAt,
-          )}`}
-          action={
-            <Badge tone={DECISION_TONE[approval.decision]} dot>
-              {approval.decision}
-            </Badge>
-          }
-        />
-
-        <dl className="divide-y divide-line px-5 py-2">
-          <DataRow label="Facility">
-            <Badge tone={sheet.facilityKind === 'ISLAMIC' ? 'brand' : 'neutral'}>
-              {sheet.facilityKind}
-              {sheet.islamicContract === null ? '' : ` · ${sheet.islamicContract}`}
-            </Badge>
-          </DataRow>
-          <DataRow label="Principal">
-            <span className="font-mono">
-              {sheet.currency} {sheet.principalFormatted}
-            </span>
-          </DataRow>
-          <DataRow label="Tenure">{sheet.tenureMonths} months</DataRow>
-          <DataRow label={sheet.facilityKind === 'ISLAMIC' ? 'Profit rate' : 'Interest rate'}>
-            <span className="font-mono">{(rateBps / 100).toFixed(2)}%</span>
-          </DataRow>
-          <DataRow label="Meeting">
-            <Link
-              href={`/meetings/${sheet.meetingId}`}
-              className="rounded text-brand underline underline-offset-2"
-            >
-              View transcript
-            </Link>
-          </DataRow>
-        </dl>
-
-        {approval.note !== null && approval.note !== '' && (
-          <p className="border-t border-line px-5 py-3 text-sm text-muted">
-            <span className="font-medium text-text">Note. </span>
-            {approval.note}
-          </p>
-        )}
-
-        <div className="px-5 pb-5">
-          {mayDecide && pending && <DecideForm approval={approval} onDone={onDecided} />}
-
-          {maySettle && approval.decision === 'APPROVED' && (
-            <SettleForm approval={approval} onDone={onSettled} />
-          )}
-
-          {mayDownload && approval.decision === 'APPROVED' && (
-            <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
-              {/*
-                CSV only. The ISO 20022 pain.001 XML was removed: it is a
-                payment instruction, and an approved term sheet is a credit
-                decision. For a Murabahah facility the money moves
-                bank-to-vendor for an asset purchase, so a transfer crediting
-                the applicant described a cash advance with a markup — the
-                structure this product exists to flag.
-              */}
-              <a
-                href={`${API_BASE}/term-sheets/${sheet.id}/payment-payload`}
-                className="inline-flex items-center rounded-lg border border-line-strong bg-surface px-3.5 py-2 text-sm font-medium hover:bg-raised"
-              >
-                Download CSV handoff
-              </a>
-              <p className="w-full pt-1 text-xs text-faint">
-                The approved figures, for you to complete with account details in
-                your own banking channel. Not a payment instruction: this system
-                never submits one, and makes no claim about when money moves.
+    <li className="list-none">
+      <Card className="overflow-hidden transition shadow-xs hover:shadow-md border-line">
+        {/* Compact Essential Box Header (Always Visible) */}
+        <div className="px-4 py-3.5 sm:px-5">
+          <div className="flex items-stretch justify-between gap-3">
+            <div className="space-y-0.5 min-w-0">
+              {/* Facility type badge on top of company name, smaller */}
+              <div className="pb-0.5">
+                <span
+                  className={`inline-flex items-center rounded-md px-1.5 py-0.5 font-mono text-[0.65rem] font-semibold uppercase tracking-wider border ${
+                    sheet.facilityKind === 'ISLAMIC'
+                      ? 'border-brand/30 bg-brand/10 text-brand'
+                      : 'border-line-strong bg-raised text-muted'
+                  }`}
+                >
+                  {sheet.facilityKind}
+                  {sheet.islamicContract === null ? '' : ` · ${sheet.islamicContract}`}
+                </span>
+              </div>
+              <h3 className="text-base sm:text-lg font-bold text-text tracking-tight truncate">
+                {sheet.applicantName}
+              </h3>
+              <p className="text-xs text-muted">
+                Submitted by <span className="font-medium text-text">{approval.makerName}</span> on{' '}
+                {formatDateTime(approval.submittedAt)}
               </p>
             </div>
-          )}
+
+            {/* Status at top, More Details at bottom for equal distance to borders */}
+            <div className="flex flex-col items-end justify-between self-stretch shrink-0 gap-2">
+              <div className="flex items-center gap-2">
+                <Badge tone={DECISION_TONE[approval.decision]} dot>
+                  {DECISION_LABEL[approval.decision]}
+                </Badge>
+                {approval.settlement !== null && (
+                  <Badge tone="ok" dot>
+                    Settled
+                  </Badge>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setExpanded(!expanded)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-2.5 py-1 text-xs font-medium text-text transition hover:bg-raised active:scale-[0.98]"
+              >
+                <span>{expanded ? 'Hide details' : 'More details'}</span>
+                <span
+                  className="text-[10px] transition-transform duration-200"
+                  style={{ transform: expanded ? 'rotate(180deg)' : 'none' }}
+                >
+                  ▼
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Action Notices (if applicable) */}
+          {(pending && mayDecide) ||
+          (!pending && approval.decision === 'APPROVED' && approval.settlement === null && maySettle) ? (
+            <div className="mt-2 pt-1 border-t border-line/50">
+              {pending && mayDecide && (
+                <span className="text-xs font-medium text-warn">
+                  Action required: Checker approval pending
+                </span>
+              )}
+              {!pending && approval.decision === 'APPROVED' && approval.settlement === null && maySettle && (
+                <span className="text-xs font-medium text-brand">
+                  Ready for simulated settlement
+                </span>
+              )}
+            </div>
+          ) : null}
         </div>
+
+        {/* Expanded Detailed Section */}
+        {expanded && (
+          <div
+            className="border-t border-line bg-raised/20 px-4 py-4 sm:px-5 space-y-4"
+            style={{ animation: 'decideExpand 0.2s ease-out' }}
+          >
+            {/* Key Metrics Grid */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 rounded-xl border border-line bg-raised/40 p-3.5">
+              <div>
+                <span className="block text-[0.7rem] font-medium uppercase tracking-wider text-muted">
+                  Principal Amount
+                </span>
+                <span className="mt-0.5 block font-mono text-sm sm:text-base font-bold text-text">
+                  {sheet.currency} {sheet.principalFormatted}
+                </span>
+              </div>
+              <div>
+                <span className="block text-[0.7rem] font-medium uppercase tracking-wider text-muted">
+                  Tenure
+                </span>
+                <span className="mt-0.5 block font-mono text-sm sm:text-base font-bold text-text">
+                  {sheet.tenureMonths} Months
+                </span>
+              </div>
+              <div>
+                <span className="block text-[0.7rem] font-medium uppercase tracking-wider text-muted">
+                  {sheet.facilityKind === 'ISLAMIC' ? 'Profit Rate' : 'Interest Rate'}
+                </span>
+                <span className="mt-0.5 block font-mono text-sm sm:text-base font-bold text-text">
+                  {(rateBps / 100).toFixed(2)}%
+                </span>
+              </div>
+              <div>
+                <span className="block text-[0.7rem] font-medium uppercase tracking-wider text-muted">
+                  Meeting Reference
+                </span>
+                <Link
+                  href={`/meetings/${sheet.meetingId}`}
+                  className="mt-0.5 inline-flex items-center text-xs font-semibold text-brand hover:underline"
+                >
+                  View transcript →
+                </Link>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">
+                Facility Breakdown & Details
+              </h4>
+              <dl className="divide-y divide-line rounded-lg border border-line bg-surface px-4 py-1">
+                <DataRow label="Facility Kind">
+                  <Badge tone={sheet.facilityKind === 'ISLAMIC' ? 'brand' : 'neutral'}>
+                    {sheet.facilityKind}
+                    {sheet.islamicContract === null ? '' : ` · ${sheet.islamicContract}`}
+                  </Badge>
+                </DataRow>
+                <DataRow label="Principal">
+                  <span className="font-mono">
+                    {sheet.currency} {sheet.principalFormatted}
+                  </span>
+                </DataRow>
+                <DataRow label="Tenure">{sheet.tenureMonths} months</DataRow>
+                <DataRow label={sheet.facilityKind === 'ISLAMIC' ? 'Profit rate' : 'Interest rate'}>
+                  <span className="font-mono">{(rateBps / 100).toFixed(2)}%</span>
+                </DataRow>
+                <DataRow label="Meeting Transcript">
+                  <Link
+                    href={`/meetings/${sheet.meetingId}`}
+                    className="rounded text-brand font-medium underline underline-offset-2"
+                  >
+                    Open transcript & findings
+                  </Link>
+                </DataRow>
+              </dl>
+            </div>
+
+            {approval.note !== null && approval.note !== '' && (
+              <div className="rounded-lg border border-line bg-surface p-4 text-xs text-muted">
+                <span className="font-medium text-text">Reviewer Note: </span>
+                {approval.note}
+              </div>
+            )}
+
+            {/* Decision Action Form for Checkers */}
+            {mayDecide && pending && (
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
+                  Checker Decision
+                </h4>
+                <DecideForm approval={approval} onDone={onDecided} />
+              </div>
+            )}
+
+            {/* Settlement Action Form */}
+            {maySettle && approval.decision === 'APPROVED' && (
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
+                  Simulated Settlement
+                </h4>
+                <SettleForm approval={approval} onDone={onSettled} />
+              </div>
+            )}
+
+            {/* CSV Handoff Download */}
+            {mayDownload && approval.decision === 'APPROVED' && (
+              <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold text-text">Data Handoff</span>
+                  <a
+                    href={`${API_BASE}/term-sheets/${sheet.id}/payment-payload`}
+                    className="inline-flex items-center rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium hover:bg-raised transition"
+                  >
+                    Download CSV handoff
+                  </a>
+                </div>
+                <p className="text-[11px] text-faint">
+                  Approved figures formatted for core banking entry. This system never submits payment instructions directly.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </Card>
     </li>
   );
 }
 
+type DecideTab = 'approvals' | 'settlement';
+
 export default function ApprovalsPage() {
   const session = useAsync<Session>(() => api.me(), 'session');
   const approvals = useAsync(() => api.approvals(), 'approvals');
+  const [activeTab, setActiveTab] = useState<DecideTab>('approvals');
   const [done, setDone] = useState<string | null>(null);
 
   const mayDecide = can(session.data, 'termsheet:approve');
   const mayDownload = can(session.data, 'payment:settle');
-  /**
-   * CHECKER only, and the server narrows it further to the checker who actually
-   * approved that facility — so this button appearing is not the same as the
-   * settlement being permitted, and the 403 message says which checker it wants.
-   */
   const maySettle = can(session.data, 'payment:settle');
 
   const onDecided = () => {
@@ -364,11 +458,6 @@ export default function ApprovalsPage() {
     approvals.reload();
   };
 
-  /**
-   * Three groups, not five: a decided-and-rejected, withdrawn, or still-draft
-   * term sheet is finished, and this page is about what still needs doing.
-   * All three read the same /approvals payload — no new endpoint.
-   */
   const all = approvals.data?.approvals ?? [];
   const pendingApprovals = all.filter((approval) => approval.decision === 'PENDING_CHECKER');
   const awaitingSettlement = all.filter(
@@ -379,102 +468,177 @@ export default function ApprovalsPage() {
   );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         eyebrow="Decide"
         title="Approvals and settlement"
-        lead="A term sheet is submitted by a maker and decided by a different person — one account can never do both. The checker who approves a facility then records its settlement, which is always simulated."
       />
 
       {done && <SuccessNote>{done}</SuccessNote>}
       {approvals.loading && <Spinner label="Loading approvals" />}
       {approvals.error !== null && <ErrorNote>{approvals.error}</ErrorNote>}
 
-      <Section
-        title="Approvals"
-        description="Submitted term sheets waiting for a decision."
-        action={
-          <Badge tone={pendingApprovals.length > 0 ? 'warn' : 'neutral'}>
-            {pendingApprovals.length}
-          </Badge>
-        }
-      >
-        {!approvals.loading && pendingApprovals.length === 0 && (
-          <EmptyState
-            title="Nothing awaiting a decision"
-            body="A maker submits a term sheet from a meeting once its Shariah findings are cleared."
-          />
-        )}
-        {pendingApprovals.length > 0 && (
-          <ul className="space-y-4">
-            {pendingApprovals.map((approval) => (
-              <ApprovalCard
-                key={approval.id}
-                approval={approval}
-                mayDecide={mayDecide}
-                maySettle={maySettle}
-                mayDownload={mayDownload}
-                onDecided={onDecided}
-                onSettled={onSettled}
+      {/* Horizontal Tabs Header styled exactly like meeting detail tabs */}
+      <div className="border-b border-line bg-surface/50 backdrop-blur-sm sticky top-0 z-10 -mx-4 px-4 sm:-mx-6 sm:px-6">
+        <nav className="flex space-x-2 sm:space-x-4" aria-label="Decide sections" role="tablist">
+          {/* Approvals Tab */}
+          <button
+            type="button"
+            role="tab"
+            id="tab-approvals"
+            aria-selected={activeTab === 'approvals'}
+            onClick={() => setActiveTab('approvals')}
+            className={`group relative flex items-center gap-2 py-3 px-3 sm:px-4 text-sm font-medium transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
+              activeTab === 'approvals'
+                ? 'text-brand font-semibold'
+                : 'text-muted hover:text-text hover:bg-raised/50'
+            }`}
+          >
+            <span>Approvals</span>
+            {pendingApprovals.length > 0 && (
+              <span
+                className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs font-mono font-medium transition ${
+                  activeTab === 'approvals'
+                    ? 'bg-brand/15 text-brand border border-brand/30'
+                    : 'bg-raised text-muted group-hover:text-text border border-line'
+                }`}
+              >
+                {pendingApprovals.length}
+              </span>
+            )}
+            {pendingApprovals.length > 0 && (
+              <span
+                title={`${String(pendingApprovals.length)} pending approval(s)`}
+                className="inline-flex h-2 w-2 rounded-full bg-warn animate-pulse"
+                aria-label={`${String(pendingApprovals.length)} pending approval(s)`}
               />
-            ))}
-          </ul>
-        )}
-      </Section>
-
-      <Section
-        title="Settlement"
-        description="Once approved, record how the transfer was completed elsewhere. Every settlement here is simulated."
-        action={
-          <Badge tone={awaitingSettlement.length > 0 ? 'warn' : 'neutral'}>
-            {awaitingSettlement.length}
-          </Badge>
-        }
-      >
-        {!approvals.loading && awaitingSettlement.length === 0 && recentlySettled.length === 0 && (
-          <EmptyState
-            title="Nothing to settle yet"
-            body="Once you approve a facility above, record its settlement here."
-          />
-        )}
-
-        {awaitingSettlement.length > 0 && (
-          <ul className="space-y-4">
-            {awaitingSettlement.map((approval) => (
-              <ApprovalCard
-                key={approval.id}
-                approval={approval}
-                mayDecide={mayDecide}
-                maySettle={maySettle}
-                mayDownload={mayDownload}
-                onDecided={onDecided}
-                onSettled={onSettled}
+            )}
+            {activeTab === 'approvals' && (
+              <span
+                aria-hidden="true"
+                className="absolute inset-x-0 bottom-0 h-0.5 bg-brand"
               />
-            ))}
-          </ul>
-        )}
+            )}
+          </button>
 
-        {recentlySettled.length > 0 && (
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">
-              Recently settled
-            </h3>
-            <ul className="space-y-4">
-              {recentlySettled.map((approval) => (
-                <ApprovalCard
-                  key={approval.id}
-                  approval={approval}
-                  mayDecide={mayDecide}
-                  maySettle={maySettle}
-                  mayDownload={mayDownload}
-                  onDecided={onDecided}
-                  onSettled={onSettled}
-                />
-              ))}
-            </ul>
+          {/* Settlement Tab */}
+          <button
+            type="button"
+            role="tab"
+            id="tab-settlement"
+            aria-selected={activeTab === 'settlement'}
+            onClick={() => setActiveTab('settlement')}
+            className={`group relative flex items-center gap-2 py-3 px-3 sm:px-4 text-sm font-medium transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
+              activeTab === 'settlement'
+                ? 'text-brand font-semibold'
+                : 'text-muted hover:text-text hover:bg-raised/50'
+            }`}
+          >
+            <span>Settlement</span>
+            {awaitingSettlement.length > 0 && (
+              <span
+                className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs font-mono font-medium transition ${
+                  activeTab === 'settlement'
+                    ? 'bg-brand/15 text-brand border border-brand/30'
+                    : 'bg-raised text-muted group-hover:text-text border border-line'
+                }`}
+              >
+                {awaitingSettlement.length}
+              </span>
+            )}
+            {activeTab === 'settlement' && (
+              <span
+                aria-hidden="true"
+                className="absolute inset-x-0 bottom-0 h-0.5 bg-brand"
+              />
+            )}
+          </button>
+        </nav>
+      </div>
+
+      {/* Tab Panels */}
+      <div className="mt-6">
+        {/* Approvals Panel */}
+        {activeTab === 'approvals' && (
+          <div className="space-y-4">
+            {!approvals.loading && pendingApprovals.length === 0 && (
+              <EmptyState
+                title="Nothing awaiting a decision"
+                body="A maker submits a term sheet from a meeting once its Shariah findings are cleared."
+              />
+            )}
+            {pendingApprovals.length > 0 && (
+              <ul className="space-y-4">
+                {pendingApprovals.map((approval) => (
+                  <ApprovalBox
+                    key={approval.id}
+                    approval={approval}
+                    mayDecide={mayDecide}
+                    maySettle={maySettle}
+                    mayDownload={mayDownload}
+                    onDecided={onDecided}
+                    onSettled={onSettled}
+                  />
+                ))}
+              </ul>
+            )}
           </div>
         )}
-      </Section>
+
+        {/* Settlement Panel */}
+        {activeTab === 'settlement' && (
+          <div className="space-y-6">
+            {!approvals.loading && awaitingSettlement.length === 0 && recentlySettled.length === 0 && (
+              <EmptyState
+                title="Nothing to settle yet"
+                body="Once you approve a facility, record its simulated settlement here."
+              />
+            )}
+
+            {awaitingSettlement.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
+                  Awaiting Simulated Settlement ({awaitingSettlement.length})
+                </h3>
+                <ul className="space-y-4">
+                  {awaitingSettlement.map((approval) => (
+                    <ApprovalBox
+                      key={approval.id}
+                      approval={approval}
+                      mayDecide={mayDecide}
+                      maySettle={maySettle}
+                      mayDownload={mayDownload}
+                      onDecided={onDecided}
+                      onSettled={onSettled}
+                    />
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {recentlySettled.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
+                  Recently Settled ({recentlySettled.length})
+                </h3>
+                <ul className="space-y-4">
+                  {recentlySettled.map((approval) => (
+                    <ApprovalBox
+                      key={approval.id}
+                      approval={approval}
+                      mayDecide={mayDecide}
+                      maySettle={maySettle}
+                      mayDownload={mayDownload}
+                      onDecided={onDecided}
+                      onSettled={onSettled}
+                    />
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

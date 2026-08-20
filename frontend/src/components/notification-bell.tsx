@@ -114,13 +114,13 @@ export function NotificationBell() {
           setClosing(false);
           setOpen(true);
         }}
-        className="relative grid size-9 shrink-0 place-items-center rounded-full border border-line-strong bg-surface text-muted transition hover:bg-raised hover:text-text active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        className="group relative grid size-9 shrink-0 place-items-center rounded-full border border-line-strong/80 bg-surface/90 text-muted shadow-xs backdrop-blur-md transition-all duration-150 hover:border-brand/40 hover:bg-raised hover:text-text active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
-        <Bell aria-hidden="true" className="size-4" />
+        <Bell aria-hidden="true" className="size-4 transition-colors group-hover:text-text" />
         {unreadCount > 0 && (
           <span
             aria-hidden="true"
-            className="absolute -right-0.5 -top-0.5 grid min-w-[1.1rem] place-items-center rounded-full border border-warn/40 bg-warn-soft px-1 py-0.5 font-mono text-[0.6rem] font-semibold leading-none text-warn"
+            className="absolute -right-0.5 -top-0.5 grid min-w-[1.1rem] place-items-center rounded-full border border-warn/40 bg-warn-soft px-1 py-0.5 font-mono text-[0.6rem] font-semibold leading-none text-warn shadow-xs"
           >
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>

@@ -47,19 +47,16 @@ export default function SettingsPage() {
       <PageHeader
         eyebrow="Settings"
         title="Settings"
-        lead="Your preferences, and what this account is allowed to do."
       />
 
       <Section
         title="Appearance"
-        description="Applies to this browser only — it is not stored on your account."
       >
         <Appearance />
       </Section>
 
       <Section
         title="Avatar"
-        description="A color for your initials circle, shown in the sidebar and profile menu. No photo is uploaded or stored."
       >
         {session.loading && <Spinner label="Loading your account" />}
         {session.error !== null && <ErrorNote>Could not load your account.</ErrorNote>}
@@ -70,7 +67,6 @@ export default function SettingsPage() {
 
       <Section
         title="Account"
-        description="An administrator sets these. They cannot be edited here."
       >
         {session.loading && <Spinner label="Loading your account" />}
         {session.error !== null && <ErrorNote>Could not load your account.</ErrorNote>}
@@ -86,7 +82,6 @@ export default function SettingsPage() {
 
       <Section
         title="Feedback"
-        description="Read by an administrator. Not anonymous — your name goes with it."
       >
         <Feedback />
       </Section>

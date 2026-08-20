@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { Card, CardHeader } from '@/components/card';
 import {
@@ -155,12 +156,27 @@ function DraftForm({
       className="space-y-4 p-4 sm:p-6"
     >
       {error && <ErrorNote>{error}</ErrorNote>}
-      {result && <SuccessNote>{result}</SuccessNote>}
+      {result && (
+        <div className="space-y-2">
+          <SuccessNote>{result}</SuccessNote>
+          <div className="flex justify-end">
+            <Link
+              href="/approvals"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline"
+            >
+              <span>Switch to Decide page to review as Checker →</span>
+            </Link>
+          </div>
+        </div>
+      )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-raised px-4 py-3">
-        <p className="text-xs text-muted">
-          Fill these fields from what the meeting and any whiteboard captures actually discussed.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-raised px-4 py-2.5">
+        <div>
+          <p className="text-xs font-semibold text-text">AI Auto-Extraction</p>
+          <p className="text-xs text-muted">
+            Auto-fill fields from meeting audio and whiteboard notes.
+          </p>
+        </div>
         <Button
           type="button"
           variant="secondary"
@@ -169,11 +185,15 @@ function DraftForm({
           }}
           disabled={busy || suggesting}
         >
-          {suggesting ? 'Reading meeting…' : 'Suggest from meeting AI'}
+          {suggesting ? 'Reading…' : 'Suggest from AI'}
         </Button>
       </div>
 
-      <Field label="Applicant Name" htmlFor="applicant" hint={withSuggestedHint('applicantName')}>
+      <Field
+        label="Applicant / Borrower"
+        htmlFor="applicant"
+        hint={withSuggestedHint('applicantName', 'Client company name.')}
+      >
         <Input
           id="applicant"
           required
@@ -189,9 +209,9 @@ function DraftForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
-          label="Principal (MYR)"
+          label="Principal Amount (MYR)"
           htmlFor="amount"
-          hint={withSuggestedHint('amount', 'Whole ringgit amount.')}
+          hint={withSuggestedHint('amount', 'Whole Ringgit (e.g. 50000).')}
         >
           <Input
             id="amount"
@@ -207,7 +227,11 @@ function DraftForm({
           />
         </Field>
 
-        <Field label="Tenure (months)" htmlFor="tenure" hint={withSuggestedHint('tenureMonths')}>
+        <Field
+          label="Tenure (months)"
+          htmlFor="tenure"
+          hint={withSuggestedHint('tenureMonths', 'Months (e.g. 60 = 5 years).')}
+        >
           <Input
             id="tenure"
             required
@@ -223,7 +247,11 @@ function DraftForm({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Facility Kind" htmlFor="kind" hint={withSuggestedHint('facilityKind')}>
+        <Field
+          label="Facility Kind"
+          htmlFor="kind"
+          hint={withSuggestedHint('facilityKind', 'Islamic (profit) or Conventional (interest).')}
+        >
           <Select
             id="kind"
             value={facilityKind}
@@ -233,7 +261,7 @@ function DraftForm({
             }}
             className={suggestedRing('facilityKind')}
           >
-            <option value="ISLAMIC">Islamic</option>
+            <option value="ISLAMIC">Islamic (Shariah Compliant)</option>
             <option value="CONVENTIONAL">Conventional</option>
           </Select>
         </Field>
@@ -241,7 +269,7 @@ function DraftForm({
         <Field
           label={islamic ? 'Profit Rate (bps)' : 'Interest Rate (bps)'}
           htmlFor="rate"
-          hint={withSuggestedHint('rateBps', '800 bps is 8.00%.')}
+          hint={withSuggestedHint('rateBps', '800 bps = 8.00%.')}
         >
           <Input
             id="rate"
@@ -258,7 +286,11 @@ function DraftForm({
       </div>
 
       {islamic && (
-        <Field label="Shariah Contract" htmlFor="contract" hint={withSuggestedHint('contract')}>
+        <Field
+          label="Shariah Contract"
+          htmlFor="contract"
+          hint={withSuggestedHint('contract', 'Murabahah · Tawarruq · Ijarah')}
+        >
           <Select
             id="contract"
             value={contract}
@@ -278,7 +310,7 @@ function DraftForm({
       )}
 
       <p className="text-xs text-muted">
-        An Islamic facility carries a profit rate under a named Shariah contract and never an interest rate.
+        Islamic facilities carry a profit rate under a named Shariah contract and never an interest rate.
       </p>
 
       <Button type="submit" disabled={busy || blocked}>

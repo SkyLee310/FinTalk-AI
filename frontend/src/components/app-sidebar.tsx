@@ -80,18 +80,15 @@ export function AppSidebar({
       className={`sidebar-rail sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-line bg-raised transition-all duration-200 ${collapsed ? '' : 'md:w-64'}`}
     >
       {/* Brand Header */}
-      <div className="flex h-16 items-center gap-2.5 border-b border-line px-4">
+      <div className="flex h-16 items-center border-b border-line px-3.5">
         <Link
           href={items[0]?.href ?? '/meetings'}
-          className="flex min-w-0 flex-1 items-center gap-2.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand transition hover:opacity-90"
         >
-          <Logo className="size-8 shrink-0" />
+          <Logo className="size-10 sm:size-11 shrink-0" />
           <span className={`min-w-0 ${labelVisibility}`}>
-            <span className="block truncate text-sm font-semibold tracking-tight">
+            <span className="block truncate text-base sm:text-[1.05rem] font-bold tracking-tight text-text">
               FinTalk AI
-            </span>
-            <span className="block truncate text-[0.625rem] font-medium uppercase tracking-wider text-muted">
-              YOUR MEETING INTELLIGENCE
             </span>
           </span>
         </Link>
@@ -214,7 +211,6 @@ export function AppSidebar({
                 )}
                 <span className={`min-w-0 flex-1 ${labelVisibility}`}>
                   <span className="block truncate text-sm font-medium">{item.label}</span>
-                  <span className="block truncate text-[0.7rem] text-faint">{item.hint}</span>
                 </span>
                 {badgeCount > 0 && (
                   <span

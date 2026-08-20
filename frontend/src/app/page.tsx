@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Badge } from '@/components/badge';
 import { Card, DataRow } from '@/components/card';
+import { FallingLogoBackground } from '@/components/falling-logo-background';
 import { GlassPanel } from '@/components/glass-panel';
 import { Logo } from '@/components/logo';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -142,43 +143,40 @@ export default async function HomePage() {
 
   return (
     <>
-      {/* No signed-in nav here: there is nothing to navigate to before signing in. */}
-      <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-5">
-        <Link href="/" className="flex items-center gap-2.5 rounded">
-          <Logo className="size-7" />
-          <span className="text-sm font-semibold tracking-tight">FinTalk AI</span>
-        </Link>
-
-        <nav aria-label="Page sections" className="hidden items-center gap-6 text-sm text-muted md:flex">
-          <a href="#built" className="transition hover:text-text">What is built</a>
-          <a href="#process" className="transition hover:text-text">How it works</a>
-          <a href="#guarantees" className="transition hover:text-text">Guarantees</a>
-        </nav>
-
-        <div className="flex items-center gap-3">
-          <ThemeToggle />
-          <Link
-            href="/login"
-            className="hidden items-center justify-center rounded-full border border-line-strong bg-surface px-4 py-1.5 text-sm font-medium text-text transition hover:bg-raised sm:inline-flex"
-          >
-            Sign in
+      <FallingLogoBackground />
+      {/* Floating navigation bar: clean unboxed logo/name on left, unboxed action buttons on right */}
+      <header className="relative z-10 mx-auto max-w-6xl px-5 pt-5 sm:pt-6">
+        <div className="flex items-center justify-between gap-4">
+          <Link href="/" className="flex items-center gap-3.5 sm:gap-4 rounded-xl transition hover:opacity-90">
+            <Logo className="size-14 sm:size-16" />
+            <div className="flex flex-col">
+              <span className="text-2xl sm:text-3xl font-extrabold tracking-tight text-text leading-tight">FinTalk AI</span>
+              <span className="text-[0.62rem] sm:text-[0.7rem] font-bold uppercase tracking-[0.22em] text-muted">
+                YOUR MEETING INTELLIGENCE
+              </span>
+            </div>
           </Link>
-          {/*
-            The mode is carried in the query string rather than assumed. Both
-            buttons used to land on the same bare /login, whose segmented
-            control always opened Sign in — so this one sent people to the
-            wrong form and left them to find the toggle.
-          */}
-          <Link
-            href="/login?mode=signup"
-            className="inline-flex items-center justify-center rounded-full bg-brand px-4 py-1.5 text-sm font-medium text-canvas transition active:scale-[0.98] hover:opacity-90"
-          >
-            Sign up
-          </Link>
+
+          {/* Action buttons without enclosing box */}
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <Link
+              href="/login"
+              className="inline-flex items-center justify-center rounded-full border border-line-strong bg-surface/80 backdrop-blur-md px-4 py-1.5 text-sm font-medium text-text shadow-xs transition hover:bg-raised"
+            >
+              Sign in
+            </Link>
+            <Link
+              href="/login?mode=signup"
+              className="inline-flex items-center justify-center rounded-full bg-brand px-4 py-1.5 text-sm font-medium text-white shadow-xs transition active:scale-[0.98] hover:opacity-90"
+            >
+              Sign up
+            </Link>
+          </div>
         </div>
       </header>
 
-      <main id="main" className="mx-auto max-w-6xl px-5 pb-16 sm:pb-24">
+      <main id="main" className="relative z-10 mx-auto max-w-6xl px-5 pb-16 pt-4 sm:pb-24">
         {/* Hero: the pitch on the left, a process-overview card on the right. */}
         <section className="grid gap-5 py-8 sm:py-14 lg:grid-cols-[1.2fr_0.8fr] lg:items-stretch">
           <GlassPanel className="flex flex-col justify-center p-6 sm:p-10">
@@ -196,13 +194,13 @@ export default async function HomePage() {
             <div className="mt-7 flex flex-wrap gap-3">
               <Link
                 href="/login"
-                className="inline-flex items-center justify-center rounded-full bg-brand px-6 py-3 text-sm font-medium text-canvas transition active:scale-[0.98] hover:opacity-90"
+                className="inline-flex items-center justify-center rounded-full border border-line-strong bg-surface px-6 py-3 text-sm font-medium text-text transition active:scale-[0.98] hover:bg-raised"
               >
                 Sign in
               </Link>
               <Link
                 href="/login?mode=signup"
-                className="inline-flex items-center justify-center rounded-full border border-line-strong bg-surface px-6 py-3 text-sm font-medium text-text transition active:scale-[0.98] hover:bg-raised"
+                className="inline-flex items-center justify-center rounded-full bg-brand px-6 py-3 text-sm font-medium text-white transition active:scale-[0.98] hover:opacity-90"
               >
                 Sign up
               </Link>
@@ -216,7 +214,7 @@ export default async function HomePage() {
             </div>
             <div className="mt-6 space-y-4">
               {OVERVIEW_STATS.map((stat) => (
-                <div key={stat.title} className="rounded-lg bg-raised p-4">
+                <div key={stat.title} className="rounded-xl border border-line/60 bg-surface/70 dark:bg-raised/70 p-4 backdrop-blur-md transition hover:border-line-strong">
                   <p className="text-sm font-semibold">{stat.title}</p>
                   <p className="mt-1.5 text-caption text-muted">{stat.body}</p>
                 </div>
@@ -230,7 +228,7 @@ export default async function HomePage() {
           id="built"
           className="mt-section-tight grid gap-8 sm:mt-section lg:grid-cols-[0.95fr_0.9fr] lg:items-center"
         >
-          <div>
+          <GlassPanel className="flex flex-col justify-center p-6 sm:p-8">
             <p className="text-caption font-semibold uppercase tracking-[0.18em] text-brand">
               What is built
             </p>
@@ -240,18 +238,13 @@ export default async function HomePage() {
             <div className="mt-4 space-y-3 text-body text-muted">
               <p>Compliance invariants enforced in the database, not in application code.</p>
               <p>Hash-chained audit log, verified on every read of the trail.</p>
-              {/*
-                Kept deliberately on the landing page rather than buried in a
-                policy link. Transcription sends audio to Google before anything is
-                redacted, and a limitation a visitor has to go looking for is one
-                the product is hiding.
-              */}
               <p className="text-warn">
                 Audio is transcribed by Google Gemini, so it leaves Malaysia before
                 redaction. Every recording requires an explicit acknowledgement first.
               </p>
             </div>
-          </div>
+          </GlassPanel>
+
           <div className="grid gap-4 sm:grid-cols-2">
             {BUILT_FEATURES.map((feature) => (
               <Card key={feature.title} className="p-5">
@@ -264,12 +257,10 @@ export default async function HomePage() {
 
         {/*
           The four stages, named as work rather than as features, and in the order
-          they happen. This mirrors the app's navigation exactly — Capture, Review,
-          Decide, Administration — so someone who reads this page arrives inside
-          already knowing where things are.
+          they happen.
         */}
         <section id="process" className="mt-section-tight sm:mt-section">
-          <div className="mx-auto max-w-2xl text-center">
+          <GlassPanel className="mx-auto max-w-2xl p-6 text-center sm:p-8">
             <p className="text-caption font-semibold uppercase tracking-[0.18em] text-brand">
               How a meeting becomes a decision
             </p>
@@ -277,7 +268,8 @@ export default async function HomePage() {
               Guided workflows keep your teams aligned while every stage is recorded,
               reviewed, and enforced by policy.
             </p>
-          </div>
+          </GlassPanel>
+
           <ol className="mt-8 grid gap-5 sm:grid-cols-2">
             {PILLARS.map((pillar, index) => (
               <li key={pillar.title}>
@@ -297,12 +289,10 @@ export default async function HomePage() {
         </section>
 
         {/*
-          The guarantees, stated with how each is enforced. "We take compliance
-          seriously" is worth nothing; "the database rejects it" is checkable, and a
-          reader who does not believe it can go and look.
+          The guarantees, stated with how each is enforced.
         */}
         <section id="guarantees" className="mt-section-tight sm:mt-section">
-          <div className="mx-auto max-w-2xl text-center">
+          <GlassPanel className="mx-auto max-w-2xl p-6 text-center sm:p-8">
             <p className="text-caption font-semibold uppercase tracking-[0.18em] text-brand">
               Four guarantees, and their teeth
             </p>
@@ -311,7 +301,8 @@ export default async function HomePage() {
               broken — in the type system, in a database constraint, or in a test that
               stops the build.
             </p>
-          </div>
+          </GlassPanel>
+
           <div className="mt-8 grid gap-5 sm:grid-cols-2">
             {GUARANTEES.map((item) => (
               <Card key={item.claim} className="p-6">
@@ -326,12 +317,10 @@ export default async function HomePage() {
         </section>
 
         {/*
-          System status, paired with the not-a-certification disclaimer it belongs
-          next to — a first-time visitor deciding whether to trust this product with
-          credit meetings should see both in the same glance.
+          System status, paired with the disclaimer.
         */}
-        <section className="mt-section-tight grid gap-5 sm:mt-section lg:grid-cols-[1.2fr_0.8fr] lg:items-start">
-          <div>
+        <section className="mt-section-tight grid gap-5 sm:mt-section lg:grid-cols-[1.2fr_0.8fr] lg:items-stretch">
+          <GlassPanel className="flex flex-col justify-center p-6 sm:p-8">
             <p className="text-caption font-semibold uppercase tracking-[0.18em] text-brand">
               Operational system status
             </p>
@@ -343,7 +332,7 @@ export default async function HomePage() {
               before persistence, and every system action is logged for transparent
               review.
             </p>
-          </div>
+          </GlassPanel>
 
           <Card className="p-6">
             <div className="flex items-center gap-2">

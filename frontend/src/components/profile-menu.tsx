@@ -98,11 +98,11 @@ export function ProfileMenu({
           setClosing(false);
           setOpen(true);
         }}
-        className="flex items-center gap-2 rounded-full border border-line-strong bg-surface py-1 pl-1 pr-3.5 text-sm transition hover:bg-raised active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        className="group inline-flex h-9 items-center gap-2 rounded-full border border-line-strong/80 bg-surface/90 py-1 pl-1.5 pr-3 text-xs font-medium text-text shadow-xs backdrop-blur-md transition-all duration-150 hover:border-brand/40 hover:bg-raised active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         <span
           aria-hidden="true"
-          className={`grid size-6 place-items-center rounded-full text-caption font-semibold ${avatarClasses(session.avatarColor)}`}
+          className={`grid size-6 shrink-0 place-items-center rounded-full text-caption font-semibold ${avatarClasses(session.avatarColor)}`}
         >
           {initials(session.displayName)}
         </span>
@@ -111,15 +111,15 @@ export function ProfileMenu({
         </span>
         <svg
           viewBox="0 0 24 24"
-          width="14"
-          height="14"
+          width="13"
+          height="13"
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
           aria-hidden="true"
-          className={`text-faint transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+          className={`text-muted transition-transform duration-150 group-hover:text-text ${open ? 'rotate-180' : ''}`}
         >
           <path d="m6 9 6 6 6-6" />
         </svg>

@@ -167,15 +167,11 @@
   --avatar-orange-soft: #ffedd5;
 
   /*
-   * Glass tokens, additive to the opaque surface scale above. `--glass-bg`
-   * is deliberately mostly-opaque (not a thin 10-20% tint): backdrop-blur
-   * already erodes effective contrast versus a flat color, so the alpha
-   * here is chosen to keep --text and --muted over it clearing the same
-   * 4.5:1 floor --faint documents above, not to look maximally "glassy".
+   * Glass tokens with rich frosted glass (毛玻璃) opacity and specular sheen.
    */
-  --glass-bg: rgb(255 255 255 / 68%);
-  --glass-border: rgb(255 255 255 / 55%);
-  --glass-highlight: rgb(255 255 255 / 85%);
+  --glass-bg: rgb(255 255 255 / 84%);
+  --glass-border: rgb(255 255 255 / 70%);
+  --glass-highlight: rgb(255 255 255 / 95%);
 }
 
 /*
@@ -237,9 +233,9 @@
     --avatar-orange: #fb923c;
     --avatar-orange-soft: rgb(251 146 60 / 18%);
 
-    --glass-bg: rgb(15 23 38 / 62%);
-    --glass-border: rgb(255 255 255 / 8%);
-    --glass-highlight: rgb(255 255 255 / 6%);
+    --glass-bg: rgb(10 16 28 / 85%);
+    --glass-border: rgb(255 255 255 / 12%);
+    --glass-highlight: rgb(255 255 255 / 10%);
   }
 }
 
@@ -289,9 +285,9 @@
   --avatar-orange: #fb923c;
   --avatar-orange-soft: rgb(251 146 60 / 18%);
 
-  --glass-bg: rgb(15 23 38 / 62%);
-  --glass-border: rgb(255 255 255 / 8%);
-  --glass-highlight: rgb(255 255 255 / 6%);
+  --glass-bg: rgb(10 16 28 / 85%);
+  --glass-border: rgb(255 255 255 / 12%);
+  --glass-highlight: rgb(255 255 255 / 10%);
 }
 
 /*
@@ -631,4 +627,29 @@
       transition-duration: 0.01ms !important;
     }
   }
+}
+
+/* Custom subtle scrollbar for scrollable form cards */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* Decide page – expand/collapse card sections */
+@keyframes decideExpand {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }

@@ -9,7 +9,7 @@ export function Card({
 }) {
   return (
     <div
-      className={`rounded-lg border border-line bg-surface/80 shadow-[0_1px_2px_rgb(0_0_0/0.04)] backdrop-blur-sm ${className}`}
+      className={`rounded-xl border border-line bg-surface/85 dark:bg-surface/90 shadow-[0_4px_24px_-4px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_32px_-4px_rgba(0,0,0,0.45)] backdrop-blur-xl ${className}`}
     >
       {children}
     </div>

@@ -139,7 +139,6 @@ export default function MeetingsPage() {
       <PageHeader
         eyebrow="Review"
         title="Meetings"
-        lead="Recordings are transcribed, masked and screened for Shariah issues before anything is stored. Open one to read its transcript and act on what was found."
         action={
           mayCreate ? (
             <Link

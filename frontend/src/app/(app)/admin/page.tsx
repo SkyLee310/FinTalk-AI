@@ -78,12 +78,6 @@ export default function AdminPage() {
       <PageHeader
         eyebrow="Administration"
         title="Govern access, and read the record"
-        lead={
-          'This section controls who may use FinTalk and what they may do, and gives a '
-          + 'complete view of what has been done. It deliberately cannot make a credit '
-          + 'decision: an administrator can grant a role but never use one to approve a '
-          + 'facility or move money.'
-        }
       />
 
       {areas.length === 0 && (

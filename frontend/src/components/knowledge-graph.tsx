@@ -30,9 +30,9 @@ interface Placed {
   vy: number;
 }
 
-const WIDTH = 900;
-const HEIGHT = 520;
-const ITERATIONS = 320;
+const WIDTH = 560;
+const HEIGHT = 360;
+const ITERATIONS = 280;
 
 /**
  * Deterministic starting positions.
@@ -50,7 +50,7 @@ function seededAngle(id: string): number {
 }
 
 function layout(nodes: readonly GraphNode[], edges: readonly GraphEdge[]): Placed[] {
-  const radius = Math.min(WIDTH, HEIGHT) / 3;
+  const radius = Math.min(WIDTH, HEIGHT) / 3.2;
   const placed: Placed[] = nodes.map((node, index) => {
     const angle = seededAngle(node.meetingId) + index * 0.01;
     return {
@@ -68,8 +68,7 @@ function layout(nodes: readonly GraphNode[], edges: readonly GraphEdge[]): Place
     // Cooling, so early iterations explore and later ones settle.
     const damping = 0.85 * (1 - step / ITERATIONS) + 0.1;
 
-    // Repulsion: every pair pushes apart, which is what stops the graph collapsing
-    // into one unreadable knot.
+    // Repulsion: every pair pushes apart
     for (let i = 0; i < placed.length; i += 1) {
       for (let j = i + 1; j < placed.length; j += 1) {
         const a = placed[i];
@@ -80,13 +79,11 @@ function layout(nodes: readonly GraphNode[], edges: readonly GraphEdge[]): Place
         let dy = a.y - b.y;
         let distance = Math.hypot(dx, dy);
         if (distance < 1) {
-          // Coincident nodes have no direction to separate along. Nudge, rather than
-          // divide by zero and poison the rest of the run with NaN.
           dx = (i - j) * 0.5;
           dy = 0.5;
           distance = 1;
         }
-        const force = 9_000 / (distance * distance);
+        const force = 6_000 / (distance * distance);
         a.vx += (dx / distance) * force;
         a.vy += (dy / distance) * force;
         b.vx -= (dx / distance) * force;
@@ -103,7 +100,7 @@ function layout(nodes: readonly GraphNode[], edges: readonly GraphEdge[]): Place
       const dx = to.x - from.x;
       const dy = to.y - from.y;
       const distance = Math.max(1, Math.hypot(dx, dy));
-      const force = (distance - 140) * 0.02 * edge.strength;
+      const force = (distance - 110) * 0.025 * edge.strength;
       from.vx += (dx / distance) * force;
       from.vy += (dy / distance) * force;
       to.vx -= (dx / distance) * force;
@@ -111,12 +108,11 @@ function layout(nodes: readonly GraphNode[], edges: readonly GraphEdge[]): Place
     }
 
     for (const point of placed) {
-      // A gentle pull to the centre, so an unconnected meeting does not drift off
-      // the canvas and become invisible.
-      point.vx += (WIDTH / 2 - point.x) * 0.006;
-      point.vy += (HEIGHT / 2 - point.y) * 0.006;
+      // Pull to the centre
+      point.vx += (WIDTH / 2 - point.x) * 0.008;
+      point.vy += (HEIGHT / 2 - point.y) * 0.008;
 
-      point.x = Math.max(40, Math.min(WIDTH - 40, point.x + point.vx * damping * 0.1));
+      point.x = Math.max(35, Math.min(WIDTH - 35, point.x + point.vx * damping * 0.1));
       point.y = Math.max(30, Math.min(HEIGHT - 30, point.y + point.vy * damping * 0.1));
       point.vx *= 0.6;
       point.vy *= 0.6;
@@ -134,16 +130,30 @@ export function KnowledgeGraphView({
   onOpenMeeting: (meetingId: string) => void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
-  const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(
+    graph.edges.length > 0 ? (graph.edges[0] ?? null) : null,
+  );
   const [filter, setFilter] = useState('');
+
+  // Zoom & Pan state
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   const placed = useMemo(() => layout(graph.nodes, graph.edges), [graph]);
   const byId = useMemo(() => new Map(placed.map((p) => [p.node.meetingId, p])), [placed]);
 
-  // Clears a stale selection if the corpus changes underneath it.
+  // Clears or updates selection if the corpus changes
   useEffect(() => {
+    if (graph.edges.length > 0) {
+      setSelectedEdge(graph.edges[0] ?? null);
+    } else {
+      setSelectedEdge(null);
+    }
     setSelected(null);
-    setSelectedEdge(null);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
   }, [graph]);
 
   if (graph.nodes.length === 0) {
@@ -155,11 +165,40 @@ export function KnowledgeGraphView({
     );
   }
 
+  const handleZoomIn = () => setZoom((z) => Math.min(3.0, Number((z + 0.25).toFixed(2))));
+  const handleZoomOut = () => setZoom((z) => Math.max(0.5, Number((z - 0.25).toFixed(2))));
+  const handleResetZoom = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  const handleWheel = (e: React.WheelEvent<SVGSVGElement>) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.15 : -0.15;
+    setZoom((z) => Math.min(3.0, Math.max(0.5, Number((z + delta).toFixed(2)))));
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    // Only start drag if left mouse button
+    if (e.button === 0) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (isDragging) {
+      setPan({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y,
+      });
+    }
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
+
   const selectedNode = selected === null ? null : byId.get(selected)?.node ?? null;
 
-  // Shared between the graph and the list below, so typing here is the one
-  // filter both views answer to — matching a meeting's title or any of its
-  // topics is enough to keep it (and any edge touching it) in view.
   const query = filter.trim().toLowerCase();
   const nodeMatches = (node: GraphNode): boolean =>
     query === '' ||
@@ -172,231 +211,318 @@ export function KnowledgeGraphView({
   };
   const visibleEdges = query === '' ? graph.edges : graph.edges.filter(edgeMatches);
 
+  const activeEdge = selectedEdge ?? (visibleEdges.length > 0 ? (visibleEdges[0] ?? null) : null);
+
+  const cx = WIDTH / 2;
+  const cy = HEIGHT / 2;
+
   return (
-    <div className="space-y-3">
-      {/*
-        The notice below states what the flag actually reports.
-
-        The server computes similarityUnavailable from stored embeddings — every
-        meeting's summaryEmbedding is empty — not from whether a model is
-        configured. Those were the same fact until a model was configured with
-        meetings already captured, and then the old wording began asserting a
-        cause it could not know. Saying "no model" while one is running sends
-        whoever reads it to check the wrong thing.
-      */}
-      {graph.similarityUnavailable && (
-        <p className="rounded-lg border border-warn/40 bg-warn-soft/60 px-4 py-2.5 text-caption text-muted">
-          Connections here come from shared topics only. None of these meetings has a
-          stored embedding — one is written at capture, so meetings captured before an
-          embedding model was configured keep none until they are backfilled. Similarity
-          of wording is not being compared, and some genuine relationships will be
-          missing rather than wrong.
-        </p>
-      )}
-
-      <Input
-        type="text"
-        value={filter}
-        onChange={(event) => setFilter(event.target.value)}
-        placeholder="Filter meetings or topics…"
-        aria-label="Filter meetings or topics"
-        className="max-w-sm"
-      />
-
-      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-        <svg
-          viewBox={`0 0 ${String(WIDTH)} ${String(HEIGHT)}`}
-          className="h-auto w-full min-w-[640px]"
-          role="img"
-          aria-label={
-            `Knowledge graph: ${String(graph.nodes.length)} meetings, `
-            + `${String(graph.edges.length)} connections. `
-            + 'The list below carries the same information.'
-          }
-        >
-          {graph.edges.map((edge) => {
-            const from = byId.get(edge.from);
-            const to = byId.get(edge.to);
-            if (from === undefined || to === undefined) return null;
-            const active = selectedEdge?.from === edge.from && selectedEdge?.to === edge.to;
-            const touchesSelection = selected === edge.from || selected === edge.to;
-            const dimmed = !edgeMatches(edge);
-
-            return (
-              <line
-                key={`${edge.from}-${edge.to}`}
-                x1={from.x}
-                y1={from.y}
-                x2={to.x}
-                y2={to.y}
-                stroke="currentColor"
-                className={
-                  active || touchesSelection
-                    ? 'cursor-pointer text-brand'
-                    : 'cursor-pointer text-line-strong'
-                }
-                strokeWidth={1 + edge.strength * 3}
-                strokeOpacity={dimmed ? 0.1 : active || touchesSelection ? 0.9 : 0.45}
-                onClick={() => {
-                  setSelectedEdge(edge);
-                  setSelected(null);
-                }}
-              />
-            );
-          })}
-
-          {placed.map((point) => {
-            const { node } = point;
-            // Size carries how much came out of the meeting; colour carries whether
-            // anything is still outstanding on it.
-            const size = 7 + Math.min(4, node.termSheetCount) * 2.5;
-            const blocked = node.openFindingCount > 0;
-            const isSelected = selected === node.meetingId;
-
-            return (
-              <g key={node.meetingId} opacity={nodeMatches(node) ? 1 : 0.25}>
-                <circle
-                  cx={point.x}
-                  cy={point.y}
-                  r={size}
-                  className={blocked ? 'fill-warn' : 'fill-brand'}
-                  stroke="currentColor"
-                  strokeWidth={isSelected ? 3 : 0}
-                  strokeOpacity={0.35}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => {
-                    setSelected(node.meetingId);
-                    setSelectedEdge(null);
-                  }}
-                />
-                <text
-                  x={point.x}
-                  y={point.y - size - 6}
-                  textAnchor="middle"
-                  className="pointer-events-none fill-muted text-[10px]"
-                >
-                  {node.title.length > 26 ? `${node.title.slice(0, 25)}…` : node.title}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-
-      {/*
-        The SVG is a picture of data, so the data must be readable without it. A
-        graph that exists only as pixels is unusable with a screen reader and awkward
-        on a phone.
-      */}
-      <p className="sr-only" aria-live="polite">
-        {selectedNode !== null
-          ? `Selected ${selectedNode.title}`
-          : selectedEdge !== null
-            ? `Selected connection: ${selectedEdge.reason}`
-            : ''}
-      </p>
-
-      {selectedEdge !== null && (
-        <div className="rounded-lg border border-brand/40 bg-brand-soft/40 px-4 py-3">
-          <p className="text-caption font-medium">Why these are connected</p>
-          <p className="mt-1 text-body text-muted">{selectedEdge.reason}</p>
-          {selectedEdge.sharedTopics.length > 0 && (
-            <ul className="mt-2 flex flex-wrap gap-1.5">
-              {selectedEdge.sharedTopics.map((topic) => (
-                <li
-                  key={topic}
-                  className="rounded border border-line bg-surface px-1.5 py-0.5 text-caption text-muted"
-                >
-                  {topic}
-                </li>
-              ))}
-            </ul>
+    <div className="space-y-3.5">
+      {/* Filter, notice, and stats toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-[240px] max-w-md">
+          <Input
+            type="text"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="Filter meetings or topics…"
+            aria-label="Filter meetings or topics"
+            className="w-full"
+          />
+        </div>
+        <div className="flex items-center gap-3 text-xs text-muted">
+          {graph.similarityUnavailable && (
+            <span className="rounded-full bg-warn/10 border border-warn/30 px-2.5 py-0.5 text-[0.7rem] font-medium text-warn">
+              Topic matching only
+            </span>
           )}
-          <div className="mt-3 flex flex-wrap gap-2">
-            {[selectedEdge.from, selectedEdge.to].map((id) => (
-              <button
-                key={id}
-                type="button"
-                className="rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-caption font-medium hover:bg-raised"
-                onClick={() => {
-                  onOpenMeeting(id);
-                }}
-              >
-                Open {byId.get(id)?.node.title ?? 'meeting'}
-              </button>
-            ))}
+          <div className="flex items-center gap-1.5 font-medium text-text">
+            <span>{graph.nodes.length} meetings</span>
+            <span className="text-faint">·</span>
+            <span>{graph.edges.length} connections</span>
           </div>
         </div>
-      )}
+      </div>
 
-      {selectedNode !== null && (
-        <div className="rounded-lg border border-brand/40 bg-brand-soft/40 px-4 py-3">
-          <p className="text-caption font-medium">{selectedNode.title}</p>
-          <p className="mt-1 text-caption text-muted">
-            {formatDate(selectedNode.occurredAt)} ·{' '}
-            {selectedNode.termSheetCount} term sheet
-            {selectedNode.termSheetCount === 1 ? '' : 's'}
-            {selectedNode.openFindingCount > 0 && (
-              <span className="text-warn">
-                {' '}
-                · {selectedNode.openFindingCount} finding still open
-              </span>
-            )}
-          </p>
-          {selectedNode.topics.length > 0 && (
-            <ul className="mt-2 flex flex-wrap gap-1.5">
-              {selectedNode.topics.map((topic) => (
-                <li
-                  key={topic}
-                  className="rounded border border-line bg-surface px-1.5 py-0.5 text-caption text-muted"
+      {/* Compact Side-by-side 2-column view to eliminate scrolling */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 items-start">
+        {/* Left Column: 1/4 to 1/3 Compact Graph Canvas with Zoom Controls */}
+        <div className="lg:col-span-5 flex flex-col rounded-xl border border-line bg-surface overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between border-b border-line px-3.5 py-2 text-[0.7rem] font-semibold uppercase tracking-wider text-muted bg-raised/50">
+            <span>Visual Graph</span>
+            <div className="flex items-center gap-1">
+              <span className="text-faint text-[0.65rem] normal-case mr-2">Scroll/drag to pan</span>
+              {/* Zoom Buttons */}
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                title="Zoom Out"
+                aria-label="Zoom Out"
+                className="size-5 flex items-center justify-center rounded border border-line bg-surface hover:bg-raised text-text font-bold text-xs leading-none transition"
+              >
+                −
+              </button>
+              <button
+                type="button"
+                onClick={handleResetZoom}
+                title="Reset Zoom"
+                aria-label="Reset Zoom"
+                className="px-1.5 h-5 flex items-center justify-center rounded border border-line bg-surface hover:bg-raised text-muted text-[0.65rem] font-medium transition"
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                title="Zoom In"
+                aria-label="Zoom In"
+                className="size-5 flex items-center justify-center rounded border border-line bg-surface hover:bg-raised text-text font-bold text-xs leading-none transition"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          <div className="relative p-2 flex items-center justify-center bg-surface/50 select-none overflow-hidden">
+            <svg
+              viewBox={`0 0 ${String(WIDTH)} ${String(HEIGHT)}`}
+              className={`h-auto w-full max-h-[300px] ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+              role="img"
+              aria-label={`Knowledge graph with ${String(graph.nodes.length)} meetings`}
+              onWheel={handleWheel}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+            >
+              <g transform={`translate(${pan.x + cx}, ${pan.y + cy}) scale(${zoom}) translate(${-cx}, ${-cy})`}>
+                {graph.edges.map((edge) => {
+                  const from = byId.get(edge.from);
+                  const to = byId.get(edge.to);
+                  if (from === undefined || to === undefined) return null;
+                  const active = activeEdge?.from === edge.from && activeEdge?.to === edge.to;
+                  const touchesSelection = selected === edge.from || selected === edge.to;
+                  const dimmed = !edgeMatches(edge);
+
+                  return (
+                    <line
+                      key={`${edge.from}-${edge.to}`}
+                      x1={from.x}
+                      y1={from.y}
+                      x2={to.x}
+                      y2={to.y}
+                      stroke="currentColor"
+                      className={
+                        active || touchesSelection
+                          ? 'cursor-pointer text-brand'
+                          : 'cursor-pointer text-line-strong hover:text-brand'
+                      }
+                      strokeWidth={active ? 3.5 : 1.5 + edge.strength * 2}
+                      strokeOpacity={dimmed ? 0.1 : active || touchesSelection ? 0.95 : 0.4}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedEdge(edge);
+                        setSelected(null);
+                      }}
+                    />
+                  );
+                })}
+
+                {placed.map((point) => {
+                  const { node } = point;
+                  const size = 8 + Math.min(4, node.termSheetCount) * 2;
+                  const blocked = node.openFindingCount > 0;
+                  const isSelected = selected === node.meetingId;
+                  const isConnected =
+                    activeEdge?.from === node.meetingId || activeEdge?.to === node.meetingId;
+
+                  return (
+                    <g key={node.meetingId} opacity={nodeMatches(node) ? 1 : 0.25}>
+                      <circle
+                        cx={point.x}
+                        cy={point.y}
+                        r={size}
+                        className={blocked ? 'fill-warn' : isConnected ? 'fill-brand-strong' : 'fill-brand'}
+                        stroke="currentColor"
+                        strokeWidth={isSelected || isConnected ? 2.5 : 0}
+                        strokeOpacity={0.8}
+                        style={{ cursor: 'pointer' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelected(node.meetingId);
+                        }}
+                      />
+                      <text
+                        x={point.x}
+                        y={point.y - size - 5}
+                        textAnchor="middle"
+                        className="pointer-events-none fill-text font-medium text-[10px]"
+                      >
+                        {node.title.length > 20 ? `${node.title.slice(0, 19)}…` : node.title}
+                      </text>
+                    </g>
+                  );
+                })}
+              </g>
+            </svg>
+          </div>
+        </div>
+
+        {/* Right Column: Connection Insight & Complete Connection List */}
+        <div className="lg:col-span-7 space-y-4">
+          {/* Why these are connected Detail Card */}
+          {selectedNode ? (
+            <div className="rounded-xl border border-brand/40 bg-brand-soft/30 p-4 transition">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <span className="text-[0.65rem] font-bold uppercase tracking-wider text-brand">
+                    Selected Meeting
+                  </span>
+                  <h3 className="mt-0.5 text-sm font-bold text-text">{selectedNode.title}</h3>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-canvas hover:opacity-90 transition shrink-0"
+                  onClick={() => onOpenMeeting(selectedNode.meetingId)}
                 >
-                  {topic}
-                </li>
-              ))}
-            </ul>
-          )}
-          <button
-            type="button"
-            className="mt-3 rounded-lg bg-brand px-3 py-1.5 text-caption font-medium text-canvas hover:opacity-90"
-            onClick={() => {
-              onOpenMeeting(selectedNode.meetingId);
-            }}
-          >
-            Open this meeting
-          </button>
-        </div>
-      )}
+                  Open Meeting →
+                </button>
+              </div>
 
-      <details className="rounded-lg border border-line bg-raised" open={query !== ''}>
-        <summary className="cursor-pointer list-none px-4 py-2.5 text-caption font-medium text-muted hover:text-text">
-          ▸ Connections as a list (
-          {query === '' ? graph.edges.length : `${visibleEdges.length} of ${graph.edges.length}`})
-        </summary>
-        <div className="border-t border-line px-4 py-3">
-          {visibleEdges.length === 0 ? (
-            <p className="text-caption text-muted">
-              {query === ''
-                ? 'No two meetings share enough topics to be connected yet.'
-                : `No connections match "${filter.trim()}".`}
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {visibleEdges.map((edge) => (
-                <li key={`${edge.from}-${edge.to}`} className="text-caption">
-                  <span className="font-medium">
-                    {byId.get(edge.from)?.node.title ?? edge.from}
-                  </span>
-                  <span className="text-faint"> ↔ </span>
-                  <span className="font-medium">
-                    {byId.get(edge.to)?.node.title ?? edge.to}
-                  </span>
-                  <span className="text-muted"> — {edge.reason}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                <span>{formatDate(selectedNode.occurredAt)}</span>
+                <span>·</span>
+                <span>{selectedNode.termSheetCount} term sheet{selectedNode.termSheetCount === 1 ? '' : 's'}</span>
+                {selectedNode.openFindingCount > 0 && (
+                  <>
+                    <span>·</span>
+                    <span className="font-medium text-warn">{selectedNode.openFindingCount} open finding</span>
+                  </>
+                )}
+              </div>
+
+              {selectedNode.topics.length > 0 && (
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {selectedNode.topics.map((topic) => (
+                    <span
+                      key={topic}
+                      className="rounded-md border border-line-strong bg-surface px-2 py-0.5 text-[0.7rem] font-medium text-muted"
+                    >
+                      {topic}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : activeEdge ? (
+            <div className="rounded-xl border border-brand/40 bg-brand-soft/30 p-4 transition">
+              <span className="text-[0.65rem] font-bold uppercase tracking-wider text-brand">
+                Why these are connected
+              </span>
+              <p className="mt-1 text-xs font-semibold leading-snug text-text">
+                {activeEdge.reason}
+              </p>
+
+              {activeEdge.sharedTopics.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[0.68rem] text-muted">Shared:</span>
+                  {activeEdge.sharedTopics.map((topic) => (
+                    <span
+                      key={topic}
+                      className="rounded border border-brand/30 bg-surface px-1.5 py-0.5 text-[0.68rem] font-medium text-brand"
+                    >
+                      {topic}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-3 flex flex-wrap gap-2 pt-2 border-t border-brand/20">
+                {[activeEdge.from, activeEdge.to].map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className="truncate max-w-[220px] rounded-lg border border-line-strong bg-surface px-2.5 py-1 text-xs font-medium text-text hover:bg-raised hover:border-brand transition"
+                    onClick={() => onOpenMeeting(id)}
+                  >
+                    Open {byId.get(id)?.node.title ?? 'meeting'} →
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {/* All Connections List (Always open and visible on screen) */}
+          <div className="rounded-xl border border-line bg-surface p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted">
+                Connections List ({visibleEdges.length})
+              </h3>
+            </div>
+
+            {visibleEdges.length === 0 ? (
+              <p className="text-xs text-muted py-2">
+                {query === ''
+                  ? 'No connections detected between recorded meetings yet.'
+                  : `No connections match "${filter.trim()}".`}
+              </p>
+            ) : (
+              <div className="custom-scrollbar max-h-[220px] space-y-2 overflow-y-auto pr-1">
+                {visibleEdges.map((edge) => {
+                  const fromNode = byId.get(edge.from)?.node;
+                  const toNode = byId.get(edge.to)?.node;
+                  const isSelected = activeEdge?.from === edge.from && activeEdge?.to === edge.to;
+
+                  return (
+                    <div
+                      key={`${edge.from}-${edge.to}`}
+                      onClick={() => {
+                        setSelectedEdge(edge);
+                        setSelected(null);
+                      }}
+                      className={`cursor-pointer rounded-lg border p-2.5 text-xs transition ${
+                        isSelected
+                          ? 'border-brand bg-brand-soft/40 shadow-xs'
+                          : 'border-line bg-raised/40 hover:border-line-strong hover:bg-raised'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="font-semibold text-text">
+                          <span>{fromNode?.title ?? edge.from}</span>
+                          <span className="text-brand mx-1.5">↔</span>
+                          <span>{toNode?.title ?? edge.to}</span>
+                        </div>
+                        {edge.strength > 0.5 && (
+                          <span className="rounded bg-brand/10 px-1.5 py-0.5 text-[0.65rem] font-bold text-brand">
+                            Strong Link
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="mt-1 text-muted text-[0.73rem] leading-relaxed">
+                        {edge.reason}
+                      </p>
+
+                      {edge.sharedTopics.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {edge.sharedTopics.map((topic) => (
+                            <span
+                              key={topic}
+                              className="rounded bg-surface px-1.5 py-0.5 text-[0.65rem] text-faint"
+                            >
+                              #{topic}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
-      </details>
+      </div>
     </div>
   );
 }

@@ -169,8 +169,8 @@ export function TopSearch() {
           setOpen(true);
         }}
         onKeyDown={handleKeyDown}
-        placeholder="Search meetings, decisions, graph nodes, or action items..."
-        aria-label="Search meetings, decisions, graph nodes, or action items"
+        placeholder="Search meetings, Islamic banking or decisions here..."
+        aria-label="Search meetings, Islamic banking or decisions here"
         className="h-10 w-full rounded-full border border-[#dbe4ee] bg-[#f1f5f9]/80 pl-11 pr-5 text-sm text-[#0f172a] transition-all duration-200 placeholder:text-[#94a3b8] hover:bg-[#eaf0f6] focus:border-brand/60 focus:bg-surface focus:shadow-sm focus-visible:outline-none dark:border-[#334155] dark:bg-[#1e293b]/70 dark:text-[#f8fafc] dark:placeholder:text-[#64748b] dark:hover:bg-[#1e293b]"
       />
 

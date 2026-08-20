@@ -40,7 +40,7 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
           + 'GEMINI_MODEL_TRANSCRIBE, GEMINI_MODEL_TEXT and GEMINI_MODEL_VISION.',
         );
       }
-      const gemini = new GeminiTranscriptionProvider({
+      let provider: TranscriptionProvider = new GeminiTranscriptionProvider({
         auth: { mode: 'api-key', apiKey: GEMINI_API_KEY },
         transcribeModel: GEMINI_MODEL_TRANSCRIBE,
         textModel: GEMINI_MODEL_TEXT,
@@ -53,7 +53,35 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
          */
         embeddingModel: env.GEMINI_MODEL_EMBEDDING ?? '',
       });
-      return withOpenRouterFallback(gemini, env);
+
+      // Optional Vertex AI fallback if service account credentials are provided
+      if (
+        env.VERTEX_PROJECT_ID
+        && env.VERTEX_LOCATION
+        && env.GCP_SERVICE_ACCOUNT_KEY
+      ) {
+        try {
+          const credentials = JSON.parse(env.GCP_SERVICE_ACCOUNT_KEY);
+          const vertexFallback = new GeminiTranscriptionProvider({
+            auth: {
+              mode: 'vertex',
+              project: env.VERTEX_PROJECT_ID,
+              location: env.VERTEX_LOCATION,
+              credentials,
+            },
+            transcribeModel: env.VERTEX_MODEL_TRANSCRIBE || GEMINI_MODEL_TRANSCRIBE,
+            textModel: env.VERTEX_MODEL_TEXT || GEMINI_MODEL_TEXT,
+            visionModel: env.VERTEX_MODEL_VISION || GEMINI_MODEL_VISION,
+            timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
+            embeddingModel: env.VERTEX_MODEL_EMBEDDING ?? env.GEMINI_MODEL_EMBEDDING ?? '',
+          });
+          provider = new FallbackTranscriptionProvider(provider, vertexFallback);
+        } catch {
+          // Ignore invalid JSON in optional fallback
+        }
+      }
+
+      return withOpenRouterFallback(provider, env);
     }
 
     case 'vertex': {
@@ -88,7 +116,7 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
       // env.ts's superRefine already rejects a GCP_SERVICE_ACCOUNT_KEY that
       // doesn't parse, so this JSON.parse cannot throw for a process that
       // passed getEnv().
-      const gemini = new GeminiTranscriptionProvider({
+      let provider: TranscriptionProvider = new GeminiTranscriptionProvider({
         auth: {
           mode: 'vertex',
           project: VERTEX_PROJECT_ID,
@@ -101,7 +129,21 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
         timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
         embeddingModel: env.VERTEX_MODEL_EMBEDDING ?? '',
       });
-      return withOpenRouterFallback(gemini, env);
+
+      // Optional Gemini AI Studio API key fallback when GEMINI_API_KEY is provided
+      if (env.GEMINI_API_KEY && env.GEMINI_API_KEY !== '') {
+        const geminiApiKeyFallback = new GeminiTranscriptionProvider({
+          auth: { mode: 'api-key', apiKey: env.GEMINI_API_KEY },
+          transcribeModel: env.GEMINI_MODEL_TRANSCRIBE || VERTEX_MODEL_TRANSCRIBE,
+          textModel: env.GEMINI_MODEL_TEXT || VERTEX_MODEL_TEXT,
+          visionModel: env.GEMINI_MODEL_VISION || VERTEX_MODEL_VISION,
+          timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
+          embeddingModel: env.GEMINI_MODEL_EMBEDDING ?? env.VERTEX_MODEL_EMBEDDING ?? '',
+        });
+        provider = new FallbackTranscriptionProvider(provider, geminiApiKeyFallback);
+      }
+
+      return withOpenRouterFallback(provider, env);
     }
   }
 }
@@ -113,11 +155,11 @@ export function createTranscriptionProvider(env: Env): TranscriptionProvider {
  * OpenRouter before the caller ever sees a failure.
  */
 function withOpenRouterFallback(
-  gemini: TranscriptionProvider,
+  provider: TranscriptionProvider,
   env: Env,
 ): TranscriptionProvider {
   if (env.OPENROUTER_API_KEY === undefined || env.OPENROUTER_API_KEY === '') {
-    return gemini;
+    return provider;
   }
   const openRouter = new OpenRouterProvider({
     apiKey: env.OPENROUTER_API_KEY,
@@ -125,5 +167,5 @@ function withOpenRouterFallback(
     transcribeModel: env.OPENROUTER_MODEL_TRANSCRIBE,
     timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
   });
-  return new FallbackTranscriptionProvider(gemini, openRouter);
+  return new FallbackTranscriptionProvider(provider, openRouter);
 }

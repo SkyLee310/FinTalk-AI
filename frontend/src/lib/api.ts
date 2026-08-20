@@ -728,6 +728,9 @@ export const api = {
   /** Gated server-side on user:manage. Newest first. */
   feedback: () => apiFetch<{ feedback: FeedbackRow[] }>('/feedback'),
 
+  /** Gated server-side on user:manage. Deletes feedback item permanently. */
+  deleteFeedback: (id: string) => apiFetch<{ ok: boolean }>(`/feedback/${id}`, { method: 'DELETE' }),
+
   /** Google OAuth & Meet integration methods */
   googleAuthUrl: () => apiFetch<{ url: string; state: string }>('/auth/google/url'),
   googleAuthStatus: () => apiFetch<GoogleAuthStatus>('/auth/google/status'),

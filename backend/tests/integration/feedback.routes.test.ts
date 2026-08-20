@@ -154,3 +154,80 @@ describe('GET /feedback', () => {
     expect(feedback[0]!.message).toBe('Please add a bulk-export button on Review.');
   });
 });
+
+describe('DELETE /feedback/:id', () => {
+  it('is refused without authentication', async () => {
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/feedback/some-fake-id',
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('is refused for a role without user:manage', async () => {
+    const maker = await sessionFor('MAKER');
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/feedback/some-fake-id',
+      headers: { cookie: maker.cookie },
+    });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('returns 404 if the feedback entry does not exist', async () => {
+    const admin = await sessionFor('ADMIN');
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/feedback/nonexistent-id',
+      headers: { cookie: admin.cookie },
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('lets an administrator delete a feedback entry and records an audit entry', async () => {
+    const maker = await sessionFor('MAKER');
+    const admin = await sessionFor('ADMIN');
+
+    const postRes = await app.inject({
+      method: 'POST',
+      url: '/feedback',
+      headers: { cookie: maker.cookie },
+      payload: { category: 'BUG', message: 'Something seems to be failing on mobile view.' },
+    });
+    expect(postRes.statusCode).toBe(201);
+    const { id } = postRes.json<{ id: string }>();
+
+    expect(await prisma.feedback.findUnique({ where: { id } })).not.toBeNull();
+
+    const deleteRes = await app.inject({
+      method: 'DELETE',
+      url: `/feedback/${id}`,
+      headers: { cookie: admin.cookie },
+    });
+
+    expect(deleteRes.statusCode).toBe(200);
+    expect(deleteRes.json()).toEqual({ ok: true });
+
+    // Verify row is deleted
+    expect(await prisma.feedback.findUnique({ where: { id } })).toBeNull();
+
+    // Verify audit entry
+    const auditEntry = await prisma.auditEntry.findFirst({
+      where: {
+        action: 'feedback.deleted',
+        entityId: id,
+      },
+    });
+    expect(auditEntry).not.toBeNull();
+    expect(auditEntry?.actorId).toBe(admin.id);
+    expect(auditEntry?.actorRole).toBe('ADMIN');
+    expect(auditEntry?.entityType).toBe('Feedback');
+    expect(auditEntry?.payload).toEqual({ category: 'BUG' });
+  });
+});
+

@@ -70,10 +70,15 @@ export function currentSystemPrefersDark(): boolean {
   return window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
-/** Stamps `data-theme` on the root element so `globals.css`'s selectors apply. */
+/** Stamps `data-theme` and `.dark` class on the root element so both globals.css and Tailwind dark: variants apply. */
 export function applyTheme(theme: Theme): void {
   if (typeof document === 'undefined') return;
   document.documentElement.setAttribute('data-theme', theme);
+  if (theme === 'dark') {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
 }
 
 /**

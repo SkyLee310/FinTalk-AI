@@ -123,7 +123,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const active = visible.find((item) => isActive(pathname, item));
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-canvas text-text">
       <AppSidebar items={visible} pathname={pathname} pendingUserCount={pendingUserCount} />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -173,7 +173,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main id="main" className="bg-grid flex-1 px-5 py-8">
+        <main id="main" className="bg-grid bg-canvas flex-1 px-5 py-8">
           {children}
         </main>
       </div>

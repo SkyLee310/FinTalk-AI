@@ -50,12 +50,17 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   ? stored
                   : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
                 document.documentElement.setAttribute('data-theme', theme);
+                if (theme === 'dark') {
+                  document.documentElement.classList.add('dark');
+                } else {
+                  document.documentElement.classList.remove('dark');
+                }
               } catch (e) {}
             `,
           }}
         />
       </head>
-      <body className="min-h-screen antialiased">
+      <body className="min-h-screen antialiased bg-canvas text-text transition-colors duration-150">
         {/*
           Renders nothing; it keeps a 'system' theme preference tracking the OS
           after load, which the pre-paint script above cannot do — that runs

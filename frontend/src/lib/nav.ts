@@ -32,6 +32,12 @@ export interface NavItem {
 
 export const NAV: readonly NavItem[] = [
   {
+    href: '/dashboard',
+    label: 'Dashboard',
+    hint: 'Your pending actions at a glance',
+    needs: ['meeting:read'],
+  },
+  {
     href: '/meetings',
     label: 'Review Meetings',
     hint: 'Transcripts, redactions and Shariah findings',

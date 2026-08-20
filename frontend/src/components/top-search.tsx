@@ -22,32 +22,32 @@ const CATEGORY_META: Record<
   feature: {
     label: 'Features',
     icon: Sparkles,
-    color: 'text-brand bg-brand-soft/80',
+    color: 'text-brand bg-brand-soft border border-brand/20',
   },
   meeting: {
     label: 'Meetings',
     icon: FileText,
-    color: 'text-sky-600 bg-sky-100 dark:bg-sky-950/70 dark:text-sky-300',
+    color: 'text-sky-600 dark:text-sky-400 bg-sky-500/10 border border-sky-500/20',
   },
   decision: {
     label: 'Decisions',
     icon: Scale,
-    color: 'text-indigo-600 bg-indigo-100 dark:bg-indigo-950/70 dark:text-indigo-300',
+    color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border border-indigo-500/20',
   },
   action_item: {
     label: 'Action Items',
     icon: CheckSquare,
-    color: 'text-amber-600 bg-amber-100 dark:bg-amber-950/70 dark:text-amber-300',
+    color: 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20',
   },
   shariah: {
     label: 'Shariah Findings',
     icon: ShieldAlert,
-    color: 'text-rose-600 bg-rose-100 dark:bg-rose-950/70 dark:text-rose-300',
+    color: 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20',
   },
   knowledge: {
     label: 'Knowledge Graph',
     icon: Network,
-    color: 'text-emerald-600 bg-emerald-100 dark:bg-emerald-950/70 dark:text-emerald-300',
+    color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20',
   },
 };
 
@@ -157,7 +157,7 @@ export function TopSearch() {
       <Search
         aria-hidden="true"
         strokeWidth={1.75}
-        className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8] dark:text-[#64748b]"
+        className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-faint transition-colors"
       />
       <input
         ref={inputRef}
@@ -171,7 +171,7 @@ export function TopSearch() {
         onKeyDown={handleKeyDown}
         placeholder="Search meetings, Islamic banking or decisions here..."
         aria-label="Search meetings, Islamic banking or decisions here"
-        className="h-10 w-full rounded-full border border-[#dbe4ee] bg-[#f1f5f9]/80 pl-11 pr-5 text-sm text-[#0f172a] transition-all duration-200 placeholder:text-[#94a3b8] hover:bg-[#eaf0f6] focus:border-brand/60 focus:bg-surface focus:shadow-sm focus-visible:outline-none dark:border-[#334155] dark:bg-[#1e293b]/70 dark:text-[#f8fafc] dark:placeholder:text-[#64748b] dark:hover:bg-[#1e293b]"
+        className="h-10 w-full rounded-full border border-line-strong/70 bg-raised/80 pl-11 pr-5 text-sm text-text transition-colors duration-150 placeholder:text-faint hover:bg-raised focus:border-brand/70 focus:bg-surface focus:shadow-sm focus-visible:outline-none"
       />
 
       {open && trimmed !== '' && (

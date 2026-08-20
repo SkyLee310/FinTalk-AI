@@ -153,10 +153,11 @@ export function TopSearch() {
   const trimmed = query.trim();
 
   return (
-    <div ref={containerRef} className="relative hidden w-72 md:w-80 shrink-0 sm:block">
+    <div ref={containerRef} className="relative hidden w-full max-w-md lg:max-w-xl shrink sm:block">
       <Search
         aria-hidden="true"
-        className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-faint"
+        strokeWidth={1.75}
+        className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8] dark:text-[#64748b]"
       />
       <input
         ref={inputRef}
@@ -168,19 +169,16 @@ export function TopSearch() {
           setOpen(true);
         }}
         onKeyDown={handleKeyDown}
-        placeholder="Search meetings, decisions, graph, Shariah..."
-        aria-label="Universal search"
-        className="w-full rounded-full border border-line-strong/80 bg-surface/90 py-1.5 pl-10 pr-12 text-xs transition placeholder:text-faint hover:bg-raised focus:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand backdrop-blur-sm shadow-inner"
+        placeholder="Search meetings, decisions, graph nodes, or action items..."
+        aria-label="Search meetings, decisions, graph nodes, or action items"
+        className="h-10 w-full rounded-full border border-[#dbe4ee] bg-[#f1f5f9]/80 pl-11 pr-5 text-sm text-[#0f172a] transition-all duration-200 placeholder:text-[#94a3b8] hover:bg-[#eaf0f6] focus:border-brand/60 focus:bg-surface focus:shadow-sm focus-visible:outline-none dark:border-[#334155] dark:bg-[#1e293b]/70 dark:text-[#f8fafc] dark:placeholder:text-[#64748b] dark:hover:bg-[#1e293b]"
       />
-      <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-line px-1.5 py-0.5 font-mono text-[0.62rem] font-semibold text-faint bg-raised/70">
-        ⌘K
-      </kbd>
 
       {open && trimmed !== '' && (
         <div
           role="listbox"
           aria-label="Universal search results"
-          className="absolute left-0 top-[calc(100%+0.5rem)] z-50 w-96 max-h-[28rem] overflow-y-auto rounded-xl border border-line bg-surface/95 shadow-2xl backdrop-blur-md transition-all"
+          className="absolute left-0 top-[calc(100%+0.5rem)] z-50 w-full min-w-[24rem] max-h-[28rem] overflow-y-auto rounded-2xl border border-line bg-surface/95 shadow-2xl backdrop-blur-md transition-all"
         >
           {loading && (
             <div className="flex items-center gap-2 px-4 py-3.5 text-xs text-faint">

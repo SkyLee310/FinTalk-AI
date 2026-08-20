@@ -5,6 +5,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Landmark,
+  LayoutDashboard,
   type LucideIcon,
   Network,
   Settings2,
@@ -25,6 +26,7 @@ const COLLAPSE_KEY = 'fintalk-sidebar-collapsed';
  * Icons keyed by href rather than folded into NavItem itself.
  */
 const ICON: Record<string, LucideIcon> = {
+  '/dashboard': LayoutDashboard,
   '/record': Video,
   '/meetings': ShieldCheck,
   '/approvals': CheckCheck,

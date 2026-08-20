@@ -81,6 +81,7 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
       prisma.user.upsert({
         where: { email: `${role.toLowerCase()}@fintalk.ai` },
         update: {
+          passwordHash,
           displayName:
             role === 'OVERSIGHT'
               ? 'Demo Oversight'

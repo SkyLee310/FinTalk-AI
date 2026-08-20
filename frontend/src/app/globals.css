@@ -332,49 +332,53 @@
  * and is reserved for motion that follows a deliberate press — overshoot on
  * something that merely appeared looks like a glitch rather than physics.
  */
+/*
+ * Motion: Apple Design System Curves & Physics.
+ *
+ * Smooth cubic-bezier spring and depth easing for an authentic Apple-like feel.
+ */
 :root {
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-apple: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
-  --dur-fast: 140ms;
-  --dur-base: 240ms;
+  --dur-fast: 160ms;
+  --dur-base: 320ms;
+  --dur-depth: 360ms;
 }
 
-/* Content arriving: up a little, and barely up in scale. */
+/* Content arriving: Apple-style inside-out depth burst (冲出来) with gentle scale and blur settling. */
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.995);
+    transform: scale(0.95) translateY(14px);
+    filter: blur(4px);
   }
   to {
     opacity: 1;
-    transform: none;
+    transform: scale(1) translateY(0);
+    filter: blur(0px);
   }
 }
 
 /*
  * Glass surfaces materialize rather than fade.
- *
- * Blur and scale animate together so the surface reads as a real material
- * arriving in front of the content, instead of a rectangle whose opacity went
- * up. 3% of scale is the whole effect — any more and it becomes something the
- * user watches rather than something that simply appeared.
  */
 @keyframes materialize {
   from {
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(0.95);
     backdrop-filter: blur(0);
   }
   to {
     opacity: 1;
-    transform: none;
+    transform: scale(1);
     backdrop-filter: blur(24px);
   }
 }
 
 /** For a surface that arrives outside #main's automatic `rise` — e.g. a toast. */
 .animate-materialize {
-  animation: materialize var(--dur-base) var(--ease-out) both;
+  animation: materialize var(--dur-base) var(--ease-apple) both;
 }
 @media (prefers-reduced-motion: reduce) {
   .animate-materialize {
@@ -382,26 +386,57 @@
   }
 }
 
+/* Apple-style modal entrance with spring scale and glass blur */
+@keyframes apple-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.93) translateY(16px);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0px);
+  }
+}
+
+@keyframes apple-modal-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0px);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(12px);
+    filter: blur(6px);
+  }
+}
+
 /* Panels enter and leave along the same edge they are anchored to. */
 @keyframes slide-in-right {
   from {
     opacity: 0;
-    transform: translateX(24px);
+    transform: translateX(28px) scale(0.98);
+    filter: blur(4px);
   }
   to {
     opacity: 1;
-    transform: none;
+    transform: translateX(0) scale(1);
+    filter: blur(0px);
   }
 }
 
 @keyframes slide-out-right {
   from {
     opacity: 1;
-    transform: none;
+    transform: translateX(0) scale(1);
+    filter: blur(0px);
   }
   to {
     opacity: 0;
-    transform: translateX(24px);
+    transform: translateX(24px) scale(0.98);
+    filter: blur(4px);
   }
 }
 
@@ -424,139 +459,54 @@
 }
 
 /*
- * A dialog pops from its own centre, not from an edge — used by the
- * screen-centred Ask FinTalk AI card, where nothing on screen "owns" the
- * open direction the way a popover owns its trigger corner (pop-in, below).
+ * Apple-style Spatial Depth Zoom Transition between sections.
+ * All elements emerge from inside-out like an organic zoom depth effect.
  */
-@keyframes modal-in {
+@keyframes apple-depth-enter {
   from {
     opacity: 0;
-    transform: scale(0.95);
+    transform: scale(0.94) translateY(12px);
+    filter: blur(6px);
   }
   to {
     opacity: 1;
-    transform: none;
+    transform: scale(1) translateY(0);
+    filter: blur(0px);
   }
 }
 
-@keyframes modal-out {
+@keyframes apple-depth-exit {
   from {
     opacity: 1;
-    transform: none;
+    transform: scale(1) translateY(0);
+    filter: blur(0px);
   }
   to {
     opacity: 0;
-    transform: scale(0.95);
+    transform: scale(1.03) translateY(-8px);
+    filter: blur(4px);
   }
 }
 
-/*
- * A popover grows from the control that opened it.
- *
- * The transform origin is set on the element rather than here, because only
- * the element knows which corner it hangs from — see profile-menu.tsx.
- */
-@keyframes pop-in {
-  from {
-    opacity: 0;
-    transform: scale(0.95) translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes pop-out {
-  from {
-    opacity: 1;
-    transform: none;
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.95) translateY(-4px);
-  }
-}
-
-/*
- * Page content rises in, staggered.
- *
- * Every page renders one wrapper inside <main id="main">, whose children are
- * the PageHeader and Section blocks — so this single rule animates every
- * screen in the app without any page importing anything. A page that does not
- * follow that shape simply animates its blocks together, which is fine.
- *
- * The delay stops at 160ms deliberately. An uncapped cascade down a long page
- * stops reading as polish and starts reading as the page being slow.
- *
- * Gated on no-preference, like the theme fade above: the reduced-motion block
- * in @layer base zeroes animations with !important, and these rules must not
- * out-specify it.
- */
 @media (prefers-reduced-motion: no-preference) {
   #main > * > * {
-    animation: rise var(--dur-base) var(--ease-out) both;
+    animation: rise var(--dur-depth) var(--ease-apple) both;
   }
 
   #main > * > *:nth-child(2) {
-    animation-delay: 40ms;
+    animation-delay: 50ms;
   }
 
   #main > * > *:nth-child(3) {
-    animation-delay: 80ms;
+    animation-delay: 100ms;
   }
 
   #main > * > *:nth-child(4) {
-    animation-delay: 120ms;
+    animation-delay: 150ms;
   }
 
   #main > * > *:nth-child(n + 5) {
-    animation-delay: 160ms;
-  }
-}
-
-/*
- * Section-to-section navigation.
- *
- * The five sections are a sequence — capture it, review it, decide on it — so
- * moving between them slides rather than cross-fades, and moving back slides
- * the other way. Direction comes from the nav order and arrives as
- * html[data-nav], set in (app)/layout.tsx just before the transition starts.
- *
- * The shell header is named separately so it stays put while the content
- * moves. Without that it would be captured as part of the same snapshot and
- * the whole page would appear to flash, which is the thing this replaces.
- *
- * Named by id, not by tag: PageHeader in components/ui.tsx is also a <header>,
- * so `header { view-transition-name: … }` would assign one name to two
- * elements on every page — and a duplicate name makes the browser abandon the
- * transition altogether.
- */
-@keyframes nav-exit-left {
-  to {
-    opacity: 0;
-    transform: translateX(-16px);
-  }
-}
-
-@keyframes nav-enter-right {
-  from {
-    opacity: 0;
-    transform: translateX(16px);
-  }
-}
-
-@keyframes nav-exit-right {
-  to {
-    opacity: 0;
-    transform: translateX(16px);
-  }
-}
-
-@keyframes nav-enter-left {
-  from {
-    opacity: 0;
-    transform: translateX(-16px);
+    animation-delay: 200ms;
   }
 }
 
@@ -569,28 +519,15 @@
     view-transition-name: app-main;
   }
 
-  ::view-transition-old(app-main),
+  ::view-transition-old(app-main) {
+    animation: apple-depth-exit var(--dur-depth) var(--ease-apple) both;
+  }
+
   ::view-transition-new(app-main) {
-    animation-duration: var(--dur-base);
-    animation-timing-function: var(--ease-out);
-  }
-
-  html[data-nav='forward']::view-transition-old(app-main) {
-    animation-name: nav-exit-left;
-  }
-
-  html[data-nav='forward']::view-transition-new(app-main) {
-    animation-name: nav-enter-right;
-  }
-
-  html[data-nav='back']::view-transition-old(app-main) {
-    animation-name: nav-exit-right;
-  }
-
-  html[data-nav='back']::view-transition-new(app-main) {
-    animation-name: nav-enter-left;
+    animation: apple-depth-enter var(--dur-depth) var(--ease-apple) both;
   }
 }
+
 
 /*
  * <details> height, animated rather than switched to a JS-measured panel.

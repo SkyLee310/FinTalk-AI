@@ -1,6 +1,13 @@
 'use client';
 
-import { Paperclip, X as RemoveIcon } from 'lucide-react';
+import {
+  ArrowUp,
+  FileText,
+  Paperclip,
+  RotateCcw,
+  Sparkles,
+  X as RemoveIcon,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -13,11 +20,10 @@ import {
 } from 'react';
 import { describeError } from '@/hooks/use-async';
 import { api, type AskCitation } from '@/lib/api';
-import { GlassPanel } from './glass-panel';
 import { Logo } from './logo';
 import { CaptureWizardStep } from './capture-wizard';
 import { MicIcon } from './record-session';
-import { Button, ErrorNote, Spinner, Textarea } from './ui';
+import { ErrorNote, Spinner, Textarea } from './ui';
 import {
   addBoardFile,
   advanceFromConsent,
@@ -33,59 +39,24 @@ import { guessAttachmentKind } from '@/lib/attachment-kind';
 import { measureDurationMs } from '@/lib/audio-duration';
 import { submitCapture } from '@/lib/submit-capture';
 
-/**
- * A chatbot, not a search form: the header-anchored panel that replaced the
- * ask-form Card knowledge/page.tsx used to carry (Task 12 removes that Card
- * once this is the only place it can be reached from).
- *
- * One turn is `{ role, content, citations?, retrieval? }`. The last two only
- * ever appear on an assistant turn — the user's own words never carry a
- * provenance chip.
- *
- * `retrieval` is stored per turn rather than per panel because it is a fact
- * about how *that* answer was found. A deployment can gain an embedding model
- * mid-conversation, and an earlier turn's disclosure must not be rewritten by
- * a later turn's better luck.
- */
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   citations?: AskCitation[];
   retrieval?: 'semantic' | 'keyword';
-  /** Set only on the wizard's own success message, once its meeting exists. */
   createdMeeting?: { meetingId: string; title: string };
 }
 
-/**
- * The three example questions this panel opens with. Single source of
- * truth: knowledge/page.tsx imports this rather than keeping its own copy,
- * until Task 12 removes that page's now-redundant ask-form entirely.
- */
 export const EXAMPLES = [
   'Which meetings discussed Murabahah pricing?',
   'What was said about late payment penalties?',
   'Where was an interest rate raised on an Islamic facility?',
 ] as const;
 
-/** Server-side cap is 10 turns (backend AskBody.history.max(10)) — sliced here so a long chat never 400s. */
 const MAX_HISTORY_TURNS = 10;
+const ATTACHMENT_ACCEPT =
+  'image/*,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-/** Same accepted types as record/page.tsx's whiteboard dropzone — this attachment feeds the same extraction path. */
-const ATTACHMENT_ACCEPT = 'image/*,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-
-/**
- * Voice-to-text for the question box.
- *
- * Reuses use-live-captions.ts's SpeechRecognition pattern — and its ambient
- * `Window.SpeechRecognition`/`webkitSpeechRecognition` types, declared
- * globally there — but simpler in two ways. It is a deliberate press-to-talk
- * action rather than a continuous background listener tied to a recording's
- * lifetime, so it does not need that hook's onend-restart loop. And it skips
- * the redact-before-display round trip: live captions redact because they
- * render as a quasi-permanent record of the meeting, while dictated text only
- * fills an editable box the user reviews and can change before sending —
- * the same trust level as anything else typed into it.
- */
 function useDictation(onResult: (text: string) => void): {
   listening: boolean;
   supported: boolean;
@@ -99,8 +70,9 @@ function useDictation(onResult: (text: string) => void): {
 
   useEffect(() => {
     setSupported(
-      typeof window !== 'undefined'
-      && (window.SpeechRecognition !== undefined || window.webkitSpeechRecognition !== undefined),
+      typeof window !== 'undefined' &&
+        (window.SpeechRecognition !== undefined ||
+          window.webkitSpeechRecognition !== undefined),
     );
     return () => {
       recognitionRef.current?.stop();
@@ -113,7 +85,8 @@ function useDictation(onResult: (text: string) => void): {
       return;
     }
 
-    const Constructor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    const Constructor =
+      window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (Constructor === undefined) return;
 
     const recognition = new Constructor();
@@ -137,95 +110,79 @@ function useDictation(onResult: (text: string) => void): {
   return { listening, supported, toggle };
 }
 
-/**
- * Header button that opens the panel. A chat-bubble glyph next to
- * ThemeToggle's sun/moon — both read as "controls for this session," not
- * navigation, which is why neither lives in the nav list in lib/nav.ts.
- *
- * Named in visible text, not only in an aria-label. A lone speech bubble
- * asks everyone to guess, and the one feature people are told to look for
- * by name is the last thing that should be a rebus. That text is now the
- * accessible name too, so there is no second string to drift out of sync.
- */
 export function AskFinTalkAITrigger({ onClick }: { onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-2 rounded-full border border-line-strong bg-surface px-4 py-2 text-sm font-medium text-text transition hover:bg-raised active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      className="group relative inline-flex items-center gap-2 rounded-full border border-line-strong/80 bg-surface/90 px-4 py-2 text-sm font-semibold text-text shadow-sm backdrop-blur-md transition-all duration-200 hover:-translate-y-px hover:border-brand/40 hover:bg-raised hover:shadow-md hover:shadow-brand/10 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
     >
-      <svg
-        viewBox="0 0 24 24"
-        width="18"
-        height="18"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-      </svg>
-      Ask FinTalk AI
+      <span className="grid size-5 place-items-center rounded-full bg-gradient-to-tr from-brand to-sky-400 text-white shadow-sm shadow-brand/30">
+        <Sparkles className="size-3 transition-transform duration-300 group-hover:rotate-12" />
+      </span>
+      <span>Ask FinTalk AI</span>
     </button>
   );
 }
 
 function Bubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
+
   return (
-    <div className={`flex items-start gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div
+      className={`flex items-start gap-3 transition-all ${
+        isUser ? 'justify-end' : 'justify-start'
+      }`}
+    >
       {!isUser && (
-        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand-soft">
+        <span className="grid size-8 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-brand via-sky-500 to-indigo-600 text-white shadow-md shadow-brand/25 ring-2 ring-brand/10">
           <Logo className="size-4" />
         </span>
       )}
       <div
-        className={`max-w-[85%] rounded-lg px-4 py-2.5 text-body ${
-          isUser ? 'bg-brand text-canvas' : 'border border-line bg-raised'
+        className={`max-w-[85%] space-y-2 rounded-[22px] px-4.5 py-3 text-sm leading-relaxed ${
+          isUser
+            ? 'rounded-tr-sm bg-gradient-to-r from-brand to-sky-600 text-white shadow-md shadow-brand/20'
+            : 'rounded-tl-sm border border-line/80 bg-surface/95 dark:bg-raised/95 text-text shadow-sm backdrop-blur-md'
         }`}
       >
         <p className="whitespace-pre-wrap">{message.content}</p>
 
         {message.citations !== undefined && message.citations.length > 0 && (
-          <ul className="mt-2 flex flex-wrap gap-1.5">
-            {message.citations.map((citation) => (
-              <li key={citation.meetingId}>
-                <Link
-                  href={`/meetings/${citation.meetingId}`}
-                  className="inline-flex items-center rounded-full border border-line-strong bg-surface px-2 py-0.5 text-caption text-brand underline underline-offset-2"
-                >
-                  {citation.title}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div className="mt-2.5 pt-2 border-t border-line/50 dark:border-white/10">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-wider text-muted mb-1.5">
+              Referenced Meetings
+            </p>
+            <ul className="flex flex-wrap gap-1.5">
+              {message.citations.map((citation) => (
+                <li key={citation.meetingId}>
+                  <Link
+                    href={`/meetings/${citation.meetingId}`}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-brand-soft/70 px-2.5 py-1 text-caption font-medium text-brand-strong transition-all hover:scale-[1.02] hover:bg-brand-soft dark:bg-brand/20 dark:text-sky-300"
+                  >
+                    <FileText className="size-3" />
+                    <span>{citation.title}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {message.createdMeeting !== undefined && (
           <p className="mt-2">
             <Link
               href={`/meetings/${message.createdMeeting.meetingId}`}
-              className="inline-flex items-center rounded-full border border-line-strong bg-surface px-2 py-0.5 text-caption text-brand underline underline-offset-2"
+              className="inline-flex items-center gap-1.5 rounded-full border border-ok/30 bg-ok-soft px-3 py-1 text-caption font-semibold text-ok transition hover:scale-[1.02]"
             >
-              Open {message.createdMeeting.title}
+              <span>Open {message.createdMeeting.title} →</span>
             </Link>
           </p>
         )}
 
-        {/*
-          Said plainly, once, under the answer it applies to.
-          Keyword matching finds meetings that share words with the question
-          rather than meaning, so it can miss a relevant meeting that phrases
-          things differently. Presenting that result identically to a semantic
-          one would overstate how thoroughly the corpus was searched — the same
-          reason the knowledge graph discloses `similarityUnavailable`.
-        */}
         {message.retrieval === 'keyword' && (
-          <p className="mt-2 text-caption text-faint">
-            Matched on words rather than meaning — a relevant meeting phrased
-            differently may have been missed.
+          <p className="text-[0.7rem] text-faint italic">
+            Matched on keywords — phrases worded differently might not be indexed.
           </p>
         )}
       </div>
@@ -233,12 +190,6 @@ function Bubble({ message }: { message: ChatMessage }) {
   );
 }
 
-/**
- * The full-section slide-over itself. Message state lives in the caller
- * ((app)/layout.tsx) so it survives navigation between pages and resets on
- * reload or sign-out for free — this component only owns its own
- * in-progress input text, attachment, and busy/error flags.
- */
 export function AskFinTalkAI({
   open,
   onClose,
@@ -266,7 +217,10 @@ export function AskFinTalkAI({
   });
 
   function cancelWizard(): void {
-    setMessages((prev) => [...prev, { role: 'assistant', content: 'Setup cancelled.' }]);
+    setMessages((prev) => [
+      ...prev,
+      { role: 'assistant', content: 'Setup cancelled.' },
+    ]);
     setWizard(null);
   }
 
@@ -277,7 +231,8 @@ export function AskFinTalkAI({
       ...prev,
       {
         role: 'assistant',
-        content: 'Would you like to import an existing audio file, or record in real time?',
+        content:
+          'Would you like to import an existing audio file, or record in real time?',
       },
     ]);
   }
@@ -292,10 +247,6 @@ export function AskFinTalkAI({
     setWizard(null);
     onClose();
     const target = `/record?title=${encodeURIComponent(title)}&consent=1`;
-    // Same hard-navigation-vs-soft-navigation reasoning as send()'s own
-    // redirect below: record/page.tsx only reads its query params in a
-    // mount-only effect, so a soft navigation to the same route would never
-    // apply them.
     if (window.location.pathname === '/record') {
       window.location.href = target;
     } else {
@@ -317,7 +268,11 @@ export function AskFinTalkAI({
     setWizard(chooseAudioFile(wizard, file));
     setMessages((prev) => [
       ...prev,
-      { role: 'assistant', content: 'Any whiteboard photos to attach? Add one or more, or skip.' },
+      {
+        role: 'assistant',
+        content:
+          'Any whiteboard photos to attach? Add one or more, or skip.',
+      },
     ]);
   }
 
@@ -352,8 +307,9 @@ export function AskFinTalkAI({
 
       let note = '';
       if (result.boardExtractedCount > 0) {
-        note = ` ${String(result.boardExtractedCount)} attachment${result.boardExtractedCount === 1 ? '' : 's'}`
-          + ` extracted, ${String(result.boardMaskedCount)} identifier(s) masked.`;
+        note =
+          ` ${String(result.boardExtractedCount)} attachment${result.boardExtractedCount === 1 ? '' : 's'}` +
+          ` extracted, ${String(result.boardMaskedCount)} identifier(s) masked.`;
       }
       if (result.boardFailures.length > 0) {
         note += ` ${String(result.boardFailures.length)} failed: ${result.boardFailures.join('; ')}.`;
@@ -370,26 +326,10 @@ export function AskFinTalkAI({
       setWizard(null);
     } catch (cause) {
       setError(describeError(cause));
-      // Only resurrect the wizard if the panel is still open. If the user
-      // closed it while this request was in flight, Task 3's own
-      // open-triggered effect already reset wizard to null — the design
-      // spec (§4) requires it stay that way, since a closed wizard is
-      // never resumed, even by a request that was already in flight at
-      // the moment of closing.
       if (open) setWizard(toSubmit);
     }
   }
 
-  /**
-   * Stays mounted through its exit instead of `if (!open) return null`
-   * vanishing it, so the panel can leave the way it arrived (§7).
-   *
-   * `open` is a prop the parent owns, so this can't just toggle its own
-   * state on click the way profile-menu.tsx's `close()` does — it has to
-   * notice `open` going false and start the exit animation itself, but reset
-   * immediately if `open` goes true again mid-exit so a fast reopen shows
-   * the panel opening rather than finishing a close it no longer means.
-   */
   const [closing, setClosing] = useState(false);
   const wasOpen = useRef(open);
 
@@ -402,10 +342,6 @@ export function AskFinTalkAI({
     wasOpen.current = open;
   }, [open]);
 
-  // Spec: wizard state must not out-live the panel being open — unlike
-  // `messages`, which deliberately survives a close so the conversation
-  // itself isn't lost, a half-finished capture is abandoned the same way
-  // closing Record's own tab mid-capture already abandons one there.
   useEffect(() => {
     if (!open) setWizard(null);
   }, [open, setWizard]);
@@ -430,10 +366,6 @@ export function AskFinTalkAI({
     setQuestion('');
     const file = attachment;
     setAttachment(null);
-    // Sliced before the request, not after: the server enforces the same
-    // cap and rejects rather than truncates an over-cap request, so
-    // respecting it here is what keeps a long-running chat from ever
-    // hitting that 400.
     const history = messages
       .slice(-MAX_HISTORY_TURNS)
       .map((message) => ({ role: message.role, content: message.content }));
@@ -449,9 +381,10 @@ export function AskFinTalkAI({
           ...prev,
           {
             role: 'assistant',
-            content: next.step === 'title'
-              ? 'What would you like to call this meeting?'
-              : `Got it — ${next.title}. Before I can create this, I need two confirmations:`,
+            content:
+              next.step === 'title'
+                ? 'What would you like to call this meeting?'
+                : `Got it — ${next.title}. Before I can create this, I need two confirmations:`,
           },
         ]);
         return;
@@ -483,82 +416,106 @@ export function AskFinTalkAI({
   if (!open && !closing) return null;
 
   return (
-    <div className="fixed inset-0 z-30 flex justify-end p-3 sm:p-4">
+    <div className="fixed inset-0 z-30 flex justify-end p-2.5 sm:p-4 md:p-6">
+      {/* Backdrop */}
       <button
         type="button"
         aria-label="Close Ask FinTalk AI"
         onClick={onClose}
-        className={`absolute inset-0 bg-black/70 backdrop-blur-sm ${
-          closing
-            ? 'animate-[fade-out_var(--dur-base)_var(--ease-out)_both]'
-            : 'animate-[fade-in_var(--dur-base)_var(--ease-out)_both]'
+        className={`absolute inset-0 bg-black/40 dark:bg-black/65 backdrop-blur-md transition-opacity duration-300 ${
+          closing ? 'animate-[fade-out_0.25s_ease-out_both]' : 'animate-[fade-in_0.25s_ease-out_both]'
         }`}
       />
 
-      <GlassPanel
-        className={`relative z-10 flex h-full w-full flex-col p-0 md:w-[min(100%,900px)] ${
+      {/* Apple-style Frosted Glass Modal Card */}
+      <div
+        className={`relative z-10 flex h-full w-full flex-col overflow-hidden rounded-[28px] sm:rounded-[32px] border border-white/50 dark:border-white/10 bg-surface/90 dark:bg-[#0b101b]/90 shadow-[0_25px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl md:w-[min(100%,820px)] ${
           closing
-            ? 'animate-[slide-out-right_var(--dur-base)_var(--ease-out)_both]'
-            : 'animate-[slide-in-right_var(--dur-base)_var(--ease-out)_both]'
+            ? 'animate-[slide-out-right_0.28s_var(--ease-apple)_both]'
+            : 'animate-[slide-in-right_0.32s_var(--ease-apple)_both]'
         }`}
         onAnimationEnd={() => {
           if (closing) setClosing(false);
         }}
       >
-        <div className="flex items-center justify-between border-b border-line px-5 py-4">
+        {/* Apple-style Top Bar */}
+        <div className="flex items-center justify-between border-b border-line/60 dark:border-white/10 px-5 py-4 backdrop-blur-md">
           <div className="flex items-center gap-3">
-            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-soft">
+            <div className="relative grid size-10 place-items-center rounded-2xl bg-gradient-to-tr from-brand via-sky-500 to-indigo-600 text-white shadow-lg shadow-brand/25 ring-2 ring-white/20">
               <Logo className="size-5" />
-            </span>
+            </div>
             <div>
-              <h2 className="text-base font-semibold tracking-tight">Ask FinTalk AI</h2>
-              <p className="text-caption text-muted">Answered only from stored meetings.</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold tracking-tight text-text">
+                  Ask FinTalk AI
+                </h2>
+                <span className="inline-flex items-center rounded-full bg-brand-soft px-2 py-0.5 text-[0.65rem] font-bold text-brand-strong dark:bg-brand/20 dark:text-sky-300">
+                  INTELLIGENCE
+                </span>
+              </div>
+              <p className="text-caption text-muted">
+                Answers synthesized exclusively from your verified meeting transcripts.
+              </p>
             </div>
           </div>
-          <Button type="button" variant="secondary" onClick={onClose} aria-label="Close">
-            <svg
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              aria-hidden="true"
+
+          <div className="flex items-center gap-2">
+            {messages.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setMessages([])}
+                title="Clear conversation"
+                className="grid size-9 place-items-center rounded-full border border-line-strong/60 bg-surface text-muted transition hover:bg-raised hover:text-text active:scale-95"
+              >
+                <RotateCcw className="size-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="grid size-9 place-items-center rounded-full border border-line-strong/60 bg-surface text-muted transition hover:bg-raised hover:text-text active:scale-95"
             >
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </Button>
+              <RemoveIcon className="size-4" />
+            </button>
+          </div>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+        {/* Chat History / Content Area */}
+        <div className="flex-1 space-y-4 overflow-y-auto p-5 sm:p-6">
           {messages.length === 0 && (
-            <div className="space-y-3">
-              <p className="text-caption text-muted">
-                Answers come from stored transcripts and cite the meetings they came from.
-                Try asking:
+            <div className="my-auto flex flex-col items-center justify-center py-10 text-center">
+              <div className="relative mb-5 grid size-16 place-items-center rounded-3xl bg-gradient-to-tr from-brand/20 via-sky-400/20 to-indigo-500/20 text-brand ring-1 ring-brand/30 shadow-inner">
+                <Sparkles className="size-8 animate-pulse text-brand" />
+              </div>
+              <h3 className="text-lg font-bold tracking-tight text-text">
+                What would you like to explore?
+              </h3>
+              <p className="mt-1 max-w-sm text-caption text-muted">
+                Query facility discussions, Shariah governance decisions, and meeting action items instantly.
               </p>
-              <ul className="flex flex-wrap gap-2">
+
+              <div className="mt-6 w-full max-w-lg space-y-2.5">
                 {EXAMPLES.map((example) => (
-                  <li key={example}>
-                    <button
-                      type="button"
-                      className="rounded-full border border-line-strong bg-surface px-3 py-1.5 text-caption text-muted hover:bg-raised hover:text-text"
-                      onClick={() => {
-                        void send(example);
-                      }}
-                    >
-                      {example}
-                    </button>
-                  </li>
+                  <button
+                    key={example}
+                    type="button"
+                    onClick={() => {
+                      void send(example);
+                    }}
+                    className="group flex w-full items-center justify-between rounded-2xl border border-line/70 bg-surface/70 px-4 py-3 text-left text-sm font-medium text-muted shadow-sm backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand/40 hover:bg-raised hover:text-text hover:shadow-md hover:shadow-brand/5 active:scale-[0.99]"
+                  >
+                    <span>{example}</span>
+                    <span className="grid size-6 place-items-center rounded-full bg-brand-soft/50 text-brand opacity-0 transition-opacity group-hover:opacity-100 dark:bg-brand/20">
+                      →
+                    </span>
+                  </button>
                 ))}
-              </ul>
+              </div>
             </div>
           )}
 
           {messages.map((message, index) => (
-            // Strictly append-only list, never reordered or spliced —
-            // index is a stable, safe key here.
             <Bubble key={index} message={message} />
           ))}
 
@@ -567,7 +524,9 @@ export function AskFinTalkAI({
               state={wizard}
               onCancel={cancelWizard}
               onConsentChange={(ack) => {
-                setWizard((current) => (current?.step === 'consent' ? { ...current, ack } : current));
+                setWizard((current) =>
+                  current?.step === 'consent' ? { ...current, ack } : current,
+                );
               }}
               onConsentContinue={handleConsentContinue}
               onChooseImport={handleChooseImport}
@@ -581,26 +540,34 @@ export function AskFinTalkAI({
             />
           )}
 
-          {busy && <Spinner label="Thinking" />}
+          {busy && (
+            <div className="flex items-center gap-2 rounded-2xl border border-line/60 bg-surface/80 px-4 py-3 shadow-sm backdrop-blur-sm w-fit">
+              <Spinner label="Searching meeting corpus…" />
+            </div>
+          )}
           {error !== null && <ErrorNote>{error}</ErrorNote>}
         </div>
 
-        <form onSubmit={submit} className="border-t border-line px-5 py-4">
+        {/* Apple-style Floating Island Prompt Input */}
+        <form onSubmit={submit} className="p-4 sm:p-5 border-t border-line/60 dark:border-white/10 backdrop-blur-xl">
           {attachment !== null && (
-            <div className="mb-2 flex items-center gap-2 rounded-md border border-line-strong bg-raised px-2.5 py-1.5 text-caption">
-              <Paperclip aria-hidden="true" className="size-3.5 shrink-0 text-faint" />
-              <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+            <div className="mb-2 flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft/60 px-3 py-1.5 text-caption dark:bg-brand/20">
+              <Paperclip aria-hidden="true" className="size-3.5 shrink-0 text-brand" />
+              <span className="min-w-0 flex-1 truncate font-medium text-brand-strong dark:text-sky-300">
+                {attachment.name}
+              </span>
               <button
                 type="button"
                 onClick={() => setAttachment(null)}
                 aria-label="Remove attachment"
-                className="shrink-0 rounded p-0.5 text-faint transition hover:bg-surface hover:text-text"
+                className="shrink-0 rounded-full p-0.5 text-muted hover:bg-surface hover:text-text transition"
               >
                 <RemoveIcon aria-hidden="true" className="size-3.5" />
               </button>
             </div>
           )}
-          <div className="flex items-end gap-2">
+
+          <div className="relative flex items-center gap-2 rounded-2xl border border-line-strong/70 bg-surface/90 dark:bg-raised/90 p-2 shadow-lg backdrop-blur-xl transition-all focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/30">
             <input
               ref={fileInputRef}
               type="file"
@@ -611,40 +578,42 @@ export function AskFinTalkAI({
                 event.target.value = '';
               }}
             />
-            <Button
+
+            <button
               type="button"
-              variant="secondary"
               disabled={busy || wizard !== null}
               onClick={() => fileInputRef.current?.click()}
-              aria-label="Attach a file"
+              aria-label="Attach a document"
+              title="Attach photo or document"
+              className="grid size-9 shrink-0 place-items-center rounded-full text-muted transition hover:bg-raised hover:text-text active:scale-95 disabled:opacity-40"
             >
-              <Paperclip aria-hidden="true" className="size-4" />
-            </Button>
+              <Paperclip className="size-4" />
+            </button>
+
             {dictation.supported && (
-              <Button
+              <button
                 type="button"
-                variant="secondary"
                 disabled={busy || wizard !== null}
                 onClick={dictation.toggle}
                 aria-label={dictation.listening ? 'Stop dictating' : 'Dictate your question'}
-                className={dictation.listening ? 'relative text-danger' : 'relative'}
+                title={dictation.listening ? 'Stop dictating' : 'Dictate question'}
+                className={`grid size-9 shrink-0 place-items-center rounded-full transition active:scale-95 disabled:opacity-40 ${
+                  dictation.listening
+                    ? 'bg-danger text-white ring-4 ring-danger/20 animate-pulse'
+                    : 'text-muted hover:bg-raised hover:text-text'
+                }`}
               >
                 <MicIcon />
-                {dictation.listening && (
-                  <span
-                    aria-hidden="true"
-                    className="absolute right-1 top-1 size-1.5 animate-pulse-ring rounded-full bg-danger"
-                  />
-                )}
-              </Button>
+              </button>
             )}
+
             <Textarea
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               disabled={busy || wizardBlocksInput}
-              placeholder="Ask a question…"
+              placeholder="Ask anything about your meetings..."
               rows={1}
-              className="flex-1 resize-none"
+              className="flex-1 resize-none border-none bg-transparent px-2 py-1.5 text-sm text-text placeholder:text-faint focus:ring-0 focus-visible:outline-none"
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault();
@@ -652,12 +621,18 @@ export function AskFinTalkAI({
                 }
               }}
             />
-            <Button type="submit" disabled={busy || wizardBlocksInput || question.trim().length < 3}>
-              Send
-            </Button>
+
+            <button
+              type="submit"
+              disabled={busy || wizardBlocksInput || question.trim().length < 3}
+              aria-label="Send query"
+              className="grid size-9 shrink-0 place-items-center rounded-full bg-brand text-white shadow-md shadow-brand/30 transition-all hover:bg-brand-strong active:scale-90 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ArrowUp className="size-4" />
+            </button>
           </div>
         </form>
-      </GlassPanel>
+      </div>
     </div>
   );
 }

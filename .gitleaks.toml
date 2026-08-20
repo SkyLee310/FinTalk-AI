@@ -1,0 +1,10 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known false positives already sanitized in the current tree"
+fingerprints = [
+  # PEM-shaped mock key in a test fixture; sanitized in e2d2c4b, but the
+  # historical commit's own diff is immutable so gitleaks still flags it.
+  "8fa8447bc2dd50af9c66100261f754659a3959cc:backend/tests/unit/ai/factory.test.ts:private-key:53",
+]

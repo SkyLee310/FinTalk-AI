@@ -2,11 +2,16 @@
 
 import {
   ArrowUp,
+  Bot,
   FileText,
+  MessageSquare,
+  Mic,
   Paperclip,
   RotateCcw,
   Sparkles,
+  Wand2,
   X as RemoveIcon,
+  Zap,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -22,7 +27,6 @@ import { describeError } from '@/hooks/use-async';
 import { api, type AskCitation } from '@/lib/api';
 import { Logo } from './logo';
 import { CaptureWizardStep } from './capture-wizard';
-import { MicIcon } from './record-session';
 import { ErrorNote, Spinner, Textarea } from './ui';
 import {
   addBoardFile,
@@ -51,6 +55,33 @@ export const EXAMPLES = [
   'Which meetings discussed Murabahah pricing?',
   'What was said about late payment penalties?',
   'Where was an interest rate raised on an Islamic facility?',
+] as const;
+
+export const COWORK_PRESETS = [
+  {
+    title: 'Setup Meeting Ingestion',
+    prompt: 'I want to create and upload a new client meeting discussion.',
+    desc: 'Automates Title, Consent, Audio upload & Whiteboard extraction in steps.',
+    action: 'wizard',
+  },
+  {
+    title: 'Launch Live Recording',
+    prompt: 'Start live meeting recording with real-time PDPA redaction.',
+    desc: 'Jumpstart real-time microphone capture with consent pre-acknowledged.',
+    action: 'record',
+  },
+  {
+    title: 'Draft Facility Term Sheet',
+    prompt: 'Synthesize a financing term sheet proposal from recent meeting discussions.',
+    desc: 'Extracts principal, profit rate, tenure, and Islamic contract structure.',
+    action: 'prompt',
+  },
+  {
+    title: 'Run Shariah Compliance Audit',
+    prompt: 'Scan recent meetings for potential Riba, Gharar, or penalty fee violations.',
+    desc: 'Automates screening against BNM SAC standards & highlights excerpts.',
+    action: 'prompt',
+  },
 ] as const;
 
 const MAX_HISTORY_TURNS = 10;
@@ -206,6 +237,7 @@ export function AskFinTalkAI({
   setWizard: Dispatch<SetStateAction<CaptureWizardState | null>>;
 }) {
   const router = useRouter();
+  const [mode, setMode] = useState<'chat' | 'cowork'>('chat');
   const [question, setQuestion] = useState('');
   const [attachment, setAttachment] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -377,6 +409,7 @@ export function AskFinTalkAI({
       if (result.type === 'action') {
         const next = startWizard(result.title);
         setWizard(next);
+        setMode('cowork'); // Auto-switch to Cowork view to guide the workflow
         setMessages((prev) => [
           ...prev,
           {
@@ -411,6 +444,23 @@ export function AskFinTalkAI({
     void send(question);
   }
 
+  function handleStartPreset(preset: typeof COWORK_PRESETS[number]) {
+    if (preset.action === 'wizard') {
+      const next = startWizard('Client Meeting Discussion');
+      setWizard(next);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', content: preset.prompt },
+        { role: 'assistant', content: 'Starting meeting ingestion wizard. Please review consent:' },
+      ]);
+    } else if (preset.action === 'record') {
+      onClose();
+      router.push('/record?consent=1');
+    } else {
+      void send(preset.prompt);
+    }
+  }
+
   const wizardBlocksInput = wizard !== null && wizard.step !== 'title';
 
   if (!open && !closing) return null;
@@ -429,7 +479,7 @@ export function AskFinTalkAI({
 
       {/* Apple-style Frosted Glass Modal Card */}
       <div
-        className={`relative z-10 flex h-full w-full flex-col overflow-hidden rounded-[28px] sm:rounded-[32px] border border-white/50 dark:border-white/10 bg-surface/90 dark:bg-[#0b101b]/90 shadow-[0_25px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl md:w-[min(100%,820px)] ${
+        className={`relative z-10 flex h-full w-full flex-col overflow-hidden rounded-[28px] sm:rounded-[32px] border border-white/50 dark:border-white/10 bg-surface/90 dark:bg-[#0b101b]/90 shadow-[0_25px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl md:w-[min(100%,860px)] ${
           closing
             ? 'animate-[slide-out-right_0.28s_var(--ease-apple)_both]'
             : 'animate-[slide-in-right_0.32s_var(--ease-apple)_both]'
@@ -438,32 +488,79 @@ export function AskFinTalkAI({
           if (closing) setClosing(false);
         }}
       >
-        {/* Apple-style Top Bar */}
-        <div className="flex items-center justify-between border-b border-line/60 dark:border-white/10 px-5 py-4 backdrop-blur-md">
+        {/* Apple-style Top Bar with Mode Segmented Control */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line/60 dark:border-white/10 px-5 py-4 backdrop-blur-md">
+          {/* Left info box */}
           <div className="flex items-center gap-3">
-            <div className="relative grid size-10 place-items-center rounded-2xl bg-gradient-to-tr from-brand via-sky-500 to-indigo-600 text-white shadow-lg shadow-brand/25 ring-2 ring-white/20">
-              <Logo className="size-5" />
+            <div
+              className={`relative grid size-10 place-items-center rounded-2xl text-white shadow-lg transition-all duration-300 ring-2 ring-white/20 ${
+                mode === 'chat'
+                  ? 'bg-gradient-to-tr from-brand via-sky-500 to-indigo-600 shadow-brand/25'
+                  : 'bg-gradient-to-tr from-violet-600 via-purple-500 to-indigo-600 shadow-violet-500/25'
+              }`}
+            >
+              {mode === 'chat' ? <Logo className="size-5" /> : <Bot className="size-5" />}
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold tracking-tight text-text">
                   Ask FinTalk AI
                 </h2>
-                <span className="inline-flex items-center rounded-full bg-brand-soft px-2 py-0.5 text-[0.65rem] font-bold text-brand-strong dark:bg-brand/20 dark:text-sky-300">
-                  INTELLIGENCE
-                </span>
+                {mode === 'chat' ? (
+                  <span className="inline-flex items-center rounded-full bg-brand-soft px-2 py-0.5 text-[0.65rem] font-bold text-brand-strong dark:bg-brand/20 dark:text-sky-300">
+                    INTELLIGENCE
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center rounded-full bg-violet-500/15 px-2 py-0.5 text-[0.65rem] font-bold text-violet-600 dark:text-violet-400">
+                    COWORK AUTOMATOR
+                  </span>
+                )}
               </div>
               <p className="text-caption text-muted">
-                Answers synthesized exclusively from your verified meeting transcripts.
+                {mode === 'chat'
+                  ? 'Answers synthesized exclusively from your verified meeting transcripts.'
+                  : 'Automate meeting ingestion, consent workflows, and facility extraction.'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Right controls: Apple-style Mode Selector & Actions */}
+          <div className="flex items-center gap-2.5">
+            {/* Apple Segmented Pill Switcher */}
+            <div className="flex items-center rounded-full border border-line-strong/60 bg-raised/90 p-1 shadow-inner">
+              <button
+                type="button"
+                onClick={() => setMode('chat')}
+                className={`flex items-center gap-1.5 rounded-full px-3.5 py-1 text-xs font-bold transition-all duration-200 ${
+                  mode === 'chat'
+                    ? 'bg-surface text-brand shadow-sm shadow-brand/10'
+                    : 'text-muted hover:text-text'
+                }`}
+              >
+                <MessageSquare className="size-3.5" />
+                <span>Chat</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('cowork')}
+                className={`flex items-center gap-1.5 rounded-full px-3.5 py-1 text-xs font-bold transition-all duration-200 ${
+                  mode === 'cowork'
+                    ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/25'
+                    : 'text-muted hover:text-text'
+                }`}
+              >
+                <Sparkles className="size-3.5" />
+                <span>Cowork</span>
+              </button>
+            </div>
+
             {messages.length > 0 && (
               <button
                 type="button"
-                onClick={() => setMessages([])}
+                onClick={() => {
+                  setMessages([]);
+                  setWizard(null);
+                }}
                 title="Clear conversation"
                 className="grid size-9 place-items-center rounded-full border border-line-strong/60 bg-surface text-muted transition hover:bg-raised hover:text-text active:scale-95"
               >
@@ -481,45 +578,147 @@ export function AskFinTalkAI({
           </div>
         </div>
 
-        {/* Chat History / Content Area */}
-        <div className="flex-1 space-y-4 overflow-y-auto p-5 sm:p-6">
-          {messages.length === 0 && (
-            <div className="my-auto flex flex-col items-center justify-center py-10 text-center">
-              <div className="relative mb-5 grid size-16 place-items-center rounded-3xl bg-gradient-to-tr from-brand/20 via-sky-400/20 to-indigo-500/20 text-brand ring-1 ring-brand/30 shadow-inner">
-                <Sparkles className="size-8 animate-pulse text-brand" />
-              </div>
-              <h3 className="text-lg font-bold tracking-tight text-text">
-                What would you like to explore?
-              </h3>
-              <p className="mt-1 max-w-sm text-caption text-muted">
-                Query facility discussions, Shariah governance decisions, and meeting action items instantly.
-              </p>
+        {/* Content Box with Apple Spatial Depth Transition */}
+        <div key={mode} className="flex-1 space-y-4 overflow-y-auto p-5 sm:p-6 animate-[apple-depth-enter_0.32s_var(--ease-apple)_both]">
+          {/* ======================= CHAT MODE VIEW ======================= */}
+          {mode === 'chat' && (
+            <>
+              {messages.length === 0 && (
+                <div className="my-auto flex flex-col items-center justify-center py-8 text-center">
+                  <div className="relative mb-4 grid size-16 place-items-center rounded-3xl bg-gradient-to-tr from-brand/20 via-sky-400/20 to-indigo-500/20 text-brand ring-1 ring-brand/30 shadow-inner">
+                    <Sparkles className="size-8 animate-pulse text-brand" />
+                  </div>
+                  <h3 className="text-lg font-bold tracking-tight text-text">
+                    Ask anything across your meetings
+                  </h3>
+                  <p className="mt-1 max-w-sm text-caption text-muted">
+                    Instant citations, Islamic banking rules analysis, and decision search.
+                  </p>
 
-              <div className="mt-6 w-full max-w-lg space-y-2.5">
-                {EXAMPLES.map((example) => (
-                  <button
-                    key={example}
-                    type="button"
-                    onClick={() => {
-                      void send(example);
-                    }}
-                    className="group flex w-full items-center justify-between rounded-2xl border border-line/70 bg-surface/70 px-4 py-3 text-left text-sm font-medium text-muted shadow-sm backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand/40 hover:bg-raised hover:text-text hover:shadow-md hover:shadow-brand/5 active:scale-[0.99]"
-                  >
-                    <span>{example}</span>
-                    <span className="grid size-6 place-items-center rounded-full bg-brand-soft/50 text-brand opacity-0 transition-opacity group-hover:opacity-100 dark:bg-brand/20">
-                      →
-                    </span>
-                  </button>
-                ))}
+                  <div className="mt-6 w-full max-w-lg space-y-2.5">
+                    {EXAMPLES.map((example) => (
+                      <button
+                        key={example}
+                        type="button"
+                        onClick={() => {
+                          void send(example);
+                        }}
+                        className="group flex w-full items-center justify-between rounded-2xl border border-line/70 bg-surface/70 px-4 py-3 text-left text-sm font-medium text-muted shadow-sm backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand/40 hover:bg-raised hover:text-text hover:shadow-md hover:shadow-brand/5 active:scale-[0.99]"
+                      >
+                        <span>{example}</span>
+                        <span className="grid size-6 place-items-center rounded-full bg-brand-soft/50 text-brand opacity-0 transition-opacity group-hover:opacity-100 dark:bg-brand/20">
+                          →
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {messages.map((message, index) => (
+                <Bubble key={index} message={message} />
+              ))}
+            </>
+          )}
+
+          {/* ======================= COWORK MODE VIEW ======================= */}
+          {mode === 'cowork' && (
+            <div className="space-y-6">
+              {/* Cowork Hero Header */}
+              <div className="rounded-3xl border border-violet-500/20 bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-transparent p-5 backdrop-blur-md">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/15 px-3 py-1 text-xs font-bold text-violet-600 dark:text-violet-300">
+                      <Zap className="size-3.5" />
+                      <span>Meeting Automation Copilot</span>
+                    </div>
+                    <h3 className="mt-2 text-base font-bold text-text">
+                      Automate Your Meeting & Facility Workflow
+                    </h3>
+                    <p className="mt-1 text-caption text-muted">
+                      Trigger multi-step ingestion, live recording setups, or compliance extraction with one click.
+                    </p>
+                  </div>
+                  <Wand2 className="size-8 text-violet-500 shrink-0 opacity-80" />
+                </div>
+
+                {/* Quick Automation Cards */}
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {COWORK_PRESETS.map((preset) => (
+                    <button
+                      key={preset.title}
+                      type="button"
+                      onClick={() => handleStartPreset(preset)}
+                      className="group flex flex-col justify-between rounded-2xl border border-line-strong/60 bg-surface/90 p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-500/50 hover:bg-raised hover:shadow-md hover:shadow-violet-500/10 active:scale-[0.98]"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-bold text-text group-hover:text-violet-600 dark:group-hover:text-violet-400">
+                            {preset.title}
+                          </h4>
+                          <span className="text-caption text-muted group-hover:text-violet-500">→</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted leading-relaxed">
+                          {preset.desc}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              {/* Active In-Progress Wizard Step (if running) */}
+              {wizard !== null && (
+                <div className="rounded-3xl border border-brand/30 bg-surface p-5 shadow-lg backdrop-blur-xl">
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-brand">
+                      Step: {wizard.step.toUpperCase()}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={cancelWizard}
+                      className="text-xs text-faint hover:text-danger hover:underline"
+                    >
+                      Cancel Workflow
+                    </button>
+                  </div>
+                  <CaptureWizardStep
+                    state={wizard}
+                    onCancel={cancelWizard}
+                    onConsentChange={(ack) => {
+                      setWizard((current) =>
+                        current?.step === 'consent' ? { ...current, ack } : current,
+                      );
+                    }}
+                    onConsentContinue={handleConsentContinue}
+                    onChooseImport={handleChooseImport}
+                    onChooseRealTime={handleChooseRealTime}
+                    onChooseAudioFile={handleChooseAudioFile}
+                    onAddBoardFile={handleAddBoardFile}
+                    onWhiteboardDone={handleWhiteboardDone}
+                    onConfirm={() => {
+                      void handleConfirmCapture();
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* Cowork Action Message Stream */}
+              {messages.length > 0 && (
+                <div className="space-y-4 pt-2 border-t border-line/60">
+                  <p className="text-xs font-semibold text-muted uppercase tracking-wider">
+                    Copilot Activity Log
+                  </p>
+                  {messages.map((message, index) => (
+                    <Bubble key={index} message={message} />
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {messages.map((message, index) => (
-            <Bubble key={index} message={message} />
-          ))}
-
-          {wizard !== null && (
+          {/* Active Wizard for Chat mode if triggered */}
+          {mode === 'chat' && wizard !== null && (
             <CaptureWizardStep
               state={wizard}
               onCancel={cancelWizard}
@@ -542,7 +741,7 @@ export function AskFinTalkAI({
 
           {busy && (
             <div className="flex items-center gap-2 rounded-2xl border border-line/60 bg-surface/80 px-4 py-3 shadow-sm backdrop-blur-sm w-fit">
-              <Spinner label="Searching meeting corpus…" />
+              <Spinner label={mode === 'cowork' ? 'Automating workflow…' : 'Synthesizing response…'} />
             </div>
           )}
           {error !== null && <ErrorNote>{error}</ErrorNote>}
@@ -567,7 +766,13 @@ export function AskFinTalkAI({
             </div>
           )}
 
-          <div className="relative flex items-center gap-2 rounded-2xl border border-line-strong/70 bg-surface/90 dark:bg-raised/90 p-2 shadow-lg backdrop-blur-xl transition-all focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/30">
+          <div
+            className={`relative flex items-center gap-2 rounded-2xl border bg-surface/90 dark:bg-raised/90 p-2 shadow-lg backdrop-blur-xl transition-all ${
+              mode === 'cowork'
+                ? 'border-violet-500/50 focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-500/30'
+                : 'border-line-strong/70 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/30'
+            }`}
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -603,7 +808,7 @@ export function AskFinTalkAI({
                     : 'text-muted hover:bg-raised hover:text-text'
                 }`}
               >
-                <MicIcon />
+                <Mic className="size-4" />
               </button>
             )}
 
@@ -611,7 +816,11 @@ export function AskFinTalkAI({
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               disabled={busy || wizardBlocksInput}
-              placeholder="Ask anything about your meetings..."
+              placeholder={
+                mode === 'cowork'
+                  ? "Tell Copilot what meeting process to automate (e.g. 'Setup SME discussion meeting')..."
+                  : 'Ask anything about your meetings, decisions, or Islamic rules...'
+              }
               rows={1}
               className="flex-1 resize-none border-none bg-transparent px-2 py-1.5 text-sm text-text placeholder:text-faint focus:ring-0 focus-visible:outline-none"
               onKeyDown={(event) => {
@@ -626,7 +835,11 @@ export function AskFinTalkAI({
               type="submit"
               disabled={busy || wizardBlocksInput || question.trim().length < 3}
               aria-label="Send query"
-              className="grid size-9 shrink-0 place-items-center rounded-full bg-brand text-white shadow-md shadow-brand/30 transition-all hover:bg-brand-strong active:scale-90 disabled:opacity-30 disabled:cursor-not-allowed"
+              className={`grid size-9 shrink-0 place-items-center rounded-full text-white shadow-md transition-all active:scale-90 disabled:opacity-30 disabled:cursor-not-allowed ${
+                mode === 'cowork'
+                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 shadow-violet-500/30'
+                  : 'bg-brand hover:bg-brand-strong shadow-brand/30'
+              }`}
             >
               <ArrowUp className="size-4" />
             </button>

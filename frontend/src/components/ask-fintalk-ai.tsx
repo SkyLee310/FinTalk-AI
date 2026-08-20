@@ -15,8 +15,23 @@ import { describeError } from '@/hooks/use-async';
 import { api, type AskCitation } from '@/lib/api';
 import { GlassPanel } from './glass-panel';
 import { Logo } from './logo';
+import { CaptureWizardStep } from './capture-wizard';
 import { MicIcon } from './record-session';
 import { Button, ErrorNote, Spinner, Textarea } from './ui';
+import {
+  addBoardFile,
+  advanceFromConsent,
+  type CaptureWizardState,
+  chooseAudioFile,
+  chooseImportAudio,
+  finishWhiteboard,
+  startSubmitting,
+  startWizard,
+  submitTitle,
+} from '@/lib/capture-wizard-state';
+import { guessAttachmentKind } from '@/lib/attachment-kind';
+import { measureDurationMs } from '@/lib/audio-duration';
+import { submitCapture } from '@/lib/submit-capture';
 
 /**
  * A chatbot, not a search form: the header-anchored panel that replaced the
@@ -37,6 +52,8 @@ export interface ChatMessage {
   content: string;
   citations?: AskCitation[];
   retrieval?: 'semantic' | 'keyword';
+  /** Set only on the wizard's own success message, once its meeting exists. */
+  createdMeeting?: { meetingId: string; title: string };
 }
 
 /**
@@ -186,6 +203,17 @@ function Bubble({ message }: { message: ChatMessage }) {
           </ul>
         )}
 
+        {message.createdMeeting !== undefined && (
+          <p className="mt-2">
+            <Link
+              href={`/meetings/${message.createdMeeting.meetingId}`}
+              className="inline-flex items-center rounded-full border border-line-strong bg-surface px-2 py-0.5 text-caption text-brand underline underline-offset-2"
+            >
+              Open {message.createdMeeting.title}
+            </Link>
+          </p>
+        )}
+
         {/*
           Said plainly, once, under the answer it applies to.
           Keyword matching finds meetings that share words with the question
@@ -216,11 +244,15 @@ export function AskFinTalkAI({
   onClose,
   messages,
   setMessages,
+  wizard,
+  setWizard,
 }: {
   open: boolean;
   onClose: () => void;
   messages: ChatMessage[];
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
+  wizard: CaptureWizardState | null;
+  setWizard: Dispatch<SetStateAction<CaptureWizardState | null>>;
 }) {
   const router = useRouter();
   const [question, setQuestion] = useState('');
@@ -232,6 +264,121 @@ export function AskFinTalkAI({
   const dictation = useDictation((text) => {
     setQuestion((prev) => (prev.trim() === '' ? text : `${prev} ${text}`));
   });
+
+  function cancelWizard(): void {
+    setMessages((prev) => [...prev, { role: 'assistant', content: 'Setup cancelled.' }]);
+    setWizard(null);
+  }
+
+  function handleConsentContinue(): void {
+    if (wizard?.step !== 'consent') return;
+    setWizard(advanceFromConsent(wizard));
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'assistant',
+        content: 'Would you like to import an existing audio file, or record in real time?',
+      },
+    ]);
+  }
+
+  function handleChooseRealTime(): void {
+    if (wizard?.step !== 'mode') return;
+    const { title } = wizard;
+    setMessages((prev) => [
+      ...prev,
+      { role: 'assistant', content: "Let's set that up on the Record page." },
+    ]);
+    setWizard(null);
+    onClose();
+    const target = `/record?title=${encodeURIComponent(title)}&consent=1`;
+    // Same hard-navigation-vs-soft-navigation reasoning as send()'s own
+    // redirect below: record/page.tsx only reads its query params in a
+    // mount-only effect, so a soft navigation to the same route would never
+    // apply them.
+    if (window.location.pathname === '/record') {
+      window.location.href = target;
+    } else {
+      router.push(target);
+    }
+  }
+
+  function handleChooseImport(): void {
+    if (wizard?.step !== 'mode') return;
+    setWizard(chooseImportAudio(wizard));
+    setMessages((prev) => [
+      ...prev,
+      { role: 'assistant', content: 'Choose the audio file to import.' },
+    ]);
+  }
+
+  function handleChooseAudioFile(file: File): void {
+    if (wizard?.step !== 'audio') return;
+    setWizard(chooseAudioFile(wizard, file));
+    setMessages((prev) => [
+      ...prev,
+      { role: 'assistant', content: 'Any whiteboard photos to attach? Add one or more, or skip.' },
+    ]);
+  }
+
+  function handleAddBoardFile(file: File): void {
+    if (wizard?.step !== 'whiteboard') return;
+    setWizard(addBoardFile(wizard, { file, kind: guessAttachmentKind(file) }));
+  }
+
+  function handleWhiteboardDone(): void {
+    if (wizard?.step !== 'whiteboard') return;
+    setWizard(finishWhiteboard(wizard));
+  }
+
+  async function handleConfirmCapture(): Promise<void> {
+    if (wizard?.step !== 'confirm') return;
+    const toSubmit = wizard;
+    setWizard(startSubmitting(toSubmit));
+    setError(null);
+
+    try {
+      const durationMs = await measureDurationMs(toSubmit.audio);
+      const result = await submitCapture({
+        title: toSubmit.title,
+        occurredAt: new Date().toISOString(),
+        consentConfirmed: toSubmit.ack.consentConfirmed,
+        transferAcknowledged: toSubmit.ack.transferAcknowledged,
+        audio: toSubmit.audio,
+        audioFilename: toSubmit.audio.name,
+        durationMs,
+        boardFiles: toSubmit.boardFiles,
+      });
+
+      let note = '';
+      if (result.boardExtractedCount > 0) {
+        note = ` ${String(result.boardExtractedCount)} attachment${result.boardExtractedCount === 1 ? '' : 's'}`
+          + ` extracted, ${String(result.boardMaskedCount)} identifier(s) masked.`;
+      }
+      if (result.boardFailures.length > 0) {
+        note += ` ${String(result.boardFailures.length)} failed: ${result.boardFailures.join('; ')}.`;
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: `Meeting created — transcribing now, this takes a few minutes.${note}`,
+          createdMeeting: { meetingId: result.meetingId, title: toSubmit.title },
+        },
+      ]);
+      setWizard(null);
+    } catch (cause) {
+      setError(describeError(cause));
+      // Only resurrect the wizard if the panel is still open. If the user
+      // closed it while this request was in flight, Task 3's own
+      // open-triggered effect already reset wizard to null — the design
+      // spec (§4) requires it stay that way, since a closed wizard is
+      // never resumed, even by a request that was already in flight at
+      // the moment of closing.
+      if (open) setWizard(toSubmit);
+    }
+  }
 
   /**
    * Stays mounted through its exit instead of `if (!open) return null`
@@ -255,9 +402,28 @@ export function AskFinTalkAI({
     wasOpen.current = open;
   }, [open]);
 
+  // Spec: wizard state must not out-live the panel being open — unlike
+  // `messages`, which deliberately survives a close so the conversation
+  // itself isn't lost, a half-finished capture is abandoned the same way
+  // closing Record's own tab mid-capture already abandons one there.
+  useEffect(() => {
+    if (!open) setWizard(null);
+  }, [open, setWizard]);
+
   async function send(raw: string): Promise<void> {
     const text = raw.trim();
     if (text.length < 3 || busy) return;
+
+    if (wizard?.step === 'title') {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', content: text },
+        { role: 'assistant', content: `Got it — ${text}.` },
+      ]);
+      setQuestion('');
+      setWizard(submitTitle(text));
+      return;
+    }
 
     setError(null);
     setBusy(true);
@@ -277,22 +443,17 @@ export function AskFinTalkAI({
       const result = await api.ask(text, history, file ?? undefined);
 
       if (result.type === 'action') {
-        setMessages((prev) => [...prev, { role: 'assistant', content: 'Opening a new capture…' }]);
-        onClose();
-        const target = `/record?title=${encodeURIComponent(result.title)}`;
-        // record/page.tsx only reads the title query param in a mount-only
-        // effect (see its own comment on why — avoiding useSearchParams'
-        // Suspense requirement). A router.push to the same route is a soft
-        // navigation that doesn't remount, so the title would silently never
-        // apply when the request comes in from Record itself — which,
-        // since Record is the Maker's post-login landing page, is the
-        // common case rather than an edge case. A hard navigation forces
-        // the remount that mount-only effect needs.
-        if (window.location.pathname === '/record') {
-          window.location.href = target;
-        } else {
-          router.push(target);
-        }
+        const next = startWizard(result.title);
+        setWizard(next);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: next.step === 'title'
+              ? 'What would you like to call this meeting?'
+              : `Got it — ${next.title}. Before I can create this, I need two confirmations:`,
+          },
+        ]);
         return;
       }
 
@@ -316,6 +477,8 @@ export function AskFinTalkAI({
     event.preventDefault();
     void send(question);
   }
+
+  const wizardBlocksInput = wizard !== null && wizard.step !== 'title';
 
   if (!open && !closing) return null;
 
@@ -399,6 +562,25 @@ export function AskFinTalkAI({
             <Bubble key={index} message={message} />
           ))}
 
+          {wizard !== null && (
+            <CaptureWizardStep
+              state={wizard}
+              onCancel={cancelWizard}
+              onConsentChange={(ack) => {
+                setWizard((current) => (current?.step === 'consent' ? { ...current, ack } : current));
+              }}
+              onConsentContinue={handleConsentContinue}
+              onChooseImport={handleChooseImport}
+              onChooseRealTime={handleChooseRealTime}
+              onChooseAudioFile={handleChooseAudioFile}
+              onAddBoardFile={handleAddBoardFile}
+              onWhiteboardDone={handleWhiteboardDone}
+              onConfirm={() => {
+                void handleConfirmCapture();
+              }}
+            />
+          )}
+
           {busy && <Spinner label="Thinking" />}
           {error !== null && <ErrorNote>{error}</ErrorNote>}
         </div>
@@ -432,7 +614,7 @@ export function AskFinTalkAI({
             <Button
               type="button"
               variant="secondary"
-              disabled={busy}
+              disabled={busy || wizard !== null}
               onClick={() => fileInputRef.current?.click()}
               aria-label="Attach a file"
             >
@@ -442,7 +624,7 @@ export function AskFinTalkAI({
               <Button
                 type="button"
                 variant="secondary"
-                disabled={busy}
+                disabled={busy || wizard !== null}
                 onClick={dictation.toggle}
                 aria-label={dictation.listening ? 'Stop dictating' : 'Dictate your question'}
                 className={dictation.listening ? 'relative text-danger' : 'relative'}
@@ -459,7 +641,7 @@ export function AskFinTalkAI({
             <Textarea
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
-              disabled={busy}
+              disabled={busy || wizardBlocksInput}
               placeholder="Ask a question…"
               rows={1}
               className="flex-1 resize-none"
@@ -470,7 +652,7 @@ export function AskFinTalkAI({
                 }
               }}
             />
-            <Button type="submit" disabled={busy || question.trim().length < 3}>
+            <Button type="submit" disabled={busy || wizardBlocksInput || question.trim().length < 3}>
               Send
             </Button>
           </div>

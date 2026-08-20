@@ -27,6 +27,7 @@ import { formatElapsed, recordingFilename, useRecorder } from '@/hooks/use-recor
 import { guessAttachmentKind, isKindFixed } from '@/lib/attachment-kind';
 import { api, can, type Session, type WhiteboardKind, WHITEBOARD_KIND_LABEL } from '@/lib/api';
 import { measureDurationMs } from '@/lib/audio-duration';
+import { submitCapture } from '@/lib/submit-capture';
 
 /**
  * Record a meeting in the browser.
@@ -159,8 +160,16 @@ export default function RecordPage() {
    * in the authenticated app shell.
    */
   useEffect(() => {
-    const fromQuery = new URLSearchParams(window.location.search).get('title');
+    const query = new URLSearchParams(window.location.search);
+    const fromQuery = query.get('title');
     if (fromQuery !== null && fromQuery.trim() !== '') setTitle(fromQuery);
+    // Set only when the Ask FinTalk AI capture wizard already collected this
+    // exact consent moments earlier — see transfer-notice.tsx's own "never
+    // pre-ticked" rule, which this does not violate: it carries forward a
+    // real affirmative click, it does not default one.
+    if (query.get('consent') === '1') {
+      setAck({ consentConfirmed: true, transferAcknowledged: true, liveCaptionsConsent: false });
+    }
   }, []);
 
   /**
@@ -299,76 +308,45 @@ export default function RecordPage() {
       .map((p) => ({ name: p.name.trim(), role: p.role.trim() }))
       .filter((p) => p.name !== '');
 
-    const form = new FormData();
-    form.set('title', title.trim());
-    if (description.trim() !== '') form.set('description', description.trim());
-    form.set('occurredAt', new Date(occurredAt).toISOString());
-    form.set('consentConfirmed', String(ack.consentConfirmed));
-    form.set('transferAcknowledged', String(ack.transferAcknowledged));
-    if (named.length > 0) form.set('participants', JSON.stringify(named));
-    form.set(
-      'audio',
-      readyBlob,
-      mode === 'record' ? recordingFilename(readyBlob) : audioFile?.name,
-    );
-
-    /**
-     * Ground truth for the server's timestamp correction (see
-     * backend/src/ai/timestamps.ts) — a MediaRecorder capture in particular
-     * self-reports no duration in its container, so the transcription
-     * provider has no real length to check its own segment timestamps
-     * against without this. Best-effort: an unmeasurable blob just omits
-     * the field rather than blocking the upload.
-     */
     const durationMs = await measureDurationMs(readyBlob);
-    if (durationMs !== undefined) form.set('durationMs', String(Math.round(durationMs)));
 
     try {
-      const { meetingId } = await api.uploadMeeting(form);
-      setSubmitted(true);
-
-      /**
-       * A separate request, because extraction is synchronous and takes
-       * seconds where transcription takes minutes. Its failure is reported
-       * rather than thrown: the recording has already been accepted and is
-       * already being processed, and discarding that because a photograph
-       * failed would lose the more valuable half of the capture.
-       */
-      let boardNote = '';
-      if (boardFiles.length > 0) {
-        setProgress(
-          boardFiles.length === 1
-            ? 'Recording accepted. Extracting the attachment…'
-            : `Recording accepted. Extracting ${String(boardFiles.length)} attachments…`,
-        );
-        let extractedCount = 0;
-        let maskedCount = 0;
-        const failures: string[] = [];
-        for (const attachment of boardFiles) {
-          const boardForm = new FormData();
-          boardForm.set('file', attachment.file);
-          boardForm.set('kind', attachment.kind);
-          try {
-            const extracted = await api.uploadWhiteboard(meetingId, boardForm);
-            extractedCount += 1;
-            maskedCount += extracted.redactionCount;
-          } catch (cause) {
-            failures.push(`${attachment.file.name} (${describeError(cause)})`);
+      const result = await submitCapture({
+        title: title.trim(),
+        description: description.trim() || undefined,
+        occurredAt: new Date(occurredAt).toISOString(),
+        consentConfirmed: ack.consentConfirmed,
+        transferAcknowledged: ack.transferAcknowledged,
+        participants: named.length > 0 ? named : undefined,
+        audio: readyBlob,
+        audioFilename: mode === 'record' ? recordingFilename(readyBlob) : audioFile?.name,
+        durationMs,
+        boardFiles,
+        onAccepted: () => {
+          setSubmitted(true);
+          if (boardFiles.length > 0) {
+            setProgress(
+              boardFiles.length === 1
+                ? 'Recording accepted. Extracting the attachment…'
+                : `Recording accepted. Extracting ${String(boardFiles.length)} attachments…`,
+            );
           }
-        }
-        if (extractedCount > 0) {
-          boardNote = ` ${String(extractedCount)} attachment${extractedCount === 1 ? '' : 's'}`
-            + ` extracted, ${String(maskedCount)} identifier(s) masked.`;
-        }
-        if (failures.length > 0) {
-          boardNote += ` ${String(failures.length)} failed: ${failures.join('; ')}.`;
-        }
+        },
+      });
+
+      let boardNote = '';
+      if (result.boardExtractedCount > 0) {
+        boardNote = ` ${String(result.boardExtractedCount)} attachment${result.boardExtractedCount === 1 ? '' : 's'}`
+          + ` extracted, ${String(result.boardMaskedCount)} identifier(s) masked.`;
+      }
+      if (result.boardFailures.length > 0) {
+        boardNote += ` ${String(result.boardFailures.length)} failed: ${result.boardFailures.join('; ')}.`;
       }
 
       setProgress(`Uploaded. Transcribing now — this takes a few minutes.${boardNote}`);
       // Straight to the meeting, which already polls its own status and reveals
       // the transcript, redactions and Shariah findings as they land.
-      router.push(`/meetings/${meetingId}`);
+      router.push(`/meetings/${result.meetingId}`);
     } catch (cause) {
       setError(describeError(cause));
       setProgress(null);

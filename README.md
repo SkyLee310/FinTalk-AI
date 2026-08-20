@@ -6,7 +6,7 @@
 
 **Every credit decision, captured and auditable.**
 
-AI-assisted meeting intelligence for Malaysian credit committees — records the conversation, redacts personal data before it's ever stored, screens it against six Shariah-compliance rules, and keeps a tamper-evident audit trail from first upload to final settlement.
+AI-assisted meeting intelligence for Malaysian credit committees — records the conversation, redacts personal data before it's ever stored, screens it against seven Shariah-compliance rules, and keeps a tamper-evident audit trail from first upload to final settlement.
 
 [![Next.js](https://img.shields.io/badge/Next.js-15.1-black?logo=next.js&logoColor=white)](frontend/package.json)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](frontend/package.json)
@@ -32,7 +32,7 @@ The fastest way to evaluate this project is to click a role and watch it sign in
 
 1. Open the [live app](https://fintalk-ai.vercel.app/login).
 2. Click any role below the sign-in form. It **visibly fills the email and password fields, then submits** — the same path a real sign-in takes, not a hidden shortcut.
-3. You land on that role's first permitted section automatically (Maker → Capture, Checker/Shariah → Review, Admin → Administration).
+3. You land on that role's first permitted section automatically — **Review Meetings** for Maker, Checker, Shariah and Oversight; **Administration** for Admin, who deliberately holds no transcript access at all.
 
 | Role | Email | Password | What they can do |
 |---|---|---|---|
@@ -80,18 +80,23 @@ Four invariants aren't conventions here — each fails loudly if broken, at the 
 
 | | Feature | What makes it real |
 |---|---|---|
-| 🎙️ | **Multi-modal capture** | Browser recording, file upload, and whiteboard photos (auto-converted to a Mermaid diagram) in one meeting record |
+| 🎙️ | **Multi-modal capture** | Browser recording, file upload, whiteboard photos (auto-converted to a Mermaid diagram), and an in-browser whiteboard you can draw on — all in one meeting record |
+| 📅 | **Google Meet import** | Link a Google account, paste a Meet link, and sync that call's transcript into the same redaction → Shariah → audit pipeline. No bot joins the call — it reads the transcript Google itself produced, which means Meet's own Transcripts feature has to be on during the call ([see Limitations](#-limitations)) |
+| 🗣️ | **Live captions while recording** | Browser-side speech recognition streams the conversation as you capture it, so a silent progress bar isn't the only feedback |
+| 🪄 | **Conversational capture wizard** | Ask FinTalk AI can set up a capture by talking you through it — name, consent, then import-audio or record-live. Only the upload path is automated; consent and pressing record stay human |
 | 🔒 | **Fail-closed PII redaction** | NRIC, bank account, phone, email, and Luhn-validated card numbers are stripped before storage; a branded `RedactedText` type makes an unredacted write a compile error, not a policy |
 | 🔑 | **Encrypted PII vault** | Every detected identifier is sealed with AES-256-GCM — there is no plaintext column anywhere in the schema |
-| ☪️ | **Deterministic Shariah engine** | Six versioned, bilingual rules (riba, gharar, maysir, haram-sector activity, late-payment mischaracterisation, contract mismatch) — regex-based on purpose, so every rule can be shown to a Shariah committee and argued with |
+| ☪️ | **Deterministic Shariah engine** | Seven versioned, bilingual rules across six issue types (riba, gharar, maysir, haram-sector activity, late-payment mischaracterisation, contract mismatch) — regex-based on purpose, so every rule can be shown to a Shariah committee and argued with |
 | 🤝 | **Four-eyes approval** | A term sheet's checker can never be its own maker — enforced by a Postgres `CHECK` constraint, not just a UI rule |
 | 🧠 | **AI meeting intelligence** | A decision arbiter, a role-attributed action-item extractor (never a name), and an instant project-kickoff draft — every field independently re-verified for PII and discarded (not patched) if it fails |
-| 💬 | **Ask FinTalk AI** | A grounded, cited assistant across every meeting — it never opens the PII vault, answers only from retrieved redacted excerpts, and says "not found" rather than guessing |
+| 💬 | **Ask FinTalk AI** | A grounded, cited assistant across every meeting — it never opens the PII vault, answers only from retrieved redacted excerpts, and says "not found" rather than guessing. Also available scoped to a single meeting, from that meeting's own page |
 | 🕸️ | **Knowledge graph** | Meetings connect by shared topics and embedding similarity, so patterns across deals surface without anyone tagging anything by hand |
+| 🔎 | **Universal search** | One search box across meetings, decisions, action items, Shariah findings and graph nodes — capability-filtered, so it never surfaces a row the session couldn't open |
+| 🔔 | **Notifications** | A term sheet awaiting approval, a transcript landing with Shariah flags, an approval decision coming back — routed to whoever holds the capability to act on it |
 | 📊 | **Inclusivity analyzer** | Deterministic, rule-based talk-share breakdown per speaker — no model call, no PII risk, just arithmetic on segment timestamps |
 | 🧾 | **Immutable audit chain** | Every action appends to a hash-chained log; Postgres triggers reject `UPDATE`/`DELETE` outright |
 | 💳 | **Simulated settlement** | Explicitly fake by design — `simulated = true` is a database `CHECK` constraint, and every reference is `MOCK-`-prefixed so it can never be mistaken for a real payment |
-| 🛡️ | **Resilient AI layer** | A provider interface (`TranscriptionProvider`) with an automatic OpenRouter fallback — one Gemini failure gets one retry against a different model before the request actually fails |
+| 🛡️ | **Resilient AI layer** | A provider interface (`TranscriptionProvider`) with two independent fallback tiers — Vertex AI and the Gemini API key cover for each other automatically, whichever is primary, and an optional OpenRouter tier wraps the pair. Every tier is opt-in by environment variable; unset, boot behaviour is byte-for-byte what it was before |
 | 👥 | **Self-service onboarding** | Public sign-up lands an account in `PENDING` with zero capabilities until an admin approves and assigns a role |
 | 🎬 | **One-click demo accounts** | Five roles, one click each, for exactly this kind of evaluation |
 | 💰 | **No float ever touches money** | Amounts are `BigInt` minor units and rates are integer basis points, both crossing HTTP as strings — a JSON number silently drops cents above 2^53, and `JSON.stringify` can't serialize a `BigInt` at all |
@@ -103,13 +108,16 @@ Four invariants aren't conventions here — each fails loudly if broken, at the 
 ```mermaid
 flowchart TD
     subgraph Capture["1 · Capture"]
-        A["Maker records or uploads audio<br/>+ optional whiteboard photo"] --> B{"Consent confirmed?"}
+        A["Maker records or uploads audio<br/>+ optional whiteboard photo/drawing"] --> B{"Consent confirmed?"}
+        A2["Maker connects a<br/>Google Meet link instead"] --> B
         B -- "no" --> B1["422 — blocked before<br/>audio is even inspected"]
-        B -- "yes" --> C["Transcription provider<br/>Gemini/Vertex AI → OpenRouter fallback"]
+        B -- "yes" --> C["Transcription provider<br/>Vertex AI → Gemini key → OpenRouter"]
+        B -- "yes · via Meet" --> C2["Google's own transcript,<br/>fetched after the call ends"]
     end
 
     subgraph Protect["2 · Protect"]
         C --> D["PII redaction<br/>NRIC · bank acct · phone · email · card"]
+        C2 --> D
         D --> V[("PII Vault<br/>AES-256-GCM, no plaintext")]
         D --> F["Redacted transcript<br/>(RedactedText, type-enforced)"]
     end
@@ -165,7 +173,8 @@ Full request-time behavior: [`backend/src/pipeline/process-meeting.ts`](backend/
 | | `jose` (JWT) | Access/refresh token pair, separate secrets |
 | | Vitest | Unit + integration tests (real Postgres in CI) |
 | **AI** | Google Gemini (`@google/genai`) | Transcription, summarization, Shariah-safe generation, embeddings — API key locally, Vertex AI service account in production |
-| | OpenRouter | Automatic one-retry fallback if Gemini fails |
+| | OpenRouter | Optional outermost fallback tier, wrapping whichever Gemini transport is active |
+| | `googleapis` | Google Meet REST API v2 + OAuth 2.0 — post-call transcript import |
 | **Infra** | Vercel | Frontend hosting/CI |
 | | Railway | Backend + Postgres hosting, migration-gated deploys |
 | | GitHub Actions | CI — backend + frontend test suites, plus a dedicated secret-leak scan (`gitleaks`) |
@@ -177,21 +186,25 @@ Full request-time behavior: [`backend/src/pipeline/process-meeting.ts`](backend/
 ```
 FinTalk-AI/
 ├── frontend/                    # Next.js App Router
-│   ├── src/app/                 #   /login, /record, /meetings, /approvals,
-│   │                             #   /knowledge, /islamic-banking, /admin, /audit
-│   ├── src/components/          #   sidebar, toast, glass-panel, shared UI kit
+│   ├── src/app/                 #   /login, /record, /meetings, /approvals, /knowledge,
+│   │                             #   /islamic-banking, /admin, /audit, /settings
+│   ├── src/components/          #   sidebar, top search, notification bell, capture wizard,
+│   │                             #   whiteboard canvas, meeting-detail tabs, shared UI kit
 │   └── src/lib/                 #   api client, nav (capability-gated), participation, shariah-guidance
 │
 ├── backend/                     # Fastify API
-│   ├── src/routes/              #   auth, meetings, whiteboards, knowledge, compliance, users, feedback
+│   ├── src/routes/              #   auth, meetings, whiteboards, knowledge, compliance, users,
+│   │                             #   feedback, search, notifications, live-caption, google-auth,
+│   │                             #   google-webhook
 │   ├── src/pipeline/            #   process-meeting.ts — the capture pipeline
+│   │                             #   google-meet-fetcher.ts — Meet transcript import
 │   ├── src/ai/                  #   provider interface, gemini (API key or Vertex AI) / openrouter / fallback / fake
 │   ├── src/pdpa/                #   PII detectors, redactor, encrypted vault
 │   ├── src/shariah/             #   rule engine (6 issue types)
 │   ├── src/audit/                #   hash-chained append-only log
-│   ├── src/auth/                #   RBAC, capability matrix, tokens
-│   ├── src/knowledge/           #   graph + Ask FinTalk AI assistant
-│   ├── prisma/schema.prisma     #   19 models, 16 hand-written migrations
+│   ├── src/auth/                #   RBAC, capability matrix, tokens, Google OAuth
+│   ├── src/knowledge/           #   graph + Ask FinTalk AI assistant + capture-intent detection
+│   ├── prisma/schema.prisma     #   21 models, 22 hand-written migrations
 │   └── prisma/sql/constraints.sql  # DB-level invariants (four-eyes, rate exclusivity, simulated=true)
 │
 ├── docs/superpowers/specs/        # Original design specification
@@ -234,7 +247,7 @@ node -e "console.log('PII_VAULT_KEY=' + require('crypto').randomBytes(32).toStri
 
 ```bash
 npm run db:generate
-npm run db:deploy        # applies all 16 migrations, non-interactively
+npm run db:deploy        # applies all 22 migrations, non-interactively
 npm run db:constraints   # applies the hand-written CHECK constraints/triggers
 npm run db:seed          # creates the five demo accounts + sample data
 npm run dev               # → http://localhost:8080
@@ -255,7 +268,7 @@ Visit **http://localhost:3000/login** and click any demo role, or sign up and se
 ### Running the tests
 
 ```bash
-cd backend && npm test          # 35 files — unit + integration (needs Postgres)
+cd backend && npm test          # 46 files — unit + integration (needs Postgres)
 cd frontend && npm test         # component/unit suite
 ```
 
@@ -289,10 +302,13 @@ Never commit a real `.env` — both are gitignored, and CI fails the build if on
 | `DATABASE_URL` | Postgres connection string (Railway injects this in production) |
 | `TRANSCRIPTION_PROVIDER` | `gemini` \| `vertex` \| `fake` — `fake` needs no API key and is what CI runs on |
 | `GEMINI_API_KEY`, `GEMINI_MODEL_TRANSCRIBE`, `GEMINI_MODEL_VISION`, `GEMINI_MODEL_TEXT` | Required only when the provider is `gemini` (API-key auth against the Gemini Developer API) |
-| `GEMINI_MODEL_EMBEDDING` | Optional, `gemini` mode only — without it, the knowledge graph falls back to topic-only connections and Ask FinTalk AI reports itself unavailable, rather than failing at boot |
+| `GEMINI_MODEL_EMBEDDING` | Optional, `gemini` mode only — without it nothing fails at boot and nothing goes down: the knowledge graph falls back to topic-overlap connections, and Ask FinTalk AI falls back from semantic to keyword retrieval, labelling which one produced each answer |
 | `VERTEX_PROJECT_ID`, `VERTEX_LOCATION`, `GCP_SERVICE_ACCOUNT_KEY`, `VERTEX_MODEL_TRANSCRIBE`, `VERTEX_MODEL_VISION`, `VERTEX_MODEL_TEXT` | Required only when the provider is `vertex` — the same Gemini models, reached through a GCP service account's IAM identity instead of an API key. **This is what production runs.** |
-| `VERTEX_MODEL_EMBEDDING` | Optional, `vertex` mode only — same degrade behavior as `GEMINI_MODEL_EMBEDDING` |
-| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_MODEL_TRANSCRIBE` | Optional automatic fallback, wraps whichever provider is active — leave blank and it behaves exactly as before |
+| `VERTEX_MODEL_EMBEDDING` | Optional, `vertex` mode only — same degrade behavior as `GEMINI_MODEL_EMBEDDING`. **Production reads this one**, not the `GEMINI_` variant |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_MODEL_TRANSCRIBE` | Optional outermost fallback tier, wraps whichever provider is active — leave blank and it behaves exactly as before |
+| `AI_REQUEST_TIMEOUT_MS` | How long any single AI call may run before it's abandoned (defaults to 30s) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | Optional — OAuth credentials for Google Meet transcript import. Unset, the feature reports itself unconfigured instead of erroring |
+| `GOOGLE_WEBHOOK_SECRET` | Optional shared secret checked on `POST /webhooks/google-meet`; unset, the endpoint accepts unauthenticated notifications |
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL` | Session tokens — secrets must be ≥ 32 chars (`openssl rand -base64 48`) |
 | `PII_VAULT_KEY` | AES-256-GCM key for the PII vault — exactly 32 bytes, base64 (`openssl rand -base64 32`) |
 | `MEETING_RETENTION_DAYS` | PDPA retention window (defaults to a placeholder — see [Limitations](#-limitations)) |
@@ -307,15 +323,17 @@ Never commit a real `.env` — both are gitignored, and CI fails the build if on
 
 ## 🖱️ Usage
 
-The sidebar is named after the work, not the database tables — five stages, in the order they actually happen:
+The sidebar is named after the work, not the database tables — five stages, opening on the one you're most likely to want:
 
-1. **Capture** *(Maker)* — record in-browser or upload a file, photograph the whiteboard, confirm consent and the cross-border transfer disclosure.
-2. **Review** *(Maker/Checker/Shariah/Oversight)* — read the transcript with redactions inline, low-confidence segments flagged for human confirmation, and any Shariah findings with their excerpt, reference, and confidence.
+1. **Review Meetings** *(Maker/Checker/Shariah/Oversight)* — the default landing section. Read the transcript with redactions inline, low-confidence segments flagged for human confirmation, and any Shariah findings with their excerpt, reference, and confidence. Split across Summary / Transcript / Shariah Compliance / Term Sheet tabs, with a per-meeting AI chat grounded on that meeting alone.
+2. **Capture** *(Maker)* — record in-browser with live captions, upload a file, connect a Google Meet link, photograph or draw the whiteboard, confirm consent and the cross-border transfer disclosure.
 3. **Decide** *(Maker drafts → Checker approves)* — draft a term sheet as a conventional or Islamic facility (never both), submit for approval, and settle (simulated) once approved. Blocked entirely while a Shariah flag is unresolved.
-4. **Knowledge** *(anyone with transcript access)* — ask **Ask FinTalk AI** a question across every meeting, grounded and cited, or browse the graph of how meetings connect.
+4. **Knowledge Graph** *(anyone with transcript access)* — ask **Ask FinTalk AI** a question across every meeting, grounded and cited, or browse the graph of how meetings connect.
 5. **Administration** *(Admin)* — approve pending sign-ups, assign roles, and read the audit trail (Oversight can be granted this independently of meeting access).
 
 **Islamic Banking**, reachable by every role, is reference material — the same Shariah-principle explanations that back every flag raised in Review, so a finding is never just an opaque badge.
+
+Above the sidebar sit two shell-wide controls: a **search box** spanning meetings, decisions, action items, Shariah findings and graph nodes, and a **notification bell** for work routed to whoever can act on it. **Settings** carries appearance, avatar colour, Google account linking, and feedback.
 
 ---
 
@@ -348,7 +366,7 @@ working capital. We quote 8% interest per annum, paid monthly..."
 
 No formal accuracy or latency benchmark suite exists yet, and none is claimed here — what's real and checkable today:
 
-- **35 backend test files** (unit + integration) and a **frontend test suite**, covering redaction, the audit chain, RBAC/four-eyes invariants, the Shariah engine, the AI provider fallback path, settlement constraints, and more.
+- **46 backend test files** (unit + integration) and a **frontend test suite**, covering redaction, the audit chain, RBAC/four-eyes invariants, the Shariah engine, the AI provider fallback path, settlement constraints, Google Meet ingestion, and more.
 - **CI runs the full integration suite against a real Postgres 16 service container** on every push — not mocked — so the compliance invariants (checker ≠ maker, simulated settlement, append-only audit) are proven against the real database engine, not just asserted in application code.
 - **`processingMs`** is recorded on every transcript (wall-clock time from upload to stored transcript) and shown on the meeting page — no aggregate number is published, but the per-meeting figure is real, not decorative.
 - Transcription **confidence scores are self-reported by Gemini, not a calibrated accuracy metric** — the UI is required to label them "model self-reported confidence," never "accuracy," and segments below `0.6` are surfaced for a human to confirm rather than trusted outright.
@@ -367,6 +385,7 @@ Stated plainly, matching the project's own [regulatory gap analysis](docs/compli
 - **Cross-meeting similarity search is an in-process cosine loop**, not a vector index — fine at demo scale, with a documented ceiling beyond it.
 - **No self-service password reset yet.**
 - **No on-device or local transcription option.** A `local` provider was carried as a stub and withdrawn on 2026-08-10 — it named a capability the product didn't actually have. Every transcription call leaves the host for Gemini (API key or Vertex AI), or its OpenRouter fallback.
+- **Google Meet import is manual, not automatic.** Two constraints, both real: Google's own Transcripts (or Recording) feature must be switched on *during* the call — FinTalk never joins it and cannot enable it for you — and the transcript is then pulled by pressing **Sync Transcript Now** on the meeting. The webhook receiver for hands-off import exists, but nothing yet registers the Google Workspace Events subscription that would call it, so that path never fires on its own.
 - **This is a hackathon-stage build.** It has not been reviewed by a Malaysian-qualified lawyer or a registered Shariah adviser — see the compliance doc's own framing.
 
 ---
@@ -376,7 +395,7 @@ Stated plainly, matching the project's own [regulatory gap analysis](docs/compli
 **Built**
 - [x] Consent-gated capture (audio + whiteboard) with in-memory-only audio handling
 - [x] Fail-closed PII redaction with an encrypted vault and zero plaintext
-- [x] Six-rule bilingual Shariah engine with human clear/confirm workflow
+- [x] Seven-rule bilingual Shariah engine with human clear/confirm workflow
 - [x] Four-eyes term sheet approval, DB-enforced
 - [x] AI decision arbiter, action items, and project-kickoff draft
 - [x] Ask FinTalk AI — grounded, cited, vault-blind
@@ -385,10 +404,19 @@ Stated plainly, matching the project's own [regulatory gap analysis](docs/compli
 - [x] Hash-chained, trigger-enforced audit log
 - [x] Simulated settlement with DB-enforced fakery
 - [x] Self-service sign-up + admin approval
-- [x] Automatic Gemini/Vertex AI → OpenRouter fallback
+- [x] Two-tier AI failover — Vertex AI ⇄ Gemini API key, then OpenRouter
 - [x] CI with real-Postgres integration tests + secret scanning
+- [x] Google Meet transcript import (OAuth linking + manual sync)
+- [x] Live captions during in-browser recording
+- [x] In-browser whiteboard drawing, alongside whiteboard photos
+- [x] Conversational capture wizard inside Ask FinTalk AI
+- [x] Per-meeting AI chat, scoped to one transcript
+- [x] Universal search across meetings, decisions, actions, findings and graph nodes
+- [x] Capability-routed notifications
+- [x] Settings — appearance, avatar colour, Google account linking
 
-**Planned** — from the compliance review's own prioritized list
+**Planned** — from the compliance review's own prioritized list, plus known gaps
+- [ ] Hands-off Google Meet import — register a Workspace Events subscription so the existing webhook actually fires
 - [ ] Shariah counsel sign-off on every rule in `shariah/rules.ts`
 - [ ] Multi-factor authentication for privileged roles
 - [ ] Deliberate, documented data-retention policy (replacing the 90-day placeholder)

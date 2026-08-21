@@ -818,7 +818,7 @@ export function AskFinTalkAI({
               disabled={busy || wizardBlocksInput}
               placeholder={
                 mode === 'cowork'
-                  ? "Tell Copilot what meeting process to automate (e.g. 'Setup SME discussion meeting')..."
+                  ? "Tell Copilot what meeting process to automate (e.g. 'Setup a meeting called SME discussion')..."
                   : 'Ask anything about your meetings, decisions, or Islamic rules...'
               }
               rows={1}

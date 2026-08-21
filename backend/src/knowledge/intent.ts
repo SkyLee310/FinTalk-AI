@@ -22,6 +22,7 @@ const TRIGGERS = [
   /^(?:please\s+)?record (?:a |an )?(?:new )?meeting\b/i,
   /^(?:please\s+)?capture (?:a |an )?(?:new )?meeting\b/i,
   /^(?:please\s+)?create (?:a |an |another )?(?:new )?(?:recording|capture|meeting)\b/i,
+  /^(?:please\s+)?set\s?up (?:a |an |another )?(?:new )?(?:recording|capture|meeting)\b/i,
 ];
 
 /** A quoted title — "Credit committee review" — wins over anything else. */

@@ -7,6 +7,13 @@ describe('detectStartCaptureIntent', () => {
     expect(detectStartCaptureIntent('record a new meeting')).toEqual({ action: 'start_capture', title: '' });
     expect(detectStartCaptureIntent('capture a meeting')).toEqual({ action: 'start_capture', title: '' });
     expect(detectStartCaptureIntent('create a meeting')).toEqual({ action: 'start_capture', title: '' });
+    expect(detectStartCaptureIntent('setup a meeting')).toEqual({ action: 'start_capture', title: '' });
+    expect(detectStartCaptureIntent('set up a meeting')).toEqual({ action: 'start_capture', title: '' });
+  });
+
+  it('extracts a title from the Cowork panel\'s own example phrasing', () => {
+    expect(detectStartCaptureIntent('Setup a meeting called SME discussion'))
+      .toEqual({ action: 'start_capture', title: 'SME discussion' });
   });
 
   it('accepts "please" and "a/an/another/new" variants on "create"', () => {

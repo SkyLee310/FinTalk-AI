@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Badge, type Tone } from '@/components/badge';
 import { Card, CardHeader } from '@/components/card';
+import { toast } from '@/components/toast';
 import {
   Button,
   ErrorNote,
@@ -54,6 +55,14 @@ function ReviewForm({
     try {
       await Promise.all(flags.map((flag) => api.reviewFlag(flag.id, status, note)));
       await onDone();
+      toast(
+        status === 'CONFIRMED_VIOLATION'
+          ? 'Violation confirmed'
+          : status === 'CLEARED'
+            ? 'Cleared — no violation'
+            : 'Marked under review',
+        status === 'CONFIRMED_VIOLATION' ? 'danger' : status === 'CLEARED' ? 'ok' : 'neutral',
+      );
     } catch (cause) {
       setError(describeError(cause));
     } finally {

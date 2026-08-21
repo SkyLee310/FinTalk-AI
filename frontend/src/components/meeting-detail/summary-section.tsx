@@ -1,47 +1,19 @@
 'use client';
 
-import { useState } from 'react';
-import { Badge, type Tone } from '@/components/badge';
+import { Badge } from '@/components/badge';
 import { Card, CardHeader } from '@/components/card';
 import { MermaidDiagram } from '@/components/mermaid-diagram';
 import { TransferRecord } from '@/components/transfer-notice';
+import { Button } from '@/components/ui';
 import {
-  Button,
-  ErrorNote,
-  Field,
-  Spinner,
-  Textarea,
-} from '@/components/ui';
-import { describeError } from '@/hooks/use-async';
-import {
-  api,
   can,
   type MeetingDetail,
   type Session,
-  type ShariahFlagRow,
-  type ShariahStatus,
   type WhiteboardRow,
   WHITEBOARD_KIND_LABEL,
 } from '@/lib/api';
 import { computeParticipation, participationNudge } from '@/lib/participation';
-import { guidanceFor, SHARIAH_ISSUE_ORDER } from '@/lib/shariah-guidance';
 import { MeetingChat } from './meeting-chat';
-
-const FLAG_TONE: Record<ShariahStatus, Tone> = {
-  FLAGGED: 'warn',
-  UNDER_REVIEW: 'brand',
-  CLEARED: 'ok',
-  CONFIRMED_VIOLATION: 'danger',
-};
-
-const ISSUE_LABEL: Record<string, string> = {
-  RIBA: 'riba — interest, or a charge that functions as interest',
-  GHARAR: 'gharar — excessive uncertainty in the contract terms',
-  MAYSIR: 'maysir — a speculative or gambling element',
-  HARAM_SECTOR: 'a prohibited business sector',
-  CONTRACT_MISMATCH: 'a mismatch between the contract named and the terms described',
-  LATE_PAYMENT_PENALTY: 'a late-payment penalty that may function as interest',
-};
 
 export function RedactedText({ text }: { text: string }) {
   const parts = text.split(/(\[[A-Z_]+_\d+\])/g);
@@ -136,94 +108,10 @@ export function renderStructuredValue(value: unknown) {
   return <RedactedText text={String(value)} />;
 }
 
-function ReviewForm({ flags, onDone }: { flags: ShariahFlagRow[]; onDone: () => void }) {
-  const [note, setNote] = useState('');
-  const [busy, setBusy] = useState<ShariahStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function record(status: ShariahStatus): Promise<void> {
-    setBusy(status);
-    setError(null);
-    try {
-      await Promise.all(flags.map((flag) => api.reviewFlag(flag.id, status, note)));
-      onDone();
-    } catch (cause) {
-      setError(describeError(cause));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  const primary = flags[0]!;
-  const described = ISSUE_LABEL[primary.issueType] ?? primary.issueType;
-  const noteRequired = note.trim() === '';
-  const multiple = flags.length > 1;
-
-  return (
-    <div className="mt-4 space-y-3 border-t border-line pt-4">
-      {error && <ErrorNote>{error}</ErrorNote>}
-
-      <div className="rounded-lg border border-line bg-raised p-4">
-        <p className="text-sm font-medium text-text">Is this a genuine Shariah concern?</p>
-        <p className="mt-1 text-sm text-muted">
-          The <span className="font-mono text-xs">{primary.detectedBy}</span> rule flagged what may be {described}
-          {multiple ? `, at ${String(flags.length)} places in this transcript` : ''}. That is a machine reading of the transcript, not a ruling. Your answer is the ruling
-          {multiple ? ' for all of them' : ''}.
-        </p>
-      </div>
-
-      <Field
-        label="Your reasoning"
-        htmlFor={`note-${primary.id}`}
-        hint="Required for yes or no. Cite the placeholder, e.g. [NRIC_1] — a note containing personal data is rejected."
-      >
-        <Textarea
-          id={`note-${primary.id}`}
-          rows={3}
-          value={note}
-          disabled={busy !== null}
-          onChange={(event) => setNote(event.target.value)}
-        />
-      </Field>
-
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="danger"
-          disabled={busy !== null || noteRequired}
-          onClick={() => void record('CONFIRMED_VIOLATION')}
-        >
-          {busy === 'CONFIRMED_VIOLATION' ? <Spinner label="Saving…" /> : 'Yes — confirm violation'}
-        </Button>
-        <Button
-          variant="secondary"
-          disabled={busy !== null || noteRequired}
-          onClick={() => void record('CLEARED')}
-        >
-          {busy === 'CLEARED' ? <Spinner label="Saving…" /> : 'No — clear finding'}
-        </Button>
-        <Button
-          variant="secondary"
-          disabled={busy !== null}
-          onClick={() => void record('UNDER_REVIEW')}
-        >
-          {busy === 'UNDER_REVIEW' ? <Spinner label="Saving…" /> : 'Mark under review'}
-        </Button>
-      </div>
-      {noteRequired && (
-        <p className="text-xs text-muted">
-          A written reason is required before confirming or clearing a finding.
-        </p>
-      )}
-    </div>
-  );
-}
-
 export interface SummarySectionProps {
   meeting: MeetingDetail;
   whiteboards: WhiteboardRow[];
   session: Session | null;
-  onRefresh: () => void;
-  onJumpToTranscriptSegment?: (segmentId: string) => void;
   onJumpToShariahTab?: () => void;
   onJumpToTermSheetTab?: () => void;
 }
@@ -232,8 +120,6 @@ export function SummarySection({
   meeting,
   whiteboards,
   session,
-  onRefresh,
-  onJumpToTranscriptSegment,
   onJumpToShariahTab,
   onJumpToTermSheetTab,
 }: SummarySectionProps) {
@@ -245,21 +131,6 @@ export function SummarySection({
   );
   const quietSpeakers = participation.filter((p) => p.quiet);
   const nudges = quietSpeakers.map(participationNudge).filter((n): n is string => n !== null);
-
-  // Group Shariah flags by issueType
-  const groupedFlags = (meeting.shariahFlags ?? []).reduce(
-    (acc: Record<string, ShariahFlagRow[]>, flag: ShariahFlagRow) => {
-      const list = acc[flag.issueType] ?? [];
-      return { ...acc, [flag.issueType]: [...list, flag] };
-    },
-    {},
-  );
-
-  const flagEntries = Object.entries(groupedFlags).sort(([a], [b]) => {
-    const aOrder = SHARIAH_ISSUE_ORDER.indexOf(a);
-    const bOrder = SHARIAH_ISSUE_ORDER.indexOf(b);
-    return (aOrder === -1 ? 99 : aOrder) - (bOrder === -1 ? 99 : bOrder);
-  });
 
   const openFlagCount = (meeting.shariahFlags ?? []).filter(
     (f) => f.status === 'FLAGGED' || f.status === 'UNDER_REVIEW',
@@ -461,91 +332,6 @@ export function SummarySection({
           </div>
         </Card>
       )}
-
-      {/* Shariah Compliance Findings */}
-      <Card>
-        <CardHeader
-          title="Shariah Compliance Screening"
-          description={`Screened against ${String(meeting.shariahRuleCount ?? 6)} AAOIFI & SAC BNM rules.`}
-          action={
-            onJumpToShariahTab ? (
-              <Button
-                variant="secondary"
-                onClick={onJumpToShariahTab}
-                className="text-xs"
-              >
-                Open Full Shariah Tab →
-              </Button>
-            ) : undefined
-          }
-        />
-        <div className="p-4 sm:p-6 space-y-4">
-          {flagEntries.length === 0 ? (
-            <div className="rounded-lg border border-ok/20 bg-ok-soft/30 p-4 text-center">
-              <p className="text-sm font-medium text-ok">No Shariah concerns detected</p>
-              <p className="text-xs text-muted mt-1">
-                Transcript and uploaded materials were screened without finding prohibited clauses or terms.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {flagEntries.map(([issueType, flags]) => {
-                const primary = flags[0]!;
-                const guidance = guidanceFor(issueType);
-                return (
-                  <div
-                    key={issueType}
-                    className="rounded-lg border border-line bg-raised/30 p-4 sm:p-5 space-y-3"
-                  >
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <Badge tone={FLAG_TONE[primary.status]}>{primary.status}</Badge>
-                        <h4 className="text-sm font-semibold text-text font-mono">{issueType}</h4>
-                      </div>
-                      {primary.reference && (
-                        <span className="text-xs text-muted font-mono">{primary.reference}</span>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      {flags.map((flag) => (
-                        <div
-                          key={flag.id}
-                          className="rounded border border-line bg-surface p-3 text-xs leading-relaxed text-text"
-                        >
-                          <p>
-                            <ShariahExcerpt text={flag.excerpt} highlights={flag.highlights ?? []} />
-                          </p>
-                          {flag.segmentId && onJumpToTranscriptSegment && (
-                            <button
-                              type="button"
-                              onClick={() => onJumpToTranscriptSegment(flag.segmentId!)}
-                              className="mt-2 inline-flex items-center gap-1 text-xs text-brand hover:underline font-mono"
-                            >
-                              Jump to transcript line →
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
-                    {guidance && (
-                      <div className="rounded-md bg-raised p-3 text-xs text-muted space-y-1">
-                        <p className="font-semibold text-text">{guidance.title}</p>
-                        <p>{guidance.whyItViolates}</p>
-                      </div>
-                    )}
-
-                    {isShariahReviewer && (
-                      <ReviewForm flags={flags} onDone={onRefresh} />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </Card>
 
       {/* Whiteboards & Artifacts */}
       {whiteboards.length > 0 && (

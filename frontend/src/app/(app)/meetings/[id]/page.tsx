@@ -319,14 +319,6 @@ export default function MeetingDetailPage() {
                 meeting={data}
                 whiteboards={boards}
                 session={session.data}
-                onRefresh={() => {
-                  meeting.reload({ silent: true });
-                  whiteboards.reload({ silent: true });
-                }}
-                onJumpToTranscriptSegment={(segId) => {
-                  setActiveTab('transcript');
-                  setHighlightedSegmentId(segId);
-                }}
                 onJumpToShariahTab={() => setActiveTab('shariah')}
                 onJumpToTermSheetTab={() => setActiveTab('term-sheet')}
               />

@@ -356,6 +356,8 @@ export function AskFinTalkAI({
         },
       ]);
       setWizard(null);
+      onClose();
+      router.push(`/meetings/${result.meetingId}`);
     } catch (cause) {
       setError(describeError(cause));
       if (open) setWizard(toSubmit);

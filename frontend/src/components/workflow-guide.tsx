@@ -51,12 +51,12 @@ const WORKFLOW_STEPS: StepInfo[] = [
   },
   {
     number: 4,
-    label: 'Decide',
+    label: 'Approve',
     desc: 'Approve & settle',
     icon: CheckCircle2,
     role: 'Checker',
     detail: 'Independent checker approves facility and simulates settlement.',
-    cta: 'Open Decide',
+    cta: 'Open Approvals',
     href: '/approvals',
   },
 ];

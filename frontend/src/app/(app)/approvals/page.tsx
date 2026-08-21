@@ -470,8 +470,8 @@ export default function ApprovalsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Decide"
-        title="Approvals and settlement"
+        eyebrow="Credit Facilities"
+        title="Approval and Settlement"
       />
 
       {done && <SuccessNote>{done}</SuccessNote>}
@@ -480,7 +480,7 @@ export default function ApprovalsPage() {
 
       {/* Horizontal Tabs Header styled exactly like meeting detail tabs */}
       <div className="border-b border-line bg-surface/50 backdrop-blur-sm sticky top-0 z-10 -mx-4 px-4 sm:-mx-6 sm:px-6">
-        <nav className="flex space-x-2 sm:space-x-4" aria-label="Decide sections" role="tablist">
+        <nav className="flex space-x-2 sm:space-x-4" aria-label="Approval and Settlement sections" role="tablist">
           {/* Approvals Tab */}
           <button
             type="button"

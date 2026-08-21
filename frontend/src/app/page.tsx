@@ -71,7 +71,7 @@ const PILLARS = [
       + 'qualified reviewer, who answers yes or no — the system never rules.',
   },
   {
-    stage: 'Decide',
+    stage: 'Approval & Settlement',
     title: 'Two people, or it does not happen',
     body:
       'A maker drafts and submits a term sheet; a different person approves it, and '

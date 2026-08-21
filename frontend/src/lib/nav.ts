@@ -51,8 +51,8 @@ export const NAV: readonly NavItem[] = [
   },
   {
     href: '/approvals',
-    label: 'Decide',
-    hint: 'Term sheets, approvals and settlement',
+    label: 'Approval and Settlement',
+    hint: 'Term sheets, credit approvals and settlement',
     needs: ['termsheet:draft', 'termsheet:approve'],
   },
   {

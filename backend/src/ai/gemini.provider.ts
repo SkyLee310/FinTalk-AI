@@ -104,6 +104,13 @@ export interface GeminiConfig {
 function logApiErrorStatus(stage: string, cause: unknown): void {
   if (cause instanceof ApiError) {
     console.error(`[gemini:${stage}] ApiError status=${cause.status}`);
+  } else if (cause instanceof TranscriptionError) {
+    // Safe to log in full: every TranscriptionError message in this file is
+    // built from static text, an error class name, a stage, or a duration —
+    // never transcript or audio content. This is what makes a timeout
+    // (cause.name === 'TranscriptionError', no ApiError status) distinguishable
+    // from every other failure mode instead of collapsing into one opaque line.
+    console.error(`[gemini:${stage}] ${cause.message}`);
   }
 }
 

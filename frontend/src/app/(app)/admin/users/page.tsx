@@ -548,11 +548,6 @@ export default function AdminUsersPage() {
       <PageHeader
         eyebrow="Administration"
         title="Users and roles"
-        lead={
-          'A role decides what someone can do, and several of them are compliance '
-          + 'boundaries rather than conveniences. Every change here is written to the '
-          + 'audit trail.'
-        }
       />
 
       {done !== null && <SuccessNote>{done}</SuccessNote>}
@@ -570,7 +565,6 @@ export default function AdminUsersPage() {
 
       <Section
         title="Pending approval"
-        description="A self-registered account waits here with no role and no access until you approve it."
       >
         {!users.loading && pendingUsers.length === 0 && (
           <EmptyState
@@ -598,7 +592,6 @@ export default function AdminUsersPage() {
 
       <Section
         title="Accounts"
-        description="Deactivated accounts are kept, not deleted — their approvals and audit entries name them."
       >
         <ul className="space-y-4">
           {activeUsers.map((user) => (

@@ -215,7 +215,7 @@ export function Disclosure({
 }
 
 const VARIANTS = {
-  primary: 'bg-brand text-canvas hover:opacity-90',
+  primary: 'bg-brand text-white hover:opacity-90',
   secondary: 'border border-line-strong bg-surface text-text hover:bg-raised',
   danger: 'border border-danger/40 bg-danger-soft text-danger hover:opacity-90',
 } as const;

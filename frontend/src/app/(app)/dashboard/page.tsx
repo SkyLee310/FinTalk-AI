@@ -12,6 +12,7 @@ import {
   Spinner,
   Stat,
 } from '@/components/ui';
+import { WorkflowGuide } from '@/components/workflow-guide';
 import { useAsync } from '@/hooks/use-async';
 import {
   api,
@@ -39,6 +40,14 @@ const DECISION_TONE: Record<ApprovalStatus, Tone> = {
   APPROVED: 'ok',
   REJECTED: 'danger',
   WITHDRAWN: 'neutral',
+};
+
+const DECISION_LABEL: Record<ApprovalStatus, string> = {
+  DRAFT: 'DRAFT',
+  PENDING_CHECKER: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  WITHDRAWN: 'WITHDRAWN',
 };
 
 const MEETING_STATUS_TONE: Record<MeetingStatus, Tone> = {
@@ -77,11 +86,10 @@ export default function DashboardPage() {
   const isOversight = user.role === 'OVERSIGHT';
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         eyebrow="Workspace Dashboard"
         title={`Welcome back, ${user.displayName}`}
-        lead={getRoleLead(user.role)}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={ROLE_TONE[user.role] ?? 'neutral'} dot>
@@ -94,20 +102,8 @@ export default function DashboardPage() {
         }
       />
 
-      {/* Quick Action bar for Makers */}
-      {isMaker && (
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-brand/20 bg-brand-soft p-4">
-          <div>
-            <h2 className="text-sm font-semibold text-text">Ready to record a client discussion?</h2>
-            <p className="mt-0.5 text-caption text-muted">
-              Capture meeting audio, process live captions, or import from Google Meet.
-            </p>
-          </div>
-          <Link href="/record">
-            <Button className="shrink-0">Start Meeting Capture</Button>
-          </Link>
-        </div>
-      )}
+      {/* Interactive 4-Step Lifecycle Guide for First-time and Regular Users */}
+      <WorkflowGuide user={user} />
 
       {/* Role-specific Sections */}
       {isChecker && <CheckerSection />}
@@ -117,23 +113,6 @@ export default function DashboardPage() {
       {isOversight && <OversightSection />}
     </div>
   );
-}
-
-function getRoleLead(role: string): string {
-  switch (role) {
-    case 'MAKER':
-      return 'Here is the current status of your submitted term sheets, pending approvals, and recent meetings.';
-    case 'CHECKER':
-      return 'Review pending term sheet approvals, assess financing compliance, and record settlements.';
-    case 'SHARIAH':
-      return 'Audit flagged meetings for Islamic finance compliance, review excerpts, and clear findings.';
-    case 'ADMIN':
-      return 'Manage user registrations, assign role permissions, and review received product feedback.';
-    case 'OVERSIGHT':
-      return 'Inspect high-level meeting records, audit trail integrity, and governance reports.';
-    default:
-      return 'Here are your pending tasks and recent workspace activities.';
-  }
 }
 
 /** -----------------------------------------------------------------------
@@ -157,26 +136,22 @@ function CheckerSection() {
         <Stat
           label="Pending Approvals"
           value={pendingApprovals.length}
-          hint="Term sheets waiting for checker decision"
           tone={pendingApprovals.length > 0 ? 'warn' : 'ok'}
         />
         <Stat
           label="Awaiting Settlement"
           value={awaitingSettlement.length}
-          hint="Approved facilities ready for simulated settlement"
           tone={awaitingSettlement.length > 0 ? 'brand' : 'neutral'}
         />
         <Stat
           label="Total Handled"
           value={approvals.length}
-          hint="All submissions recorded across the organization"
           tone="neutral"
         />
       </div>
 
       <Section
         title="Pending Term Sheet Approvals"
-        description="Submissions requiring your four-eyes review and credit approval."
         action={
           <Link href="/approvals" className="text-caption font-medium text-brand hover:underline">
             View all approvals →
@@ -237,26 +212,22 @@ function ShariahSection() {
         <Stat
           label="Flagged Meetings"
           value={flaggedMeetings.length}
-          hint="Discussions with potential Shariah issues"
           tone={flaggedMeetings.length > 0 ? 'warn' : 'ok'}
         />
         <Stat
           label="Total Findings"
           value={totalFindings}
-          hint="Active findings detected across meeting transcripts"
           tone={totalFindings > 0 ? 'warn' : 'neutral'}
         />
         <Stat
           label="Audited Meetings"
           value={meetings.length}
-          hint="Total meetings in the corpus"
           tone="neutral"
         />
       </div>
 
       <Section
         title="Meetings Requiring Shariah Review"
-        description="Meetings containing flagged Islamic financing principles (Riba, Gharar, Inah, etc.)."
         action={
           <Link href="/meetings" className="text-caption font-medium text-brand hover:underline">
             View all meetings →
@@ -319,19 +290,16 @@ function AdminSection() {
         <Stat
           label="Pending Registrations"
           value={pendingUsers.length}
-          hint="New user sign-ups awaiting role assignment"
           tone={pendingUsers.length > 0 ? 'warn' : 'ok'}
         />
         <Stat
           label="Active Users"
           value={users.filter((u) => u.accountStatus === 'ACTIVE').length}
-          hint="Total onboarded users in FinTalk AI"
           tone="neutral"
         />
         <Stat
           label="Feedback Received"
           value={feedbackList.length}
-          hint="Suggestions and bug reports from users"
           tone={feedbackList.length > 0 ? 'brand' : 'neutral'}
         />
       </div>
@@ -340,7 +308,6 @@ function AdminSection() {
         {/* Pending Users Column */}
         <Section
           title="Pending Approvals"
-          description="Users requesting access to the platform."
           action={
             <Link href="/admin/users" className="text-caption font-medium text-brand hover:underline">
               Manage users →
@@ -376,7 +343,6 @@ function AdminSection() {
         {/* Feedback Column */}
         <Section
           title="Recent Feedback"
-          description="User feedback submitted via Settings."
           action={
             <Link href="/admin" className="text-caption font-medium text-brand hover:underline">
               View all feedback →
@@ -436,27 +402,23 @@ function MakerSection({ session }: { session: Session }) {
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
-          label="In-Flight Deals"
+          label="Pending Approval"
           value={myInFlight.length}
-          hint="Term sheets awaiting Checker review"
           tone={myInFlight.length > 0 ? 'warn' : 'neutral'}
         />
         <Stat
           label="Approved Facilities"
           value={myApproved.length}
-          hint="Successfully approved term sheets"
           tone="ok"
         />
         <Stat
           label="Action Required"
           value={myRejected.length}
-          hint="Rejected term sheets needing revision"
           tone={myRejected.length > 0 ? 'danger' : 'neutral'}
         />
         <Stat
           label="Captured Meetings"
           value={myMeetings.length}
-          hint="Total discussions you have recorded"
           tone="brand"
         />
       </div>
@@ -465,7 +427,6 @@ function MakerSection({ session }: { session: Session }) {
         {/* In-flight and recent approvals */}
         <Section
           title="My Term Sheet Submissions"
-          description="Progress on your submitted deals."
           action={
             <Link href="/approvals" className="text-caption font-medium text-brand hover:underline">
               Go to Approvals →
@@ -490,7 +451,9 @@ function MakerSection({ session }: { session: Session }) {
                             {approval.termSheet.currency} {approval.termSheet.principalFormatted}
                           </p>
                         </div>
-                        <Badge tone={DECISION_TONE[approval.decision]}>{approval.decision}</Badge>
+                        <Badge tone={DECISION_TONE[approval.decision]}>
+                          {DECISION_LABEL[approval.decision]}
+                        </Badge>
                       </div>
                       {approval.note && (
                         <p className="mt-2 text-xs italic text-faint">Note: &ldquo;{approval.note}&rdquo;</p>
@@ -506,7 +469,6 @@ function MakerSection({ session }: { session: Session }) {
         {/* My recent meetings */}
         <Section
           title="Recent Meetings"
-          description="Your recorded discussions and extracted insights."
           action={
             <Link href="/meetings" className="text-caption font-medium text-brand hover:underline">
               View all meetings →
@@ -559,14 +521,13 @@ function OversightSection() {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Total Meetings" value={meetings.length} hint="Recorded across all makers" tone="brand" />
-        <Stat label="Shariah Findings" value={totalFindings} hint="Total compliance flags raised" tone="warn" />
-        <Stat label="Term Sheets" value={totalTermSheets} hint="Total financing facilities drafted" tone="neutral" />
+        <Stat label="Total Meetings" value={meetings.length} tone="brand" />
+        <Stat label="Shariah Findings" value={totalFindings} tone="warn" />
+        <Stat label="Term Sheets" value={totalTermSheets} tone="neutral" />
       </div>
 
       <Section
         title="Recent Meeting Records"
-        description="Comprehensive archive of discussions, transcripts, and compliance findings."
         action={
           <Link href="/meetings" className="text-caption font-medium text-brand hover:underline">
             Open Meeting Archive →

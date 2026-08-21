@@ -146,12 +146,12 @@ export function AskFinTalkAITrigger({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="group relative inline-flex items-center gap-2 rounded-full border border-line-strong/80 bg-surface/90 px-4 py-2 text-sm font-semibold text-text shadow-sm backdrop-blur-md transition-all duration-200 hover:-translate-y-px hover:border-brand/40 hover:bg-raised hover:shadow-md hover:shadow-brand/10 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      className="group inline-flex h-9 items-center gap-2 rounded-full border border-line-strong/80 bg-surface/90 px-3.5 text-xs font-medium text-text shadow-xs backdrop-blur-md transition-all duration-150 hover:border-brand/40 hover:bg-raised active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
     >
-      <span className="grid size-5 place-items-center rounded-full bg-gradient-to-tr from-brand to-sky-400 text-white shadow-sm shadow-brand/30">
-        <Sparkles className="size-3 transition-transform duration-300 group-hover:rotate-12" />
+      <span className="grid size-5 shrink-0 place-items-center rounded-full bg-gradient-to-tr from-brand to-sky-400 text-white shadow-xs">
+        <Sparkles className="size-3 transition-transform duration-200 group-hover:rotate-12" />
       </span>
-      <span>Ask FinTalk AI</span>
+      <span className="font-medium">Ask FinTalk AI</span>
     </button>
   );
 }

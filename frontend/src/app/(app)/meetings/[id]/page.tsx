@@ -328,6 +328,7 @@ export default function MeetingDetailPage() {
                   setHighlightedSegmentId(segId);
                 }}
                 onJumpToShariahTab={() => setActiveTab('shariah')}
+                onJumpToTermSheetTab={() => setActiveTab('term-sheet')}
               />
             )}
 

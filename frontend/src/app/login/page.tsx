@@ -1,9 +1,11 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { type FormEvent, Suspense, useState } from 'react';
+import { Home } from 'lucide-react';
+import { FallingLogoBackground } from '@/components/falling-logo-background';
 import { GlassPanel } from '@/components/glass-panel';
-import { Logo } from '@/components/logo';
 import { toast } from '@/components/toast';
 import { Button, ErrorNote, Field, Input, Spinner, SuccessNote } from '@/components/ui';
 import { describeError } from '@/hooks/use-async';
@@ -15,13 +17,43 @@ import { navigateWithTransition } from '@/lib/view-transition';
 type Mode = 'signin' | 'signup';
 
 const DEMO_PASSWORD = 'Demo!2345';
-const DEMO_ACCOUNTS: readonly { readonly role: string; readonly email: string }[] = [
-  { role: 'Maker', email: 'maker@fintalk.ai' },
-  { role: 'Checker', email: 'checker@fintalk.ai' },
-  { role: 'Shariah', email: 'shariah@fintalk.ai' },
-  { role: 'Oversight', email: 'oversight@fintalk.ai' },
-  { role: 'Admin', email: 'admin@fintalk.ai' },
-];
+const DEMO_ACCOUNTS = [
+  {
+    role: 'Maker',
+    email: 'maker@fintalk.ai',
+    title: 'Relationship Mgr',
+    desc: 'Records meetings & drafts credit term sheets.',
+    badge: 'Draft',
+  },
+  {
+    role: 'Checker',
+    email: 'checker@fintalk.ai',
+    title: 'Credit Officer',
+    desc: 'Approves term sheets & simulates disbursement.',
+    badge: 'Approve',
+  },
+  {
+    role: 'Shariah',
+    email: 'shariah@fintalk.ai',
+    title: 'Compliance Officer',
+    desc: 'Screens & resolves Shariah compliance flags.',
+    badge: 'Review',
+  },
+  {
+    role: 'Oversight',
+    email: 'oversight@fintalk.ai',
+    title: 'Auditor',
+    desc: 'Read-only access across meetings & audit trail.',
+    badge: 'Audit',
+  },
+  {
+    role: 'Admin',
+    email: 'admin@fintalk.ai',
+    title: 'Administrator',
+    desc: 'Manages user roles & system settings.',
+    badge: 'Admin',
+  },
+] as const;
 
 /**
  * The one sign-in path both the real form and the one-click demo buttons
@@ -56,18 +88,31 @@ async function performSignIn(
  */
 export default function LoginPage() {
   return (
-    <Suspense
-      fallback={
-        <main
-          id="main"
-          className="mx-auto flex min-h-[80vh] max-w-md items-center justify-center px-5"
-        >
-          <Spinner label="Loading" />
-        </main>
-      }
-    >
-      <LoginPageContent />
-    </Suspense>
+    <>
+      <FallingLogoBackground />
+      {/* Top-left rounded home button */}
+      <Link
+        href="/"
+        aria-label="Back to main page"
+        title="Back to main page"
+        className="fixed top-5 left-5 z-40 flex size-11 items-center justify-center rounded-2xl border border-glass-border bg-glass-bg shadow-md shadow-black/5 dark:shadow-black/30 backdrop-blur-2xl text-text transition-all duration-150 hover:scale-105 hover:bg-surface hover:text-brand active:scale-95"
+      >
+        <Home className="size-5" />
+      </Link>
+
+      <Suspense
+        fallback={
+          <main
+            id="main"
+            className="relative z-10 mx-auto flex min-h-[80vh] max-w-md items-center justify-center px-5"
+          >
+            <Spinner label="Loading" />
+          </main>
+        }
+      >
+        <LoginPageContent />
+      </Suspense>
+    </>
   );
 }
 
@@ -112,15 +157,8 @@ function LoginPageContent() {
     return (
       <main
         id="main"
-        className="mx-auto flex min-h-[80vh] max-w-md flex-col justify-center px-5 py-12"
+        className="relative z-10 mx-auto flex min-h-[85vh] max-w-md flex-col justify-center px-5 py-12"
       >
-        <div className="mb-6 flex items-center gap-3">
-          <span className="text-brand">
-            <Logo />
-          </span>
-          <h1 className="text-lg font-semibold tracking-tight">FinTalk AI</h1>
-        </div>
-
         <GlassPanel className="p-6 sm:p-8">
           <SuccessNote>
             Your request has been submitted. An administrator will review it and assign
@@ -151,27 +189,20 @@ function LoginPageContent() {
   return (
     <main
       id="main"
-      className="mx-auto flex min-h-[80vh] max-w-md flex-col justify-center px-5 py-12"
+      className="relative z-10 mx-auto flex min-h-[85vh] max-w-md flex-col justify-center px-5 py-12"
     >
-      <div className="mb-6 flex items-center gap-3">
-        <span className="text-brand">
-          <Logo />
-        </span>
-        <h1 className="text-lg font-semibold tracking-tight">FinTalk AI</h1>
-      </div>
-
       <GlassPanel className="p-6 sm:p-8">
         <div
           role="tablist"
           aria-label="Sign in or sign up"
-          className="mb-6 grid grid-cols-2 gap-1 rounded-lg border border-line-strong bg-raised p-1"
+          className="mb-6 grid grid-cols-2 gap-1 rounded-xl border border-line-strong bg-surface/70 dark:bg-raised/70 p-1 backdrop-blur-md"
         >
           <button
             type="button"
             role="tab"
             aria-selected={mode === 'signin'}
             onClick={() => setMode('signin')}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
               mode === 'signin'
                 ? 'bg-surface text-text shadow-[0_1px_2px_rgb(0_0_0/0.06)]'
                 : 'text-muted hover:text-text'
@@ -184,7 +215,7 @@ function LoginPageContent() {
             role="tab"
             aria-selected={mode === 'signup'}
             onClick={() => setMode('signup')}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
               mode === 'signup'
                 ? 'bg-surface text-text shadow-[0_1px_2px_rgb(0_0_0/0.06)]'
                 : 'text-muted hover:text-text'
@@ -198,11 +229,6 @@ function LoginPageContent() {
           <h2 className="text-[1.75rem] font-bold leading-tight tracking-[-0.02em] sm:text-[2rem]">
             {mode === 'signin' ? 'Sign in' : 'Request access'}
           </h2>
-          <p className="mt-1.5 text-sm text-muted">
-            {mode === 'signin'
-              ? 'Enter your credentials to continue.'
-              : 'Tell us who you are — an administrator will review and assign access.'}
-          </p>
         </div>
 
         {mode === 'signin' ? (
@@ -272,29 +298,31 @@ function SignInForm({
     >
       {error && <ErrorNote>{error}</ErrorNote>}
 
-      <Field label="Email" htmlFor="email">
-        <Input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="username"
-          required
-          value={email}
-          onChange={(event) => onEmailChange(event.target.value)}
-        />
-      </Field>
+      <div className="min-h-[160px] space-y-4">
+        <Field label="Email" htmlFor="email">
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="username"
+            required
+            value={email}
+            onChange={(event) => onEmailChange(event.target.value)}
+          />
+        </Field>
 
-      <Field label="Password" htmlFor="password">
-        <Input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(event) => onPasswordChange(event.target.value)}
-        />
-      </Field>
+        <Field label="Password" htmlFor="password">
+          <Input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(event) => onPasswordChange(event.target.value)}
+          />
+        </Field>
+      </div>
 
       <Button type="submit" disabled={busy} className="w-full">
         {busy ? 'Signing in…' : 'Sign in'}
@@ -316,31 +344,42 @@ function DemoAccounts({
   onSelect,
 }: {
   busy: boolean;
-  onSelect: (account: { role: string; email: string }) => void;
+  onSelect: (account: (typeof DEMO_ACCOUNTS)[number]) => void;
 }) {
   return (
-    <div className="mt-5 rounded-lg border border-line bg-raised px-4 py-3 text-xs text-muted">
-      <p className="font-medium text-text">Demo accounts — synthetic data only</p>
-      <p className="mt-1">Click a role to fill in its credentials and sign in.</p>
-      <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Demo accounts">
+    <GlassPanel className="mt-5 p-4 text-xs text-muted">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-semibold text-text">Demo Roles</p>
+        <span className="rounded-full bg-brand/10 px-2 py-0.5 font-mono text-[0.65rem] font-medium text-brand border border-brand/20">
+          One-Click Login
+        </span>
+      </div>
+
+      {/* Role Pill Buttons */}
+      <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-3 gap-1.5" role="group" aria-label="Demo accounts">
         {DEMO_ACCOUNTS.map((account) => (
           <button
             key={account.email}
             type="button"
             disabled={busy}
             onClick={() => onSelect(account)}
-            className="rounded-md border border-line-strong bg-surface px-2.5 py-1 font-mono text-[0.7rem] font-medium text-text transition hover:bg-canvas focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-50"
+            className="group flex flex-col items-start rounded-xl border border-line-strong bg-surface/70 p-2 text-left transition-all duration-150 hover:border-brand/40 hover:bg-raised active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {account.role}
+            <div className="flex w-full items-center justify-between gap-1">
+              <span className="font-mono text-xs font-bold text-text group-hover:text-brand">
+                {account.role}
+              </span>
+              <span className="text-[0.6rem] font-medium text-brand">
+                {account.badge}
+              </span>
+            </div>
+            <span className="text-[0.68rem] text-muted truncate w-full">
+              {account.title}
+            </span>
           </button>
         ))}
       </div>
-      <p className="mt-2 text-faint">
-        Manual sign-in uses the same password, <code className="font-mono">Demo!2345</code>. Run{' '}
-        <code className="font-mono">npm run db:seed</code> in <code className="font-mono">backend/</code>{' '}
-        first.
-      </p>
-    </div>
+    </GlassPanel>
   );
 }
 
@@ -461,78 +500,80 @@ function SignUpForm({ onSuccess }: { onSuccess: () => void }) {
     >
       {error && <ErrorNote>{error}</ErrorNote>}
 
-      <Field label="Full name" htmlFor="displayName" hint={fieldErrors.displayName}>
-        <Input
-          id="displayName"
-          name="displayName"
-          autoComplete="name"
-          required
-          value={fields.displayName}
-          onChange={(event) => set('displayName', event.target.value)}
-        />
-      </Field>
+      <div className="custom-scrollbar h-[160px] space-y-4 overflow-y-auto pr-2 -mr-1">
+        <Field label="Full name" htmlFor="displayName" hint={fieldErrors.displayName}>
+          <Input
+            id="displayName"
+            name="displayName"
+            autoComplete="name"
+            required
+            value={fields.displayName}
+            onChange={(event) => set('displayName', event.target.value)}
+          />
+        </Field>
 
-      <Field label="Email" htmlFor="signup-email" hint={fieldErrors.email}>
-        <Input
-          id="signup-email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          required
-          value={fields.email}
-          onChange={(event) => set('email', event.target.value)}
-        />
-      </Field>
+        <Field label="Email" htmlFor="signup-email" hint={fieldErrors.email}>
+          <Input
+            id="signup-email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            value={fields.email}
+            onChange={(event) => set('email', event.target.value)}
+          />
+        </Field>
 
-      <Field label="Password" htmlFor="signup-password" hint={fieldErrors.password}>
-        <Input
-          id="signup-password"
-          name="password"
-          type="password"
-          autoComplete="new-password"
-          required
-          value={fields.password}
-          onChange={(event) => set('password', event.target.value)}
-        />
-      </Field>
+        <Field label="Password" htmlFor="signup-password" hint={fieldErrors.password}>
+          <Input
+            id="signup-password"
+            name="password"
+            type="password"
+            autoComplete="new-password"
+            required
+            value={fields.password}
+            onChange={(event) => set('password', event.target.value)}
+          />
+        </Field>
 
-      <Field
-        label="Confirm password"
-        htmlFor="confirmPassword"
-        hint={fieldErrors.confirmPassword}
-      >
-        <Input
-          id="confirmPassword"
-          name="confirmPassword"
-          type="password"
-          autoComplete="new-password"
-          required
-          value={fields.confirmPassword}
-          onChange={(event) => set('confirmPassword', event.target.value)}
-        />
-      </Field>
+        <Field
+          label="Confirm password"
+          htmlFor="confirmPassword"
+          hint={fieldErrors.confirmPassword}
+        >
+          <Input
+            id="confirmPassword"
+            name="confirmPassword"
+            type="password"
+            autoComplete="new-password"
+            required
+            value={fields.confirmPassword}
+            onChange={(event) => set('confirmPassword', event.target.value)}
+          />
+        </Field>
 
-      <Field label="Username" htmlFor="username" hint={fieldErrors.username}>
-        <Input
-          id="username"
-          name="username"
-          autoComplete="username"
-          required
-          value={fields.username}
-          onChange={(event) => set('username', event.target.value)}
-        />
-      </Field>
+        <Field label="Username" htmlFor="username" hint={fieldErrors.username}>
+          <Input
+            id="username"
+            name="username"
+            autoComplete="username"
+            required
+            value={fields.username}
+            onChange={(event) => set('username', event.target.value)}
+          />
+        </Field>
 
-      <Field label="Staff ID" htmlFor="staffId" hint={fieldErrors.staffId}>
-        <Input
-          id="staffId"
-          name="staffId"
-          autoComplete="off"
-          required
-          value={fields.staffId}
-          onChange={(event) => set('staffId', event.target.value)}
-        />
-      </Field>
+        <Field label="Staff ID" htmlFor="staffId" hint={fieldErrors.staffId}>
+          <Input
+            id="staffId"
+            name="staffId"
+            autoComplete="off"
+            required
+            value={fields.staffId}
+            onChange={(event) => set('staffId', event.target.value)}
+          />
+        </Field>
+      </div>
 
       <Button type="submit" disabled={busy} className="w-full">
         {busy ? 'Submitting…' : 'Request access'}

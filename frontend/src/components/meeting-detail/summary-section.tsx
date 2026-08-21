@@ -225,6 +225,7 @@ export interface SummarySectionProps {
   onRefresh: () => void;
   onJumpToTranscriptSegment?: (segmentId: string) => void;
   onJumpToShariahTab?: () => void;
+  onJumpToTermSheetTab?: () => void;
 }
 
 export function SummarySection({
@@ -234,8 +235,10 @@ export function SummarySection({
   onRefresh,
   onJumpToTranscriptSegment,
   onJumpToShariahTab,
+  onJumpToTermSheetTab,
 }: SummarySectionProps) {
   const isShariahReviewer = can(session, 'shariah:review');
+  const isMaker = can(session, 'termsheet:draft') || can(session, 'termsheet:submit');
 
   const participation = computeParticipation(
     meeting.transcript?.segments ?? [],
@@ -258,8 +261,49 @@ export function SummarySection({
     return (aOrder === -1 ? 99 : aOrder) - (bOrder === -1 ? 99 : bOrder);
   });
 
+  const openFlagCount = (meeting.shariahFlags ?? []).filter(
+    (f) => f.status === 'FLAGGED' || f.status === 'UNDER_REVIEW',
+  ).length;
+
   return (
     <div className="space-y-6">
+      {/* Guided Next Step Recommendation Banner */}
+      <div className="rounded-xl border border-brand/20 bg-gradient-to-r from-surface via-raised to-brand-soft/30 px-4 py-3 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <span className="text-[0.65rem] font-mono font-bold uppercase tracking-wider text-brand">
+              Next Step
+            </span>
+            {openFlagCount > 0 ? (
+              <p className="text-xs sm:text-sm font-semibold text-text">
+                ⚠️ {openFlagCount} Shariah finding{openFlagCount === 1 ? '' : 's'} to review
+              </p>
+            ) : (
+              <p className="text-xs sm:text-sm font-semibold text-text">
+                ✨ Shariah clean · Ready for term sheet
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {openFlagCount > 0 && onJumpToShariahTab && (
+              <Button
+                variant={isShariahReviewer ? 'primary' : 'secondary'}
+                onClick={onJumpToShariahTab}
+                className="text-xs"
+              >
+                Review Flags →
+              </Button>
+            )}
+            {openFlagCount === 0 && isMaker && onJumpToTermSheetTab && (
+              <Button onClick={onJumpToTermSheetTab} className="text-xs">
+                Draft Terms →
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Transfer & Retention Record */}
       <div className="rounded-lg border border-line bg-raised px-4 py-3">
         <TransferRecord

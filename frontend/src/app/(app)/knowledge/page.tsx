@@ -20,11 +20,10 @@ export default function KnowledgePage() {
   const graph = useAsync(() => api.knowledgeGraph(), 'knowledge-graph');
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <PageHeader
         eyebrow="Knowledge Graph"
         title="How meetings connect"
-        lead="An edge means two meetings discuss the same topics. Click one to see exactly why — no connection here is based on a person, because masked identifiers cannot be matched across meetings."
       />
 
       {graph.loading && <Spinner label="Building the graph" />}
